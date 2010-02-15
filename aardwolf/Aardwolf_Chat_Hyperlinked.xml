@@ -1,0 +1,342 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+<!-- Saved on Saturday, June 30, 2007, 10:48  -->
+<!-- MuClient version 4.13 -->
+
+<!--
+Edit plugin and change "chat_world" variable to be the name of the
+world you want chats to go to.
+-->
+
+<muclient>
+<plugin
+   name="Aardwolf_Chat_Hyperlinked"
+   author="Nick Gammon"
+   id="c46cf2efaba34c42b3dd17bf"
+   language="Lua"
+   purpose="Redirects Aardwolf chat messages"
+   date_written="2008-06-18"
+   requires="4.08"
+   version="1.0"
+   save_state="y"
+   >
+<description trim="y">
+<![CDATA[
+Redirects chats, tells and channels to the "Chats" world window.
+
+chats echo on   --> also echo in the main window
+chats echo off  --> only show in the other window
+chats echo      --> toggle echoing (switch from on to off or vice-versa)
+
+]]>
+</description>
+
+</plugin>
+
+<!--  Triggers  -->
+
+<triggers>
+
+  <trigger
+   enabled="y"
+   match="^{say}(?<msg>.*)"
+   regexp="y"
+   script="chat_redirect"
+   omit_from_output="y"
+   sequence="100"
+  >
+  </trigger>
+
+ <trigger
+   enabled="y"
+   match="^{chan ch=(?<channel>\w+)}(?<msg>.*)"
+   regexp="y"
+   script="channel_redirect"
+   omit_from_output="y"
+   sequence="100"
+  >
+  </trigger>
+
+  <trigger
+   enabled="y"
+   match="^{tell}(?<msg>.*)"
+   script="chat_redirect"
+   omit_from_output="y"
+   regexp="y"
+   sequence="100"
+  >
+  </trigger>
+
+
+</triggers>
+
+<aliases>
+  <alias
+   script="chat_echo"
+   match="^chats echo( on| off)?$"
+   enabled="y"
+   regexp="y"
+   sequence="100"
+   ignore_case="y"
+  >
+  </alias>
+</aliases>
+
+<aliases>
+  <alias
+   script="do_link"
+   match="^do_link(.*)?$"
+   enabled="y"
+   regexp="y"
+   sequence="101"
+   ignore_case="y"
+  >
+  </alias>
+</aliases>
+
+<aliases>
+  <alias
+   match="link_bid(.*)"
+   regexp="y"
+   enabled="y"
+   send_to="12"
+   sequence="101"
+  >
+  <send>
+    SetCommand("bid" .. "%1" .. " ")
+    Send ("bid" .. "%1")
+  </send>
+  </alias>
+</aliases>
+
+
+<aliases>
+  <alias
+   match="Send_Tell(.*)"
+   regexp="y"
+   enabled="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>SetCommand("tell" .. "%1" .. " ")</send>
+  </alias>
+</aliases>
+
+
+<!--  Script  -->
+
+
+<script>
+<![CDATA[
+chat_world = "Chats"
+folder = "Aardwolf"
+
+require "getworld"
+require "checkplugin"
+require "tprint"
+
+-- Options
+echo = false
+show_time = true                        -- if true puts a time stamp at the begining of the line
+show_links = true                       -- if true shows a small hyperlink that does whois and finger on the character at the begining of the line.
+hyperlink_text = "-"                    -- will show as the clickable link after the time stamp
+backcolour = RGBColourToName "0x000000"
+tstamp_colour = RGBColourToName "6908265"
+hyperlink_colour = RGBColourToName "5737262"
+date_format = "[%X]"                  -- [1:22:06 PM]            time 12 hour
+--date_format = "[%d %b %I:%M:%S%p]"  -- [30 Aug 01:20:12PM]     date and time 12 hour
+--date_format = "[%d %b %H:%M:%S]"        -- [30 Aug 13:29:49]   date and time 24 hour
+--date_format = "[%H:%M:%S]"          -- [13:29:08]          time 24 hour
+
+--print hyperlinks to window
+function do_link (name, line, t)
+    Tell (" " .. t[1] .. ":")
+    for _,v in ipairs ({"Whois", "Finger", "MyRank", "Send_Tell", "Friend", "Ignore"}) do
+        Tell (" ")
+        Hyperlink (v .. t[1], v, v .. t[1], hyperlink_colour, backcolour, false)
+    end
+    Note (" ")
+end -- do_link
+
+
+--modified from getworld.lua
+function send_to_world_hyperlinked (name, styles)
+
+  local w = get_a_world (name)
+
+  if w then  -- if present
+    --add the timestamp
+    if show_time then
+        tstamp = os.date (date_format)
+        w:ColourTell (tstamp_colour, backcolour, tstamp)
+    end
+
+    --add the hyperlink at the start of the line
+     if show_links then
+      line = ""
+      for _,v in ipairs (styles) do
+        line = line .. v.text
+      end
+      --get the name
+      if line:match (" SOLD to %w+ for %d+") then
+          pname = line:match (" SOLD to (%w+) for %d+")
+      else
+          pname = line:gsub ("%b()", ""):gsub("%b[]", ""):match ("^%s*(%w+)")
+      end
+      --put in the hyperlink
+      if pname then
+        w:Hyperlink ("do_link " .. pname, hyperlink_text, "Click to finger and whois player.", hyperlink_colour, backcolour, false)
+      end
+    end -- do_links
+
+    for _, v in ipairs (styles) do
+      w:ColourTell (RGBColourToName (v.textcolour),
+                    RGBColourToName (v.backcolour),
+                    v.text)
+    end -- for each style run
+    --put bid hyperlink on acution lines
+    if line:match ("^%w+ is auctioning .+ %(Level %d+%, Num %d+%)%. Current bid is %d+%.$") then
+        bid = line:match ("^%w+ is auctioning .+ %(Level %d+%, Num (%d+)%)%. Current bid is %d+%.$")
+        w:Hyperlink ("link_bid " .. bid, "-", "Click to view item", hyperlink_colour, backcolour, false)
+    end
+    w:Note ("")  -- wrap up line
+
+  end -- world found
+
+end -- send_to_world
+
+-- chat redirector
+function chat_redirect (name, line, wildcards, styles)
+
+  local w = get_a_world (chat_world, folder)
+
+  if w == nil then
+     colourNote("red","","Chat world file not available.")
+     return
+  end
+
+  -- get rid of tag
+  tag_length = string.find(styles[1].text,"}")
+  styles[1].text = string.sub(styles[1].text, tag_length+1)
+  styles[1].length = styles[1].length-tag_length
+
+  -- send to other world
+  send_to_world_hyperlinked (chat_world, styles)
+
+   -- this stuff to echo in this world as well
+
+  if echo then
+    for _, v in ipairs (styles) do
+      ColourTell (RGBColourToName (v.textcolour),
+                    RGBColourToName (v.backcolour),
+                    v.text)
+    end -- for each style run
+    Note ("")  -- wrap up line
+  end -- echo wanted
+
+end -- function chat_redirect
+
+function channel_redirect (name, line, wildcards, styles)
+
+  -- note, we could filter on channel name (wildcards.channel)
+
+  chat_redirect (name, line, wildcards, styles)
+
+end -- function channel_redirect
+
+function chat_echo (name, line, wildcards)
+  if wildcards [1] == false then
+    echo = not echo
+  elseif wildcards [1]:lower () == " on" then
+    echo = true
+  elseif wildcards [1]:lower () == " off" then
+    echo = false
+  end -- if
+
+  if echo then
+    ColourNote ("yellow", "", "Echoing chats in main window enabled.")
+  else
+    ColourNote ("yellow", "", "Echoing chats in main window DISABLED.")
+  end -- if
+
+end -- chat_echo
+
+function OnPluginInstall ()
+
+  if GetVariable ("enabled") == "false" then
+    ColourNote ("yellow", "", "Warning: Plugin " .. GetPluginName ().. " is currently disabled.")
+    check (EnablePlugin(GetPluginID (), false))
+    return
+  end -- they didn't enable us last time
+
+  OnPluginEnable ()  -- do initialization stuff
+
+end -- OnPluginInstall
+
+-- pull in telnet option handling
+dofile (GetPluginInfo (GetPluginID (), 20) .. "telnet_options.lua")
+
+function OnPluginConnect ()
+  -- first time after connect, get tags right
+
+  TelnetOptionOn (TELOPT_CHANNELS)
+  TelnetOptionOn (TELOPT_TELLS)
+  TelnetOptionOn (TELOPT_SAYS)
+
+end -- function OnPluginConnect
+
+function OnPluginClose ()
+  -- if enabled
+  if GetPluginInfo (GetPluginID (), 17) then
+    TelnetOptionOff (TELOPT_CHANNELS)
+    TelnetOptionOff (TELOPT_TELLS)
+    TelnetOptionOff (TELOPT_SAYS)
+  end -- if enabled
+end -- OnPluginClose
+
+function OnPluginEnable ()
+  -- ensure world file exists
+  w = get_a_world (chat_world, folder)
+
+  if w == nil then
+     CallPlugin ("35dfdbf3afc8cbf60c91277c", "CreateWorldFile", folder .. "," .. chat_world)
+     w = get_a_world (chat_world, folder)
+  end
+
+  if w then
+    os.setlocale ("", "time")
+    w:Note (os.date ("Chats will appear here - started %c."))
+    w:SetOption ("do_not_show_outstanding_lines", 1)
+    --w:SetCommandWindowHeight (0)  -- no command window
+    w:SetWorldWindowStatus (3) -- restore it
+  end -- no world
+
+  -- if we are connected when the plugin loads, it must have been reloaded whilst playing
+  if IsConnected () then
+    OnPluginConnect ()
+  end -- if already connected
+
+end -- OnPluginEnable
+
+function OnPluginDisable ()
+  TelnetOptionOff (TELOPT_CHANNELS)
+  TelnetOptionOff (TELOPT_TELLS)
+  TelnetOptionOff (TELOPT_SAYS)
+
+  if not w then return end
+
+  local w = get_a_world (chat_world, folder)
+  if w then
+    w:SetWorldWindowStatus (2) -- minimize it on disable
+  end -- if
+  Activate ()
+end -- OnPluginDisable
+
+function OnPluginSaveState ()
+  SetVariable ("enabled", tostring (GetPluginInfo (GetPluginID (), 17)))
+end -- OnPluginSaveState
+
+
+]]>
+</script>
+</muclient>
