@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<muclient>
+<plugin
+   name="xCreate_World_File"
+   author="Nick Gammon"
+   id="35dfdbf3afc8cbf60c91277c"
+   language="Lua"
+   purpose="Creates a world file."
+   date_written="2008-07-01"
+   requires="4.30"
+   version="1.0"
+   >
+<description trim="y">
+<![CDATA[
+Implements an interface for other plugins, or triggers etc. to create a world file.
+
+Example of use:
+
+ -- Create world file Spells in folder Aardwolf
+ check (CallPlugin ("35dfdbf3afc8cbf60c91277c", "CreateWorldFile", "Aardwolf,Spells"))
+ 
+]]>
+</description>
+
+</plugin>
+
+<!--  Script  -->
+
+<script>
+<![CDATA[
+
+require "getworld"
+require "commas"
+
+-- args are: folder,file
+
+function CreateWorldFile (args)
+  
+
+  local folder, filename = string.match (args,
+        "^([%w ]+),%s*([%w ]+)$")
+  
+  if not folder then
+    error ("Arguments to CreateWorldFile are: folder,file. You supplied: " .. args)
+  end -- if
+
+  folder = trim (folder)
+  if folder == "" then
+    folder = nil
+  end -- no folder
+  
+  filename = trim (filename)
+  
+  local pathname = GetInfo (57)
+  if folder then
+    pathname = pathname .. folder .. "\\"
+  end -- if folder wanted
+  
+  t, err = utils.readdir (pathname .. "*")
+  
+  if not t then
+    ColourNote ("red", "", "Directory " .. pathname .. " does not exist.")
+    ColourNote ("silver", "", "Please create it and reinstall plugins.")
+  end -- if
+
+  local t = debug.getinfo (io.open)
+  
+  -- can't if sandboxed
+  if t.source == "Sandbox" then
+    return
+  end -- if
+    
+  -- ensure world file exists
+  make_world (filename, [[
+    <!-- plugins -->
+  <include name="Send_Input_To_Main_World.xml" plugin="y" />
+  <include name="Copy_Output.xml" plugin="y" />
+  <include name="Restore_On_Activate.xml" plugin="y" />
+  
+  ]], folder)
+  
+
+end -- function CreateWorldFile 
+
+
+]]>
+</script>
+
+
+</muclient>
