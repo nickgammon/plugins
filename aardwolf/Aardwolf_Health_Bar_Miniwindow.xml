@@ -1,0 +1,306 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE muclient>
+
+<muclient>
+<plugin
+   name="Aardwolf_Health_Bar_Miniwindow"
+   author="Nick Gammon"
+   id="43825da8d728bce6a86c37d9"
+   language="Lua"
+   purpose="Shows stats in a mini window"
+   date_written="2009-07-08"
+   date_modified="2009-07-09"
+   requires="4.40"
+   version="1.5"
+   save_state="y"
+   >
+<description trim="y">
+<![CDATA[
+Install this plugin to show an info bar with HP, Mana, 
+and Movement points shown as a bar.
+
+The window can be dragged to a new location with the mouse.
+]]>
+</description>
+
+</plugin>
+
+
+<!--  Script  -->
+
+
+<script>
+<![CDATA[
+
+require "checkplugin"
+
+GAUGE_LEFT = 60
+GAUGE_HEIGHT = 15
+
+WINDOW_WIDTH = 400
+WINDOW_HEIGHT = 85
+NUMBER_OF_TICKS = 5
+
+BACKGROUND_COLOUR_NORMAL = ColourNameToRGB "slategray"
+BACKGROUND_COLOUR_FIGHTING = ColourNameToRGB "rosybrown"
+FONT_COLOUR = ColourNameToRGB "darkred"
+BORDER_COLOUR = ColourNameToRGB "#553333"
+
+function mousedown(flags, hotspot_id)
+
+  -- find where mouse is so we can adjust window relative to mouse
+  startx, starty = WindowInfo (win, 14), WindowInfo (win, 15)
+  
+  -- find where window is in case we drag it offscreen
+  origx, origy = WindowInfo (win, 10), WindowInfo (win, 11)
+end -- mousedown
+
+function dragmove(flags, hotspot_id)
+
+  -- find where it is now
+  local posx, posy = WindowInfo (win, 17),
+                     WindowInfo (win, 18)
+
+  -- move the window to the new location - offset by how far mouse was into window
+  WindowPosition(win, posx - startx, posy - starty, 0, 2);
+  
+  -- change the mouse cursor shape appropriately
+  if posx < 0 or posx > GetInfo (281) or
+     posy < 0 or posy > GetInfo (280) then
+    check (SetCursor ( 11))   -- X cursor
+  else
+    check (SetCursor ( 1))   -- hand cursor
+  end -- if
+  
+end -- dragmove
+
+function dragrelease(flags, hotspot_id)
+
+  Repaint ()  -- update window location
+  
+  -- find where window is now
+  local newx, newy = WindowInfo (win, 10), WindowInfo (win, 11)
+  
+  -- don't let them drag it out of view
+  if newx < 0 or newx > GetInfo (281) or
+     newy < 0 or newy > GetInfo (280) then
+     -- put it back
+    WindowPosition(win, origx, origy, 0, 2)
+    return
+  end -- if out of bounds
+  
+  window_left = newx  -- remember for saving state
+  window_top = newy
+  window_mode = 0
+  window_flags = 2   -- absolute position
+  
+end -- dragrelease
+
+function DoGauge (sPrompt, Percent, Colour)
+
+  local Fraction = tonumber (Percent)
+  
+  if Fraction > 1 then Fraction = 1 end
+  if Fraction == 0 then return end
+   
+  local width = WindowTextWidth (win, font_id, sPrompt)
+  
+  WindowText (win, font_id, sPrompt,
+                             GAUGE_LEFT - width, vertical, 0, 0, FONT_COLOUR)
+
+  WindowRectOp (win, 2, GAUGE_LEFT, vertical, WINDOW_WIDTH - 5, vertical + GAUGE_HEIGHT, WindowInfo (win,9) )  -- fill entire box
+ 
+  
+  local gauge_width = (WINDOW_WIDTH - GAUGE_LEFT - 5) * Fraction
+  
+   -- box size must be > 0 or WindowGradient fills the whole thing 
+  if math.floor (gauge_width) > 0 then
+    
+    -- top half
+    WindowGradient (win, GAUGE_LEFT, vertical, GAUGE_LEFT + gauge_width, vertical + GAUGE_HEIGHT / 2, 
+                    0x000000,
+                    Colour, 2) 
+    
+    -- bottom half
+    WindowGradient (win, GAUGE_LEFT, vertical + GAUGE_HEIGHT / 2, GAUGE_LEFT + gauge_width, vertical +                           GAUGE_HEIGHT,   
+                    Colour,
+                    0x000000,
+                    2) 
+
+  end -- non-zero
+  
+  -- show ticks
+  local ticks_at = (WINDOW_WIDTH - GAUGE_LEFT - 5) / (NUMBER_OF_TICKS + 1)
+  
+  -- ticks
+  for i = 1, NUMBER_OF_TICKS do
+    WindowLine (win, GAUGE_LEFT + (i * ticks_at), vertical, 
+                GAUGE_LEFT + (i * ticks_at), vertical + GAUGE_HEIGHT, ColourNameToRGB ("silver"), 0, 1)
+  end -- for
+
+  -- draw a box around it
+  check (WindowRectOp (win, 1, GAUGE_LEFT, vertical, WINDOW_WIDTH - 5, vertical + GAUGE_HEIGHT, 
+          ColourNameToRGB ("lightgrey")))  -- frame entire box
+  
+  vertical = vertical + font_height + 3
+end -- function
+
+function draw_bar ()
+
+ -- find where it is now
+  local posx, posy, mode, flags = WindowInfo (win, 10),
+                     WindowInfo (win, 11),
+                     WindowInfo (win, 7),
+                     WindowInfo (win, 8)
+
+  local height = WINDOW_HEIGHT                    
+  local background = BACKGROUND_COLOUR_NORMAL
+  
+  local line1 = string.format ("Level %i. %s", stats.level, stats.doing)
+  
+  if  stats.enemy_percent ~= "9999" then
+    height = height + 20
+    background = BACKGROUND_COLOUR_FIGHTING
+    line1 = stats.doing
+  end -- if
+
+  WindowCreate (win, 
+                 posx, posy, WINDOW_WIDTH, height,  
+                 mode,   
+                 flags,   
+                 background)
+  
+  -- make a hotspot
+  WindowAddHotspot(win, "hs1",  
+                   0, 0, 0, 0,   -- whole window
+                   "",   -- MouseOver
+                   "",   -- CancelMouseOver
+                   "mousedown",
+                   "",   -- CancelMouseDown
+                   "",   -- MouseUp
+                   "Drag to move",  -- tooltip text
+                   10, 0)  -- movement cursor
+                   
+  WindowDragHandler(win, "hs1", "dragmove", "dragrelease", 0) 
+                 
+  -- Edge around box rectangle
+  check (WindowCircleOp (win, 3, 0, 0, 0, 0, BORDER_COLOUR, 0, 2, 0, 1))
+
+  vertical = 6  -- pixel to start at
+ 
+  local width = WindowTextWidth (win, font_id, line1)
+  local add_dots = false
+
+  -- truncate if too long
+  while width > (WINDOW_WIDTH - GAUGE_LEFT - 5) do
+    -- get rid of last word
+    local s = string.match (" " .. line1 .. "...", "(%s%S*)$")
+    if not s or #s == 0 then break end
+    line1 = line1:sub (1, - (#s - 2))  -- except the last 3 dots but add the space
+    width = WindowTextWidth (win, font_id, line1 .. " ...")
+    add_dots = true
+  end -- while
+  
+  if add_dots then
+    line1 = line1 .. " ..."
+  end -- if
+  
+  WindowText (win, font_id, line1,
+                             GAUGE_LEFT, vertical, 0, 0, FONT_COLOUR)
+  
+  vertical = vertical + font_height + 3
+                             
+  DoGauge ("HP: ",   stats.hp_percent / 100, ColourNameToRGB "darkgreen")
+
+  if stats.enemy_percent ~= "9999" then
+    -- enemy name:  stats.enemy
+    DoGauge ("Enemy: ", stats.enemy_percent / 100, ColourNameToRGB "darkred")
+  end -- if fighting 
+
+  DoGauge ("Mana: ", stats.mana_percent / 100, ColourNameToRGB "mediumblue")
+  DoGauge ("Move: ", stats.moves_percent / 100, ColourNameToRGB "gold")
+ 
+  WindowShow (win, true)
+  
+end -- draw_bar
+
+function OnPluginBroadcast (msg, id, name, text)
+  if msg == 1 and id == "8a710e0783b431c06d61a54c" then
+  
+   -- get all variables
+   stats = GetPluginVariableList("8a710e0783b431c06d61a54c")
+     
+   draw_bar ()
+   
+  end -- stats changed
+end
+
+function OnPluginInstall ()
+  
+  win = GetPluginID ()
+  font_id = "fn"
+  
+  font_name = "Fixedsys"    -- the actual font
+    
+  window_left, window_top, window_mode, window_flags = 
+      tonumber (GetVariable ("windowx")) or 0,
+      tonumber (GetVariable ("windowy")) or 0,
+      tonumber (GetVariable ("windowmode")) or 7, -- middle right
+      tonumber (GetVariable ("windowflags")) or 0
+       
+  -- make miniwindow so I can grab the font info
+  check (WindowCreate (win, 
+                     window_left, window_top, WINDOW_WIDTH, WINDOW_HEIGHT,  
+                     window_mode,   -- top right
+                     window_flags, 
+                     0x000000) )
+
+  -- give main world window time to stabilize its size and position                
+  DoAfterSpecial (5, "check_map_position ()", sendto.script)
+                                      
+  check (WindowFont (win, font_id, font_name, 9, false, false, false, false, 0, 0))  -- normal
+  
+  font_height = WindowFontInfo (win, font_id, 1)  -- height
+  
+  if GetVariable ("enabled") == "false" then
+    ColourNote ("yellow", "", "Warning: Plugin " .. GetPluginName ().. " is currently disabled.")
+    check (EnablePlugin(GetPluginID (), false))
+    return
+  end -- they didn't enable us last time
+  
+  OnPluginEnable ()  -- do initialization stuff
+  
+end -- OnPluginInstall
+
+function OnPluginEnable ()
+end -- OnPluginEnable
+
+function OnPluginDisable ()
+  WindowShow (win, false)
+end -- OnPluginDisable
+
+function OnPluginSaveState ()
+  SetVariable ("enabled", tostring (GetPluginInfo (GetPluginID (), 17)))
+  SetVariable ("windowx", tostring (window_left))
+  SetVariable ("windowy", tostring (window_top))
+  SetVariable ("windowmode", tostring (window_mode))
+  SetVariable ("windowflags", tostring (window_flags))
+end -- OnPluginSaveState
+
+function check_map_position ()
+ -- check miniwindow visible
+  if window_left < 0 or window_left > GetInfo (281) or
+     window_top < 0 or window_top > GetInfo (280) then
+     window_left, window_top = 0, 0  -- reset to top left
+     window_mode = 7
+     window_flags = 0
+  end -- if not visible
+
+  WindowPosition (win, window_left, window_top, window_mode, window_flags)
+  
+end -- check_map_position
+
+]]>
+</script>
+
+</muclient>
