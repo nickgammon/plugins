@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE muclient>
+
+<muclient>
+<plugin
+   name="Aardwolf_Experience_Bar"
+   author="Nick Gammon"
+   id="a9253e5af06182f2c90efc75"
+   language="Lua"
+   purpose="Shows XP to level"
+   date_written="2009-07-08"
+   requires="4.40"
+   version="1.0"
+   >
+<description trim="y">
+<![CDATA[
+Install this plugin to show an how close you are to levelling.
+]]>
+</description>
+
+</plugin>
+
+
+<!--  Script  -->
+
+
+<script>
+<![CDATA[
+
+function OnPluginBroadcast (msg, id, name, text)
+  if msg == 1 and id == "8a710e0783b431c06d61a54c" then
+  
+   -- get all variables
+   stats = GetPluginVariableList("8a710e0783b431c06d61a54c")
+   draw_bar ()
+   
+  end -- stats changed
+end
+
+
+win = GetPluginID ()  -- get a unique name
+
+-- configuration
+
+GAUGE_HEIGHT = 11
+NUMBER_OF_TICKS = 20
+max_xp = 1000
+
+BACKGROUND_COLOUR = 0x808080
+BOX_COLOUR = ColourNameToRGB "dodgerblue"
+
+-- draw the bar here, on getting the prompt, or window resize
+function draw_bar ()
+
+ if not stats then return end  -- no stats information  yet
+ 
+ local done = (max_xp - stats.to_level) / max_xp
+ 
+ -- width is window width minus 2
+ local gauge_width = GetInfo (281) - 2
+ 
+ -- make room for the bar
+ local bottom_margin = GetInfo (275)
+ 
+ -- adjust text rectangle, keeping existing settings where possible
+ if bottom_margin == 0 or 
+    (bottom_margin < 0 and math.abs (bottom_margin) < (GAUGE_HEIGHT + 2)) then
+   TextRectangle(GetInfo (272), GetInfo (273),   -- left, top
+                  GetInfo (274), -- right
+                  - (GAUGE_HEIGHT + 2),  -- bottom (gauge height plus 2 more)
+                  GetInfo (276), GetInfo (282) or 0, GetInfo (277),  --  BorderOffset, BorderColour, BorderWidth
+                  GetInfo (278), GetInfo (279)) -- OutsideFillColour, OutsideFillStyle
+ end -- if
+  
+ -- make the miniwindow
+ WindowCreate (win, 
+             0, 0,   -- left, top (auto-positions)
+             gauge_width,     -- width
+             GAUGE_HEIGHT,  -- height
+             10,       -- auto-position: bottom left
+             0,  -- flags
+             BACKGROUND_COLOUR) 
+  
+  WindowRectOp (win, 2, 0, 0, 0, 0, BACKGROUND_COLOUR)  -- fill entire box
+ 
+ 
+  -- box size must be > 0 or WindowGradient fills the whole thing 
+  if math.floor (gauge_width * done) > 0 then
+    
+    -- top half
+    WindowGradient (win, 0, 0, gauge_width * done, GAUGE_HEIGHT / 2, 
+                    0x000000,
+                    BOX_COLOUR, 2) 
+    
+    -- bottom half
+    WindowGradient (win, 0, GAUGE_HEIGHT / 2, gauge_width * done, 0, 
+                    BOX_COLOUR,
+                    0x000000,
+                    2) 
+
+  end -- any experience to speak of
+  
+  -- show ticks
+  local ticks_at = gauge_width / NUMBER_OF_TICKS
+  
+  -- ticks
+  for i = 1, NUMBER_OF_TICKS do
+    WindowLine (win, i * ticks_at, 0, i * ticks_at, GAUGE_HEIGHT, ColourNameToRGB ("silver"), 0, 1)
+  end -- for
+
+  -- draw a box around it
+  check (WindowRectOp (win, 1, 0, 0, 0, 0, ColourNameToRGB ("lightgrey")))  -- frame entire box
+    
+  -- ensure window visible
+  WindowShow (win, true)
+  
+end -- draw_bar
+
+function OnPluginWorldOutputResized ()
+  draw_bar ()
+end -- function
+ 
+-- hide window on removal
+function OnPluginClose ()
+  WindowShow (win,  false)  -- hide it
+end -- OnPluginClose
+
+-- hide window on disable
+function OnPluginDisable ()
+  WindowShow (win,  false)  -- hide it
+end -- OnPluginDisable
+
+
+]]>
+</script>
+
+</muclient>
