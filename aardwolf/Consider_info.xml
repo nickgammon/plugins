@@ -12,9 +12,9 @@
    id="2a5caa1cd7dbcff665e2a23d"
    language="Lua"
    purpose="Colours &quot;consider&quot; lines"
-   date_written="2008-08-06 13:07:35"
+   date_written="2008-10-15 07:35"
    requires="4.30"
-   version="1.0"
+   version="2.0"
    >
 <description trim="y">
 <![CDATA[
@@ -28,105 +28,7 @@ When you type "consider" (or "consider all") the lines are coloured to make it e
 <!--  Triggers  -->
 
 <triggers>
-  <trigger
-   enabled="y"
-   group="consider"
-   match="* looks a little worried about the idea."
-   omit_from_output="y"
-   script="adapt_consider"
-   sequence="100"
-  >
-  </trigger>
-  <trigger
-   enabled="y"
-   group="consider"
-   match="* says 'BEGONE FROM MY SIGHT unworthy!'"
-   omit_from_output="y"
-   script="adapt_consider"
-   sequence="100"
-  >
-  </trigger>
-  <trigger
-   enabled="y"
-   group="consider"
-   match="* should be a fair fight!"
-   omit_from_output="y"
-   script="adapt_consider"
-   sequence="100"
-  >
-  </trigger>
-  <trigger
-   enabled="y"
-   group="consider"
-   match="* snickers nervously."
-   omit_from_output="y"
-   script="adapt_consider"
-   sequence="100"
-  >
-  </trigger>
-  <trigger
-   enabled="y"
-   group="consider"
-   match="* would be easy, but is it even worth the work out?"
-   omit_from_output="y"
-   script="adapt_consider"
-   sequence="100"
-  >
-  </trigger>
-  <trigger
-   enabled="y"
-   group="consider"
-   match="* would crush you like a bug!"
-   omit_from_output="y"
-   script="adapt_consider"
-   sequence="100"
-  >
-  </trigger>
-  <trigger
-   enabled="y"
-   group="consider"
-   match="* would dance on your grave!"
-   omit_from_output="y"
-   script="adapt_consider"
-   sequence="100"
-  >
-  </trigger>
-  <trigger
-   enabled="y"
-   group="consider"
-   match="Best run away from * while you can!"
-   omit_from_output="y"
-   script="adapt_consider"
-   sequence="100"
-  >
-  </trigger>
-  <trigger
-   enabled="y"
-   group="consider"
-   match="Challenging * would be either very brave or very stupid."
-   omit_from_output="y"
-   script="adapt_consider"
-   sequence="100"
-  >
-  </trigger>
-  <trigger
-   enabled="y"
-   group="consider"
-   match="No Problem! * is weak compared to you."
-   omit_from_output="y"
-   script="adapt_consider"
-   sequence="100"
-  >
-  </trigger>
-  <trigger
-   enabled="y"
-   group="consider"
-   match="You would be completely annihilated by *!"
-   omit_from_output="y"
-   script="adapt_consider"
-   sequence="100"
-  >
-  </trigger>
+
   <trigger
    enabled="y"
    group="consider"
@@ -134,8 +36,65 @@ When you type "consider" (or "consider all") the lines are coloured to make it e
    omit_from_output="y"
    script="adapt_consider"
    sequence="100"
+   name="a"
   >
   </trigger>
+
+  <trigger
+   enabled="y"
+   group="consider"
+   match="* would be easy, but is it even worth the work out?"
+   omit_from_output="y"
+   script="adapt_consider"
+   sequence="100"
+   name="b"
+  >
+  </trigger>
+  
+  <trigger
+   enabled="y"
+   group="consider"
+   match="No Problem! * is weak compared to you."
+   omit_from_output="y"
+   script="adapt_consider"
+   sequence="100"
+   name="c"
+  >
+  </trigger>
+  
+  <trigger
+   enabled="y"
+   group="consider"
+   match="* looks a little worried about the idea."
+   omit_from_output="y"
+   script="adapt_consider"
+   sequence="100"
+   name="d"
+  >
+  </trigger>
+
+  <trigger
+   enabled="y"
+   group="consider"
+   match="* should be a fair fight!"
+   omit_from_output="y"
+   script="adapt_consider"
+   sequence="100"
+   name="e"
+  >
+  </trigger>
+
+  <trigger
+   enabled="y"
+   group="consider"
+   match="* snickers nervously."
+   omit_from_output="y"
+   script="adapt_consider"
+   sequence="100"
+   name="f"
+  >
+  </trigger>
+  
   <trigger
    enabled="y"
    group="consider"
@@ -144,8 +103,76 @@ When you type "consider" (or "consider all") the lines are coloured to make it e
    regexp="y"
    script="adapt_consider"
    sequence="100"
+   name="g"
   >
   </trigger>
+    
+  <trigger
+   enabled="y"
+   group="consider"
+   match="Best run away from * while you can!"
+   omit_from_output="y"
+   script="adapt_consider"
+   sequence="100"
+   name="h"
+  >
+  </trigger>
+  
+  <trigger
+   enabled="y"
+   group="consider"
+   match="Challenging * would be either very brave or very stupid."
+   omit_from_output="y"
+   script="adapt_consider"
+   sequence="100"
+   name="i"
+  >
+  </trigger>
+  
+  <trigger
+   enabled="y"
+   group="consider"
+   match="* would crush you like a bug!"
+   omit_from_output="y"
+   script="adapt_consider"
+   sequence="100"
+   name="j"
+  >
+  </trigger>
+  
+  <trigger
+   enabled="y"
+   group="consider"
+   match="* would dance on your grave!"
+   omit_from_output="y"
+   script="adapt_consider"
+   sequence="100"
+   name="k"
+  >
+  </trigger>
+  
+  <trigger
+   enabled="y"
+   group="consider"
+   match="* says 'BEGONE FROM MY SIGHT unworthy!'"
+   omit_from_output="y"
+   script="adapt_consider"
+   sequence="100"
+   name="l"
+  >
+  </trigger>
+ 
+  <trigger
+   enabled="y"
+   group="consider"
+   match="You would be completely annihilated by *!"
+   omit_from_output="y"
+   script="adapt_consider"
+   sequence="100"
+   name="m"
+  >
+  </trigger>
+  
 </triggers>
 
 <!--  Script  -->
@@ -155,57 +182,31 @@ When you type "consider" (or "consider all") the lines are coloured to make it e
 <![CDATA[
 
 consider_messages = {
-    ["You would stomp (.+) into the ground%."] =                        
-      { range = "-19 and below", colour = "gray", },
-    ["(.+) would be easy, but is it even worth the work out%?"] =       
-      { range = "-10 to -19", colour = "darkgreen", },
-    ["No Problem%! (.+) is weak compared to you%."] =               
-      { range = "-6 to -9", colour = "forestgreen", },
-    ["(.+) looks a little worried about the idea%."] =                  
-      { range = "-2 to -6", colour = "chartreuse", },
-    ["(.+) should be a fair fight%!"] =                                 
-      { range = "-2 to +2", colour = "springgreen", },
-    ["(.+) snickers nervously%."] =                                     
-      { range = "+2 to +3", colour = "darkgoldenrod", },
-    ["(.+) chuckles at the thought of you fighting .+%."] =        
-      { range = "+3 to +8", colour = "gold", },
-    ["Best run away from (.+) while you can%!"] =                       
-      { range = "+8 to +16", colour = "tomato", },
-    ["Challenging (.+) would be either very brave or very stupid%."] =  
-      { range = "+16 to +21", colour = "crimson", },
-    ["(.+) would crush you like a bug%!"] =                             
-      { range = "+21 to +32", colour = "lightpink", },
-    ["(.+) would dance on your grave%!"] =                              
-      { range = "+32 to +41", colour = "darkmagenta", },
-    ["(.+) says 'BEGONE FROM MY SIGHT unworthy%!'"] =                  
-      { range = "+41 to +50", colour = "darkviolet", },
-    ["You would be completely annihilated by (.+)%!"] =                 
-      { range = "+50 and above", colour = "magenta", },
-      
+    a = { range = "-19 and below",  colour = "gray", },
+    b = { range = "-10 to -19",     colour = "darkgreen", },
+    c = { range = "-6 to -9",       colour = "forestgreen", },
+    d = { range = "-2 to -6",       colour = "chartreuse", },
+    e = { range = "-2 to +2",       colour = "springgreen", },
+    f = { range = "+2 to +3",       colour = "darkgoldenrod", },
+    g = { range = "+3 to +8",       colour = "gold", },
+    h = { range = "+8 to +16",      colour = "tomato", },
+    i = { range = "+16 to +21",     colour = "crimson", },
+    j = { range = "+21 to +32",     colour = "lightpink", },
+    k = { range = "+32 to +41",     colour = "darkmagenta", },
+    l = { range = "+41 to +50",     colour = "darkviolet", },
+    m = { range = "+50 and above",  colour = "magenta", },
       } -- end of consider_messages
       
 function adapt_consider (name, line, wildcards)
-  mob = nil
-  for k,  v in pairs (consider_messages) do
-    mob = string.match (line, k)
-    
-    if mob then
-      ColourNote (v.colour, "", line .. " (" .. v.range .. ")" )
-      break
-    end -- if
-  
-  end -- for
-
-  if not mob then
-    ColourNote ("white", "blue", "Could not find message: " .. line)
-  end -- not  found in table
-
+  mob = consider_messages [name]
+  if mob then
+    ColourNote (mob.colour, "", line .. " (" .. mob.range .. ")" )
+  else
+    ColourNote ("white", "blue", "Could not find message for trigger: " .. line)
+  end -- if
 end -- adapt_consider
-
-
 
 ]]>
 </script>
-
 
 </muclient>
