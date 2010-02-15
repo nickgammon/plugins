@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE muclient>
+<!DOCTYPE muclient [
+  <!ENTITY horizontal "n" > 
+]>
 
 <muclient>
 <plugin
@@ -9,8 +11,9 @@
    language="Lua"
    purpose="Shows an activity bar"
    date_written="2009-02-18 09:00"
+   date_modified="2009-03-28 15:00"
    requires="4.37"
-   version="1.0"
+   version="2.0"
    >
    
 <description trim="y">
@@ -43,6 +46,9 @@ Hover over a number to show the world name.
 
 
 <script>
+
+horizontal = ("&horizontal;"):lower ():sub (1, 1) == "y";
+
 <![CDATA[
 
 win = GetPluginID ()  -- get a unique name
@@ -60,13 +66,17 @@ ACTIVE_BLINK_COLOUR = ColourNameToRGB "mediumslateblue"
 INACTIVE_COLOUR = ColourNameToRGB "black"
 NOT_CONNECTED_COLOUR = ColourNameToRGB "rosybrown"
 
+-- font and size to use
+
 FONT_NAME = "Fixedsys"
 FONT_SIZE = 9
 
 -- where to put the window
 WINDOW_POSITION = 6  -- top right
-OFFSET = 5  -- gap inside box
-EDGE_WIDTH = 2 -- size of border stroke
+OFFSET = 5  -- gap inside box (between button edge and number)
+EDGE_WIDTH = 2 -- size of border stroke (of rectangle holding all buttons)
+BUTTON_GAP = 3 -- distance between buttons
+BUTTON_CURVE = 5 -- width and height of ellipse
 
 --[[
 Useful positions:
@@ -150,15 +160,26 @@ function draw_bar (name)
  end --  for each world
    
  -- height depends on the number of worlds
- local gauge_height = #world_list * (font_height + OFFSET)
+ 
+ local gauge_height, gauge_width
+ 
+ if horizontal then
+   gauge_height = font_height + OFFSET * 2
+   gauge_width = #world_list * (max_width + OFFSET * 2) + 
+                (#world_list - 1) * BUTTON_GAP
+ else
+   gauge_height = #world_list * (font_height + OFFSET * 2) + 
+                 (#world_list - 1) * BUTTON_GAP
+   gauge_width = max_width + (OFFSET * 2)
+ end -- if
  
  -- make  window if we need to
  if list_changed then
    -- make the miniwindow
    WindowCreate (win, 
                0, 0,   -- left, top (auto-positions)
-               max_width + (OFFSET * 2),     -- width
-               gauge_height + OFFSET,  -- height
+               gauge_width + EDGE_WIDTH * 2,     -- width
+               gauge_height + EDGE_WIDTH * 2,  -- height
                WINDOW_POSITION,       -- auto-position: bottom left
                0,  -- flags
                BACKGROUND_COLOUR) 
@@ -170,8 +191,24 @@ function draw_bar (name)
   for count, id in ipairs (world_list) do
    local text = string.format ("%i", count)
    local number_width = WindowTextWidth (win, "f", text)
-   local left = (max_width - number_width) / 2 + OFFSET -- center 
-   local top = (count - 1) * (font_height + OFFSET) + OFFSET
+   local left, top, button_left, button_top, button_right, button_bottom
+   
+   left = OFFSET + (max_width - number_width) / 2  -- go in offset, then center
+   
+   if horizontal then
+     button_left = (count - 1) * (max_width + OFFSET * 2 + BUTTON_GAP)
+     button_top = 0
+     left = left + button_left
+     top = button_top + OFFSET
+   else
+     button_left = 0
+     button_top = (count - 1) * (font_height + OFFSET * 2 + BUTTON_GAP)
+     top =  button_top + OFFSET
+   end -- if 
+   
+   button_right = button_left + EDGE_WIDTH + max_width + OFFSET * 2
+   button_bottom = button_top  + EDGE_WIDTH + font_height + OFFSET * 2
+   
    local colour = INACTIVE_COLOUR
    local w = GetWorldById (id)
    local world_name = w:GetInfo (2)
@@ -188,8 +225,14 @@ function draw_bar (name)
    end -- if
    
    -- draw the button (round rectangle)
-   WindowCircleOp (win, 3, EDGE_WIDTH, top, - EDGE_WIDTH, top + font_height, 
-                    BUTTON_EDGE, 6, 1, fill_colour, 0, 2, 2) 
+   WindowCircleOp (win, 3, 
+                    button_left + EDGE_WIDTH,   -- left
+                    button_top  + EDGE_WIDTH,   -- top
+                    button_right,               -- right
+                    button_bottom,              -- bottom
+                    BUTTON_EDGE, 6, 1,   -- pen colour, pen style (solid), pen width
+                    fill_colour, 0,      -- fill colour, fill style (solid)
+                    BUTTON_CURVE, BUTTON_CURVE)  -- width and height of ellipse
    
    -- text colour depends on world's status
    if new_lines > 0 then
@@ -203,12 +246,13 @@ function draw_bar (name)
    end -- if 
                     
    -- draw the number
-   WindowText (win, "f", text, left, top, 0, 0, colour)
+   WindowText (win, "f", text, left + EDGE_WIDTH, top + EDGE_WIDTH, 0, 0, colour)
    
    -- make a hotspot we can click on
    if list_changed then
       WindowAddHotspot(win, id,  
-                   EDGE_WIDTH + 1, top, - (EDGE_WIDTH + 1), top + font_height,   -- rectangle
+                   button_left + EDGE_WIDTH, button_top + EDGE_WIDTH,  -- left, top
+                   button_right, button_bottom,   -- right, bottom
                    "mouseover", 
                    "cancelmouseover", 
                    "mousedown",
