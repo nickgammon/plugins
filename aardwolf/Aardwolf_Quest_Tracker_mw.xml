@@ -1,0 +1,329 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+<!-- Saved on Tuesday, July 15, 2008, 9:13 AM -->
+<!-- MuClient version 4.33 -->
+
+<muclient>
+<plugin
+   name="Aardwolf_Quest_Tracker_mw"
+   author="Nick Gammon"
+   id="76c899eda20ad99787c6b438"
+   language="Lua"
+   purpose="Remembers standard quest instructions"
+   date_written="2008-07-24"
+   requires="4.34"
+   version="2.0"
+   save_state="y"
+   >
+<description trim="y">
+<![CDATA[
+Remembers what a quest-giver told you to do.
+]]>
+</description>
+
+</plugin>
+
+
+<!--  Triggers  -->
+
+<triggers>
+
+  <trigger
+   match="@questor tells you '*'"
+   name="questor_line"
+   script="questor_line"
+   sequence="100"
+   expand_variables="y"
+  >
+  </trigger>
+  
+  <trigger
+   enabled="y"
+   match="You ask * for a quest."
+   script="start_questor_stuff"
+   sequence="100"
+  >
+  </trigger>
+  
+  <trigger
+   match="@questor tells you 'You have * to complete your quest.'"
+   name="questor_end"
+   script="questor_end"
+   sequence="10"
+   expand_variables="y"
+  >
+  </trigger>
+  
+ <trigger
+   enabled="y"
+   match="QUEST: You have almost completed your QUEST!"
+   sequence="100"
+   script="quest_done"
+  >
+  </trigger>
+
+ <trigger
+   enabled="y"
+   match="You inform * that you have completed your quest."
+   sequence="100"
+   script="quest_handed_in"
+  >
+  </trigger>
+  
+ <trigger
+   enabled="y"
+   match="There are * minutes remaining until you can go on another quest."
+   sequence="100"
+   script="quest_time_to_go"
+  >
+  </trigger>
+
+ <trigger
+   enabled="y"
+   match="QUEST: You may now quest again."
+   sequence="100"
+   script="quest_available"
+  >
+  </trigger>
+
+  <trigger
+   enabled="y"
+   match="You do not have to wait to go on another quest."
+   sequence="100"
+   script="quest_available"
+  >
+  </trigger>
+     
+</triggers>
+
+<!--  Timers  -->
+
+
+<timers>
+  <timer 
+      script="show_quest_text" 
+      enabled="y" 
+      second="30.00" 
+      >
+  </timer>
+</timers>
+
+<!--  Script  -->
+
+
+<script>
+<![CDATA[
+
+background_colour = 0xE7FFFF
+text_colour = 0x000000
+heading_colour = 0x800080
+time_colour = 0x82004B
+
+
+quest_info = {}
+
+require "serialize"
+require "commas"
+require "var"
+
+function quest_handed_in (name, line, wildcards)
+  Send "score"
+  next_quest_time = os.time () + (30 * 60)  -- 30 mins to go
+  quest_info = {}
+  show_quest_text ()
+end -- quest_handed_in
+
+function quest_time_to_go (name, line, wildcards)
+  local mins = tonumber (wildcards [1])
+  if mins then
+    next_quest_time = os.time () + mins * 60
+  else
+    next_quest_time = nil
+  end -- if
+  quest_info = {}
+  show_quest_text ()
+end -- quest_time_to_go
+
+function quest_available (name, line, wildcards)
+  next_quest_time = os.time ()
+  quest_info = {}
+  show_quest_text ()
+end -- quest_available
+
+function quest_done (name, line, wildcards)
+  quest_info = { "Quest complete - go hand it in." }
+  max_width = WindowTextWidth (win, font_id, quest_info [1])
+  show_quest_text ()
+end -- quest_done
+
+function start_questor_stuff (name, line, wildcards)
+  check (EnableTrigger ("questor_line", true))
+  check (EnableTrigger ("questor_end", true))
+  quest_info = {}
+  max_width = 0
+  var.questor = wildcards [1]
+end -- start_questor_stuff
+
+function questor_line (name, line, wildcards)
+  local text = wildcards [1]
+
+  if string.match (text, "^Thank you, brave ") then
+    return
+  end -- if
+  
+  if string.match (text, "^Good luck ") then
+    return
+  end -- if
+
+  table.insert (quest_info, text  )
+  max_width = math.max (max_width, WindowTextWidth (win, font_id, text)) 
+  
+end -- questor_line
+
+function Display_Line (line, text, id, colour)
+
+local left = 5
+local top =  (line - 1) * font_height
+
+  WindowText (win, id, text, left, top, 0, 0, colour)
+
+end -- Display_Line
+
+function show_when_quest_available ()
+
+  local time_to_go = next_quest_time - os.time ()
+  
+  if time_to_go <= 0 then
+    text = "You can quest again!"
+  else
+    text = string.format ("Time until next quest: %s", convert_time (time_to_go))
+  end -- if
+  
+  max_width = WindowTextWidth (win, font_id, text)
+  
+ -- recreate the window the correct size
+  WindowCreate (win, 
+               0, 0,   -- left, top (auto-positions)
+               max_width + 10,     -- width
+               font_height + 5,  -- height
+               7,       -- auto-position: top middle
+               0,  -- flags
+               0xE7FFFF) 
+  
+  Display_Line (1, text, font_id, time_colour)
+    
+  WindowShow (win, true)
+
+end -- show_when_quest_available
+
+function show_quest_text ()
+
+  if #quest_info == 0 and 
+    next_quest_time then
+    show_when_quest_available ()
+    return
+  end -- one available now/soon
+                 
+  -- do nothing if no quest
+  if #quest_info == 0 or when_required == nil then
+    return
+  end -- if
+
+  -- recreate the window the correct size
+  WindowCreate (win, 
+               0, 0,   -- left, top (auto-positions)
+               max_width + 10,     -- width
+               (#quest_info + 2) * font_height + 5,  -- height
+               7,       -- auto-position: top middle
+               0,  -- flags
+               0xE7FFFF) 
+
+  -- heading
+  local text = "Current quest."
+  Display_Line (1, text, font_id, heading_colour)
+
+  -- list of mobs
+  for i, v in ipairs (quest_info) do
+    Display_Line (i + 1, v, font_id, text_colour)
+  end -- for
+  
+  -- how long to go
+  local time_to_go = when_required - os.time ()
+  
+  if time_to_go < 0 then
+    return
+  end -- if
+  
+  text = string.format ("Time to go: %s", convert_time (time_to_go))
+  Display_Line (#quest_info + 2, text, font_id, time_colour)
+    
+  WindowShow (win, true)
+    
+end -- show_quest_text
+
+function questor_end (name, line, wildcards)
+
+  local text = wildcards [1]
+  
+   -- work out when quest ends
+  
+  when_required = os.time ()
+  
+  local days = string.match (text, "(%d+) days?")
+  if days then
+    when_required = when_required + tonumber (days) * 60 * 60 * 24
+  end -- some days left
+  
+  local hours = string.match (text, "(%d+) hours?")  
+  if hours then
+    when_required = when_required + tonumber (hours) * 60 * 60
+  end -- some days left
+
+  local minutes = string.match (text, "(%d+) minutes?")  
+  if minutes then
+    when_required = when_required + tonumber (minutes) * 60
+  end -- some days left
+ 
+  check (EnableTrigger ("questor_line", false))
+  check (EnableTrigger ("questor_end", false))
+  show_quest_text ()
+end -- questor_end
+
+function OnPluginSaveState ()
+  SetVariable ("enabled", tostring (GetPluginInfo (GetPluginID (), 17)))
+end -- function OnPluginSaveState
+
+function OnPluginInstall ()
+
+  win = GetPluginID ()
+  font_id = "fn"
+  
+  font_name = "Comic Sans MS"    -- the actual font
+
+  -- make win so I can grab the font info
+  WindowCreate (win, 
+                 0, 0, 1, 1,  -- 1 x 1 pixel
+                 1,   -- position - irrelevant
+                 0,   -- flags
+                 0)   -- background colour
+                 
+  check (WindowFont (win, font_id, font_name, 8))  -- normal
+  font_height = WindowFontInfo (win, font_id, 1)  -- height
+
+ if GetVariable ("enabled") == "false" then
+    ColourNote ("yellow", "", "Warning: Plugin " .. GetPluginName ().. " is currently disabled.")
+    check (EnablePlugin(GetPluginID (), false))
+    return
+  end -- they didn't enable us last time
+  
+end -- OnPluginInstall
+
+function OnPluginDisable ()
+  WindowShow (win, false)
+end -- OnPluginDisable
+
+
+]]>
+</script>
+
+</muclient>
