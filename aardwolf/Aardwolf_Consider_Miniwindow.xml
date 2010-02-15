@@ -1,0 +1,645 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+<!-- Saved on Friday, August 14, 2009, 6:13 AM -->
+<!-- MuClient version 4.43 -->
+
+<muclient>
+<plugin
+   name="Aardwolf_Consider_Miniwindow"
+   author="Blainer"
+   id="584807a32cf46af04a1bece3"
+   language="Lua"
+   purpose="Display clickable consider command output."
+   save_state="y"
+   date_written="2009-08-14 06:12:14"
+   requires="4.43"
+   version="1.0"
+   >
+<description trim="y">
+<![CDATA[
+Put consider info in a miniwindow with commands.
+Mostly copied from: http://www.gammon.com.au/forum/bbshowpost.php?id=8847
+And: http://www.gammon.com.au/forum/?id=9664
+]]>
+</description>
+</plugin>
+
+<!--  Get our standard constants -->
+
+<include name="constants.lua"/>
+<!--  Triggers  -->
+
+<triggers>
+  <trigger
+   enabled="n"
+   group="consider"
+   match="* looks a little worried about the idea."
+   omit_from_output="y"
+   script="adapt_consider"
+   sequence="100"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   group="consider"
+   match="* says 'BEGONE FROM MY SIGHT unworthy!'"
+   omit_from_output="y"
+   script="adapt_consider"
+   sequence="100"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   group="consider"
+   match="* should be a fair fight!"
+   omit_from_output="y"
+   script="adapt_consider"
+   sequence="100"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   group="consider"
+   match="* snickers nervously."
+   omit_from_output="y"
+   script="adapt_consider"
+   sequence="100"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   group="consider"
+   match="* would be easy, but is it even worth the work out?"
+   omit_from_output="y"
+   script="adapt_consider"
+   sequence="100"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   group="consider"
+   match="* would crush you like a bug!"
+   omit_from_output="y"
+   script="adapt_consider"
+   sequence="100"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   group="consider"
+   match="* would dance on your grave!"
+   omit_from_output="y"
+   script="adapt_consider"
+   sequence="100"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   group="consider"
+   match="Best run away from * while you can!"
+   omit_from_output="y"
+   script="adapt_consider"
+   sequence="100"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   group="consider"
+   match="Challenging * would be either very brave or very stupid."
+   omit_from_output="y"
+   script="adapt_consider"
+   sequence="100"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   group="consider"
+   match="No Problem! * is weak compared to you."
+   omit_from_output="y"
+   script="adapt_consider"
+   sequence="100"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   group="consider"
+   match="You would be completely annihilated by *!"
+   omit_from_output="y"
+   script="adapt_consider"
+   sequence="100"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   group="consider"
+   match="You would stomp * into the ground."
+   omit_from_output="y"
+   script="adapt_consider"
+   sequence="100"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   group="consider"
+   match="^(.*?) chuckles at the thought of you fighting (him|her|it)\.$"
+   omit_from_output="y"
+   regexp="y"
+   script="adapt_consider"
+   sequence="100"
+  >
+  </trigger>
+  <trigger
+   enabled="n"
+   group="consider"
+   match="^You see no one here but yourself\!$"
+   keep_evaluating="y"
+   omit_from_output="y"
+   regexp="y"
+   script="adapt_consider"
+   sequence="100"
+  >
+  </trigger>
+    <trigger
+   enabled="n"
+   group="consider"
+   match="^nhm$"
+   omit_from_output="y"
+   keep_evaluating="n"
+   regexp="y"
+   script="Show_Window"
+   send_to="12"
+   sequence="1"
+  >
+  </trigger>
+    <trigger
+   enabled="n"
+   group="auto_consider"
+   match="^You receive .+ experience points\.$"
+   omit_from_output="n"
+   keep_evaluating="y"
+   regexp="y"
+   script="send_consider"
+   send_to="12"
+   sequence="1"
+  >
+  </trigger>
+   <trigger
+   enabled="n"
+   group="auto_consider"
+   match="\[Exits\:.+$"
+   omit_from_output="n"
+   keep_evaluating="y"
+   regexp="y"
+   script="send_consider"
+   send_to="12"
+   sequence="1"
+  >
+  </trigger>
+   <trigger
+   enabled="n"
+   group="auto_consider"
+   match="^A (.+) has fled\!$"
+   omit_from_output="n"
+   keep_evaluating="y"
+   regexp="y"
+   script="send_consider"
+   send_to="12"
+   sequence="1"
+  >
+  </trigger>
+
+</triggers>
+<!-- Aliases -->
+<aliases>
+  <alias
+   script="conw"
+   match="^conw\s(.*)$"
+   keep_evaluating="y"
+   enabled="y"
+   regexp="y"
+   send_to="12"
+   sequence="100"
+  >
+  </alias>
+    <alias
+   script="send_consider"
+   match="^conw$"
+   keep_evaluating="y"
+   enabled="y"
+   regexp="y"
+   send_to="12"
+   sequence="99"
+  >
+  </alias>
+  <alias
+   script="command_line"
+   match="^(\d+)\s?(\w*)$"
+   enabled="y"
+   regexp="y"
+   send_to="12"
+   keep_evaluating="y"
+   sequence="1"
+  >
+  </alias>
+</aliases>
+<!--  Script  -->
+<script>
+<![CDATA[
+-- Options -----------------------------------------------
+local BACKGROUND_COLOUR     = ColourNameToRGB "black"
+local BORDER_COLOUR         = ColourNameToRGB "dimgray"
+local DEFAULT_TEXT_COLOUR   = ColourNameToRGB "white"
+local TEXT_OFFSET           = "4"
+local BORDER_WIDTH          = "1"
+local LINE_SPACING          = "1"
+local FONT_NAME             = "Dina"
+local FONT_SIZE             = 8
+local WIN_STACK             = "aa"  -- Windows are stacked alphabetically, so a win named "aa" will sit on top of a win named "zz".
+                                    -- Adjust this setting to get the window to sit in front or behind other windows.
+local SHOW_WELCOME          = true
+local TITLE                 = "consider all"
+local ECHO_CONSIDER         = false -- show consider in command window
+local SHOW_NO_MOB           = false -- show warning when considering an empty room
+
+require "movewindow"
+
+consider_messages = {
+    ["You would stomp (.+) into the ground%."] =
+      { range = "-19 and below", colour = "gray", },
+    ["(.+) would be easy, but is it even worth the work out%?"] =
+      { range = "-10 to -19", colour = "darkgreen", },
+    ["No Problem%! (.+) is weak compared to you%."] =
+      { range = "-6 to -9", colour = "forestgreen", },
+    ["(.+) looks a little worried about the idea%."] =
+      { range = "-2 to -6", colour = "chartreuse", },
+    ["(.+) should be a fair fight%!"] =
+      { range = "-2 to +2", colour = "springgreen", },
+    ["(.+) snickers nervously%."] =
+      { range = "+2 to +3", colour = "darkgoldenrod", },
+    ["(.+) chuckles at the thought of you fighting .+%."] =
+      { range = "+3 to +8", colour = "gold", },
+    ["Best run away from (.+) while you can%!"] =
+      { range = "+8 to +16", colour = "tomato", },
+    ["Challenging (.+) would be either very brave or very stupid%."] =
+      { range = "+16 to +21", colour = "crimson", },
+    ["(.+) would crush you like a bug%!"] =
+      { range = "+21 to +32", colour = "lightpink", },
+    ["(.+) would dance on your grave%!"] =
+      { range = "+32 to +41", colour = "darkmagenta", },
+    ["(.+) says 'BEGONE FROM MY SIGHT unworthy%!'"] =
+      { range = "+41 to +50", colour = "darkviolet", },
+    ["You would be completely annihilated by (.+)%!"] =
+      { range = "+50 and above", colour = "magenta", },
+
+      } -- end of consider_messages
+
+replaceT =  { -- words to remove from Mobile's names to get the keyword
+            ["a"] = "",
+            ["A"] = "",
+            ["an"] = "",
+            ["An"] = "",
+            ["the"] = "",
+            ["The"] = "",
+            ["of"] = "",
+            ["Of"] = "",
+            ["captured"] = "",
+            ["damned"] = "",
+            ["yummy"] = "",
+            ["looking"] = "",
+            ["wanders"] = "",
+            ["beef"] = "",
+            ["pot"] = "",
+            ["scrumptious"] = "",
+            ["tortured"] = "",
+            ["Hell"] = "",
+            ["largest"] = "",
+            ["older"] = "",
+            ["slithering"] = "",
+            ["tiny"] = "",
+            ["huge"] = ""
+            }
+
+targT = {}
+
+function keyword_change (name, line, wildcards)
+
+    if keyword_position == "end" then
+        SetVariable ("keyword_position", "beginning")
+    else
+        SetVariable ("keyword_position", "end")
+    end
+    keyword_position = GetVariable ("keyword_position")
+
+    ColourTell ("white", "blue", "Keywords will now be taken from the " .. keyword_position .. " of Mobile names. ")
+    ColourNote ("", "black", " ")
+
+end -- keyword_position
+
+function conw (name, line, wildcards)
+
+    --show help <conw ?>
+    if wildcards[1] == "?" then
+            a = {
+                "conw - update window with consider all command.",
+                "<num> <word> - Execute <word> with keyword from line <num> on consider window.",
+                "<num> - Execute with default word.",
+                "conw <word> - set default command.",
+                "conw chng - swop keyword from beginning of name to end of name or vice-versa.",
+                "conw auto - toggle auto update consider window on room entry and after combat.",
+                "conw ? - show this help."
+                }
+        for i,v in ipairs (a) do
+            sSpa = string.rep (" ", 20 - v:sub(1,v:find("-") - 1):len() )
+            ColourTell ("yellow", GetInfo(271), v:sub(1,v:find("-") - 1) .. sSpa )
+            ColourNote ("white", GetInfo(271), v:sub(v:find("-"), v:len() ))
+        end
+        return
+    end
+
+    if wildcards[1] == "auto" then
+        if tonumber (GetVariable ("auto_conw")) == 1 then
+            SetVariable ("auto_conw", 0)
+            EnableTriggerGroup ("auto_consider", 0)
+            ColourTell ("white", "blue", "Auto consider off.")
+            ColourNote ("", "black", " ")
+        else
+            SetVariable ("auto_conw", 1)
+            EnableTriggerGroup ("auto_consider", 1)
+            ColourTell ("white", "blue", "Auto consider on.")
+            ColourNote ("", "black", " ")
+        end
+        return
+    end
+
+    if wildcards[1] == "chng" then
+        keyword_change ()
+        return
+    end
+
+    if wildcards[1] and wildcards[1]:match ("^%w+$") then
+        SetVariable ("default_command", wildcards[1])
+        default_command = GetVariable ("default_command")
+        ColourTell ("white", "blue", "Default command: " .. wildcards[1])
+        ColourNote ("", "black", " ")
+    end
+
+
+end -- send_consider
+
+function send_consider ()
+
+    if GetVariable ("doing_consider") == "true" then
+        return
+    else
+        SetVariable ("doing_consider", "true")
+        EnableTriggerGroup ("consider", true)
+        SendNoEcho ("consider all")
+        Send ("echo nhm")
+        targT = {}
+    end
+
+end -- send_consider
+
+function execute_command (id, s)
+
+    if not s then
+        return
+    end
+
+    s = s:match ("^(%w+)%:%d+$")
+    Execute (default_command .. " " .. s)
+    ColourTell ("white", "blue", default_command .. " " .. s)
+    ColourNote ("", "black", " ")
+
+end -- execute_command
+
+function command_line (name, line, wildcards)
+
+    iNum = tonumber (wildcards[1])
+    if iNum > #targT then
+        return
+    end
+
+    if wildcards[2] == "" then
+        sKey = default_command
+    else
+        sKey = tostring (wildcards[2])
+    end
+
+    if targT[iNum] then
+        Execute (sKey .. " " .. targT[iNum].keyword)
+        ColourTell ("white", "blue", sKey .. " " .. targT[iNum].keyword .. " ")
+        ColourNote ("", "black", " ")
+    else
+        ColourTell ("white", "blue", "no target in targT ")
+        ColourNote ("", "black", " ")
+    end
+
+end -- command_line
+
+function adapt_consider (name, line, wildcards)
+
+    mob = nil
+    for k,  v in pairs (consider_messages) do
+        mob = string.match (line, k)
+        if keyword_position == "end" then
+            sPat = "[%w\-]+$"
+        else
+            sPat = "^[%w\-]+"
+        end
+        if mob then
+            t = {
+                keyword = mob:gsub ("%w+", function (str) return replaceT [str] end ):gsub("^%s+", ""):gsub("%s+$", ""):match(sPat),
+                name    = mob,
+                line    = line,
+                colour  = v.colour,
+                range   = "(" .. v.range .. ")",
+                message = line
+                }
+            if ECHO_CONSIDER then
+                ColourNote (v.colour, "", line .. " (" .. v.range .. ")" )
+            end
+            table.insert (targT, t)
+            break
+        end -- if
+
+    end -- for
+
+    if not mob and SHOW_NO_MOB then
+        ColourTell ("white", "blue", "Could not find anything: " .. line)
+        ColourNote ("", "black", " ")
+    end -- not  found in table
+
+end -- adapt_consider
+
+function Draw_Title ()
+
+    --draw the title and add drag hotspot
+    top     = BORDER_WIDTH + LINE_SPACING
+    bottom  = top + font_height
+    left    = BORDER_WIDTH + TEXT_OFFSET
+    right   = WindowInfo (win, 3)
+    movewindow.add_drag_handler (win, 0, top, right, bottom, 1)
+    WindowText (win, font_id, TITLE .. " (" .. default_command .. ")", left, top, right, bottom, BORDER_COLOUR)
+
+    -- draw drag bar rectangle
+    WindowRectOp (win, 1, 0, 0, WindowInfo (win, 3) , WindowInfo (win, 4), BORDER_COLOUR)
+
+    banner_height = bottom + LINE_SPACING + BORDER_WIDTH
+
+end -- MakeTitle
+
+function Show_Window ()
+
+    -- get width and height and draw the window
+    if #targT > 0 then
+        for i,v in ipairs (targT) do
+            window_width = math.max (WindowTextWidth (win, font_id, tostring (i) .. ". " .. v.name .. " " .. v.range) + TEXT_OFFSET * 2 + BORDER_WIDTH * 2, banner_width, window_width)
+        end
+    else
+        window_width = banner_width
+    end
+    window_height = banner_height * 1.2 + #targT * (font_height + LINE_SPACING)
+
+    WindowCreate (win,
+         windowinfo.window_left,
+         windowinfo.window_top,
+         window_width,     -- width
+         window_height,  -- height
+         windowinfo.window_mode,
+         windowinfo.window_flags,
+         BACKGROUND_COLOUR)
+
+    -- draw each line
+    top     = banner_height + LINE_SPACING
+    left    = TEXT_OFFSET + BORDER_WIDTH
+    bottom  = top + font_height
+
+    for i,v in ipairs (targT) do
+        sLine = tostring (i) .. ". " .. v.name .. " " .. v.range
+        right   = WindowTextWidth (win, font_id, sLine) + left
+        WindowText (win, font_id, sLine, left, top, right, bottom, ColourNameToRGB (v.colour))
+        sBalloon = v.line .. " " .. v.range .. "\n\n" .. "Click to Execute: '" .. default_command .. " " ..  v.keyword .. "'"
+        WindowAddHotspot (win, v.keyword .. ":" .. tostring (i), left, top, right, bottom,
+            "", -- MouseOver
+            "", -- CancelMouseOver
+            "", -- MouseDown
+            "", -- CancelMouseDown
+            "execute_command", -- MouseUp
+            sBalloon,
+            1, -- Cursor
+            0) --  Flag
+        top     = bottom + LINE_SPACING
+        bottom  = top + font_height
+    end
+
+    --draw the title
+    Draw_Title()
+
+    WindowShow (win, true)
+    SetVariable ("doing_consider", "false")
+    EnableTriggerGroup ("consider", false)
+
+end -- Show_Consider
+
+function Show_Banner ()
+
+    window_width = title_width + BORDER_WIDTH * 2 + TEXT_OFFSET * 2
+    window_height = font_height + LINE_SPACING * 2 + descent
+
+    WindowCreate (win,
+         windowinfo.window_left,
+         windowinfo.window_top,
+         window_width,     -- width
+         window_height,  -- height
+         windowinfo.window_mode,
+         windowinfo.window_flags,
+         BACKGROUND_COLOUR)
+
+    Draw_Title ()
+
+    WindowShow (win, true)
+
+end -- ShowBanner
+
+function OnPluginInstall ()
+
+    if SHOW_WELCOME then
+        Note("Consider_Window.xml installed")
+    end
+
+    win = WIN_STACK .. GetPluginID ()
+
+    local fonts = utils.getfontfamilies ()
+    if fonts[FONT_NAME] then
+        font_size = FONT_SIZE
+        font_name = FONT_NAME
+    elseif fonts.Dina then
+        font_size = 8
+        font_name = "Dina"    -- the actual font
+    else
+        font_size = 10
+        font_name = "Courier"
+    end -- if
+
+    font_id = "consider_font"
+
+    windowinfo = movewindow.install (win, 6)
+
+    check (WindowCreate (win,
+        windowinfo.window_left,
+        windowinfo.window_top,
+        1, 1,
+        windowinfo.window_mode,
+        windowinfo.window_flags,
+        BACKGROUND_COLOUR) )
+
+    WindowFont (win, font_id, font_name, font_size, false, false, false, false, 0, 0)  -- normal
+    font_height = WindowFontInfo (win, font_id, 1)  -- height
+    ascent = WindowFontInfo (win, font_id, 2)
+    descent = WindowFontInfo (win, font_id, 3)
+
+    default_command = GetVariable ("default_command") or "kill"
+    keyword_position = GetVariable ("keyword_position") or "end"
+
+    SetVariable ("doing_consider", "false")
+
+    auto_conw = GetVariable ("auto_conw") or 1
+
+    EnableTriggerGroup ("auto_consider", auto_conw)
+
+    if GetVariable ("enabled") == "false" then
+        ColourNote ("yellow", "", "Warning: Plugin " .. GetPluginName ().. " is currently disabled.")
+        check (EnablePlugin(GetPluginID (), false))
+        return
+    end -- they didn't enable us last time
+
+    OnPluginEnable ()
+
+end -- OnPluginInstall
+
+function OnPluginEnable ()
+
+    title_width = WindowTextWidth (win, font_id, TITLE .. " (" .. default_command .. ")")
+    banner_width = title_width + BORDER_WIDTH * 2 + TEXT_OFFSET * 2
+    Show_Banner ()
+
+end -- OnPluginEnable
+
+function OnPluginDisable ()
+
+  WindowShow (win, false)
+
+end -- OnPluginDisable
+
+function OnPluginSaveState ()
+
+  SetVariable ("enabled", tostring (GetPluginInfo (GetPluginID (), 17)))
+  SetVariable ("doing_consider", "false")
+  movewindow.save_state (win)
+
+end -- OnPluginSaveState
+
+]]>
+</script>
+</muclient>
