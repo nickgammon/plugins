@@ -1,0 +1,260 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE muclient>
+
+<muclient>
+<plugin
+   name="World_Activity_Bar"
+   author="Nick Gammon"
+   id="e597e8ceafc1f17c0ab8db01"
+   language="Lua"
+   purpose="Shows an activity bar"
+   date_written="2009-02-18 09:00"
+   requires="4.37"
+   version="1.0"
+   >
+   
+<description trim="y">
+<![CDATA[
+Install this plugin to show an activity bar which shows
+more than 10 worlds.
+
+Click on a number to activate that world.
+
+Hover over a number to show the world name.
+]]>
+</description>
+
+</plugin>
+
+<!--  Timers  -->
+
+<timers>
+  <timer name="draw_bar" 
+         script="draw_bar" 
+         enabled="y" 
+         second="1.00" 
+         active_closed="y" >
+
+  </timer>
+</timers>
+
+
+<!--  Script  -->
+
+
+<script>
+<![CDATA[
+
+win = GetPluginID ()  -- get a unique name
+
+-- configuration
+
+BACKGROUND_COLOUR = ColourNameToRGB "bisque"
+BOX_COLOUR = ColourNameToRGB "royalblue"
+BUTTON_FILL = ColourNameToRGB "white"
+BUTTON_FILL_CLICK = ColourNameToRGB "darkgray"
+BUTTON_FILL_MOUSEOVER = ColourNameToRGB "lemonchiffon"
+BUTTON_EDGE = ColourNameToRGB "silver"
+ACTIVE_COLOUR = ColourNameToRGB "red"
+ACTIVE_BLINK_COLOUR = ColourNameToRGB "mediumslateblue"
+INACTIVE_COLOUR = ColourNameToRGB "black"
+NOT_CONNECTED_COLOUR = ColourNameToRGB "rosybrown"
+
+FONT_NAME = "Fixedsys"
+FONT_SIZE = 9
+
+-- where to put the window
+WINDOW_POSITION = 6  -- top right
+OFFSET = 5  -- gap inside box
+EDGE_WIDTH = 2 -- size of border stroke
+
+--[[
+Useful positions:
+
+4 = top left
+5 = center left-right at top
+6 = top right
+7 = on right, center top-bottom
+8 = on right, at bottom
+9 = center left-right at bottom
+--]]
+
+local mouse_down_id = nil
+local mouse_over_id = nil
+
+function mouseover (flags, hotspot_id)
+  mouse_over_id = hotspot_id
+  draw_bar ()
+end -- mouseover
+
+function cancelmouseover (flags, hotspot_id)
+  mouse_over_id = nil
+  draw_bar ()
+end -- cancelmouseover
+
+function mousedown (flags, hotspot_id)
+  mouse_down_id = hotspot_id
+  draw_bar ()
+end -- mousedown
+
+function cancelmousedown (flags, hotspot_id)
+  mouse_down_id = nil
+  draw_bar ()
+end -- cancelmousedown
+
+function mouseup (flags, hotspot_id)
+  mouse_down_id = nil
+  draw_bar ()
+  if GetWorldID () ~= hotspot_id then
+    local w = GetWorldById (hotspot_id)
+    if w then
+      w:Activate ()
+    end -- if world exists 
+  end -- if
+  
+end -- mouseup
+
+local old_world_list = {}
+
+-- draw the bar here
+function draw_bar (name)
+
+ local max_width = 0
+ 
+ world_list = GetWorldIdList ()
+
+ --[[
+ 
+   Hotspots do not react well if you remove them during a mouse-click.
+   Thus, we will only recreate the window, and recreate the hotspots
+   if we absolutely have to. That is, if the number of worlds has changed,
+   or the world IDs in the list has changed.
+ 
+ --]]
+ 
+ local list_changed = #old_world_list ~= #world_list
+ 
+ -- number of worlds are the same, but are the IDs the same?
+ if not list_changed then
+   for i = 1, #old_world_list do
+     if #world_list [i] ~= #old_world_list [i] then
+       list_changed = true
+       break
+     end -- if
+   end -- if
+ end -- if
+ 
+ -- work out widest number 
+ for i = 1, #world_list do
+   max_width = math.max (max_width, WindowTextWidth (win, "f", string.format ("%i", i)))
+ end --  for each world
+   
+ -- height depends on the number of worlds
+ local gauge_height = #world_list * (font_height + OFFSET)
+ 
+ -- make  window if we need to
+ if list_changed then
+   -- make the miniwindow
+   WindowCreate (win, 
+               0, 0,   -- left, top (auto-positions)
+               max_width + (OFFSET * 2),     -- width
+               gauge_height + OFFSET,  -- height
+               WINDOW_POSITION,       -- auto-position: bottom left
+               0,  -- flags
+               BACKGROUND_COLOUR) 
+  end -- if world list has changed
+                
+  -- draw the numbers
+ 
+  -- draw each world button
+  for count, id in ipairs (world_list) do
+   local text = string.format ("%i", count)
+   local number_width = WindowTextWidth (win, "f", text)
+   local left = (max_width - number_width) / 2 + OFFSET -- center 
+   local top = (count - 1) * (font_height + OFFSET) + OFFSET
+   local colour = INACTIVE_COLOUR
+   local w = GetWorldById (id)
+   local world_name = w:GetInfo (2)
+   local new_lines = w:GetInfo (202)
+   local connected = w:GetInfo (227) == 8
+  
+   -- fill with BUTTON_FILL, unless we have moused-over or moused-down in it
+   local fill_colour = BUTTON_FILL
+   
+   if id == mouse_down_id then
+     fill_colour = BUTTON_FILL_CLICK
+   elseif id == mouse_over_id then
+     fill_colour = BUTTON_FILL_MOUSEOVER
+   end -- if
+   
+   -- draw the button (round rectangle)
+   WindowCircleOp (win, 3, EDGE_WIDTH, top, - EDGE_WIDTH, top + font_height, 
+                    BUTTON_EDGE, 6, 1, fill_colour, 0, 2, 2) 
+   
+   -- text colour depends on world's status
+   if new_lines > 0 then
+     if os.time () % 2 == 1 then
+       colour = ACTIVE_COLOUR
+     else
+       colour = ACTIVE_BLINK_COLOUR
+     end -- if   
+   elseif not connected then
+     colour = NOT_CONNECTED_COLOUR  
+   end -- if 
+                    
+   -- draw the number
+   WindowText (win, "f", text, left, top, 0, 0, colour)
+   
+   -- make a hotspot we can click on
+   if list_changed then
+      WindowAddHotspot(win, id,  
+                   EDGE_WIDTH + 1, top, - (EDGE_WIDTH + 1), top + font_height,   -- rectangle
+                   "mouseover", 
+                   "cancelmouseover", 
+                   "mousedown",
+                   "cancelmousedown", 
+                   "mouseup", 
+                   world_name,  -- tooltip text
+                   1, 0)  -- hand cursor
+   end -- if world list has changed
+                      
+  end --  for each world
+  
+
+  -- draw the border of the whole box
+  WindowCircleOp (win, 2, 0, 0, 0, 0, BOX_COLOUR, 6, EDGE_WIDTH, 0x000000, 1) 
+    
+  -- ensure window visible
+  WindowShow (win, true)
+  
+  -- save list for next time so we know if it changes
+  old_world_list = world_list
+  
+end -- draw_bar
+
+
+-- hide window on removal
+function OnPluginClose ()
+  WindowShow (win,  false)  -- hide it
+end -- OnPluginClose
+
+-- hide window on disable
+function OnPluginDisable ()
+  WindowShow (win,  false)  -- hide it
+end -- OnPluginDisable
+
+-- startup stuff
+
+-- make the window
+WindowCreate (win, 0, 0, 0, 0, WINDOW_POSITION, 0, 0x000000)  -- create window
+               
+-- grab a font
+WindowFont (win, "f", FONT_NAME, FONT_SIZE) -- define font
+
+-- work out how high it is
+font_height = WindowFontInfo (win, "f", 1)   -- height of the font  
+
+]]>
+</script>
+
+</muclient>
