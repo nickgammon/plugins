@@ -1,0 +1,395 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+<!-- Saved on Saturday, June 30, 2007, 10:48  -->
+<!-- MuClient version 4.13 -->
+
+<muclient>
+<plugin
+   name="Aardwolf_Help"
+   author="Nick Gammon"
+   id="6763bfdfad793c16a0029448"
+   language="Lua"
+   purpose="Shows help messages in another window"
+   date_written="2008-06-26"
+   requires="4.29"
+   version="1.0"
+   save_state="y"
+
+   >
+<description trim="y">
+Redirects a help message to a notepad window.
+
+To clear the cache help, type: remove help cache
+</description>
+
+</plugin>
+
+<!--  Triggers  -->
+
+<triggers>
+
+  <trigger
+   enabled="y"
+   match="{help}"
+   script="help_redirect"
+   omit_from_output="y"
+   name="help_start"
+   sequence="100"
+  >
+  </trigger>
+  
+  <trigger
+   enabled="y"
+   match="{/help}"
+   script="help_redirect"
+   omit_from_output="y"
+   name="help_end"
+   sequence="200"
+  >
+  </trigger>
+  
+ <trigger
+   enabled="y"
+   match="There is no help with that keyword."
+   custom_colour="2"
+   script="no_such_help"
+   name="no_such_help"
+   sequence="5"
+  >
+  </trigger>  
+  
+  <trigger
+   enabled="n"
+   match="*"
+   script="help_redirect"
+   name="multi_line_help"
+   omit_from_output="y"
+   sequence="10"
+  >
+  </trigger>
+
+ </triggers>
+
+<aliases>
+  <alias
+   name="help_alias"
+   script="get_help"
+   match="^help( .*)?$"
+   enabled="n"
+   sequence="100"
+   regexp="y"
+   ignore_case="y"
+  >
+  </alias>
+  
+ <alias
+   name="remove_alias"
+   script="remove_cache"
+   match="remove help cache"
+   enabled="y"
+   sequence="100"
+   ignore_case="y"
+  >
+  </alias>
+    
+</aliases>
+
+
+<!--  Script  -->
+
+
+<script>
+<![CDATA[
+
+HELP_EXPIRY_TIME = 60 * 60 * 24 * 2 -- time to expire help in seconds (2 days)
+
+TOPIC_REGEXP = "[-%a%d]+"
+
+require "commas"   -- for trim function
+require "serialize"  -- needed to serialize table to string
+require "checkplugin"
+
+-- notepad position
+Left, Top, Width, Height = 200, 200, 650, 600
+MenuSize = 50
+
+current_help_topic = nil
+helps = {}
+help_lookup = {}
+help_time = {}
+
+Width = GetInfo (215) * 80 + 60
+
+function OnPluginBroadcast (msg, id, name, text)
+        
+  -- playing status
+  if id == "f5b05e8826711cdb0d141939" then
+    playing = text == "y"
+  end -- if  
+  
+end
+
+function remove_cache ()
+  helps = {}
+  help_lookup = {}
+  help_time = {}
+  ColourNote ("white", "blue", "Help topics removed from cache.")
+end -- remove_cache
+
+function show_help (topic)
+
+    if not topic then
+      ColourNote ("teal", "", table.concat (help_fallback, "\n"))
+      return 
+    end
+    
+    CloseNotepad ("Help", false)
+    ReplaceNotepad ("Help", helps [topic])
+    NotepadColour ("Help", "black", "#FFFFE7")
+    NotepadSaveMethod ("Help", 2)  -- don't try to save
+    
+    -- count lines
+    local _, lines = string.gsub (helps [topic], "\n", "")
+       
+    if lines < 40 then
+      MoveNotepadWindow ("Help", Left, Top, Width, GetInfo (214) * lines + MenuSize)  
+    else
+      MoveNotepadWindow("Help", Left, Top, Width, Height)
+    end -- if
+    
+    -- need a slight delay or the main window activates
+    DoAfterSpecial (0.1, "ActivateNotepad 'Help'", sendto.script)
+    
+    NotepadReadOnly ("Help")
+
+end -- show_help
+
+function PrefixCheck (t, s)
+
+   for k, v in pairs (t) do
+      if string.match (k, "^" .. s) then -- prefix match, so "swo" matches "sword"
+        return k, v
+      end -- if name matches
+    end -- checking table
+
+   return nil  -- not found
+end -- PrefixCheck
+
+function no_such_help (name, line, wildcards)
+  requested_topic = nil  -- can't get help on that
+  current_help_topic = nil
+  requested_topic = nil
+  EnableTrigger ("multi_line_help", false)  -- no more lines to go
+end -- no_such_help
+
+-- here if they type HELP <something>
+function get_help (name, line, wildcards)
+  -- muck around finding what they want help on
+  
+  -- eg. help 'hand to hand'
+  local topic = ""
+  
+  if wildcards [1] then
+    topic = string.match (wildcards [1], "'(.-)'")
+    
+    -- eg. help hand to hand
+    if not topic then
+      topic = trim (wildcards [1])
+    end -- no quotes
+  end -- some wildcard
+  
+  -- eg. help
+  if topic == "" then
+    topic = "help"
+  end -- help on its own
+  
+  -- lower-case for comparisons
+  topic = topic:lower ()
+  
+  -- look for cached help
+  
+  -- direct lookup?  (exact match)
+  
+  if help_lookup [topic] and help_time [help_lookup [topic]] and
+    (help_time [help_lookup [topic]] + HELP_EXPIRY_TIME) > os.time () then
+    show_help (help_lookup [topic])
+    return
+  end  -- found direct match
+  
+  -- scan for partial match
+  
+  local k, v = PrefixCheck (help_lookup, topic)
+  
+  if v and help_time [v] and
+    (help_time [v] + HELP_EXPIRY_TIME) > os.time () then
+    show_help (v)
+    return
+  end  -- partial match
+  
+  -- no match, or expired? request it
+  
+  if not playing then
+    ColourNote ("red", "", "Not currently able to request help from Aardwolf.")
+    return
+  else
+    SendNoEcho ("help " .. topic)
+  end -- if
+  
+  -- in case the help doesn't match what we asked for
+  requested_topic = topic
+  
+end -- get_help
+
+-- here to add another help cross-reference
+function insert_help_topic (s)
+   help_lookup [s:lower ()] = current_help_topic
+   return ""
+end -- insert_help_topic
+
+-- here when help file has fully arrived, cache it in memory
+function cache_help ()
+
+  if not current_help_topic then
+    requested_topic = nil
+    ColourNote ("orange", "", table.concat (help_text, "\n"))
+    return
+  end -- no help topic arrived
+  
+  -- one big block of text
+  helps [current_help_topic] = table.concat (help_text, "\r\n")
+  
+  local topic = current_help_topic
+  -- insert quoted words
+  topic = string.gsub (topic, "'(.-)'", insert_help_topic)
+  -- insert single words
+  topic = string.gsub (topic, TOPIC_REGEXP, insert_help_topic)
+  
+  help_time [current_help_topic] = os.time ()
+  
+  -- if they typed "help mace" and got "help weapon" allow for that
+  if requested_topic then
+    
+    -- is requested topic there now?
+    local k, v = PrefixCheck (help_lookup, requested_topic)
+    
+    -- this is for cases like "help whip" which actually returns "help weapon"
+    if not v then
+      help_lookup [requested_topic] = current_help_topic
+    end -- not there
+  
+  end -- wanted another word
+    
+  -- don't do it again
+  requested_topic = nil
+end -- cache_help
+
+function capitalize (s)
+  return string.sub (s, 1, 1):upper () .. string.sub (s, 2):lower ()
+end -- capitalize 
+
+-- help redirector
+function help_redirect (name, line, wildcards, styles)
+  EnableTrigger ("multi_line_help", true)  -- capture subsequent lines
+
+  -- should only get this on an error
+  if name == "help_end" then
+    current_help_topic = nil
+    requested_topic = nil
+    EnableTrigger ("multi_line_help", false)  -- no more lines to go
+    return      
+  end -- if help_end
+  
+  if name == "help_start" then
+    current_help_topic = nil
+    help_text = {}
+    help_fallback = {}
+  elseif line == "{/help}" then
+    EnableTrigger ("multi_line_help", false)  -- no more lines to go
+    cache_help ()
+    show_help (current_help_topic)
+  else
+    -- exclude tag lines
+    if not string.match (line, "^%{/?%a+%}$") then
+      line = string.gsub (line, "^{helpkeywords}", "")
+      local keywords = string.match (line, "^Help Keywords %: (.+)%.$")
+      if not current_help_topic and keywords then
+        current_help_topic = string.gsub (keywords, TOPIC_REGEXP, capitalize)
+      end  -- have keywords line
+      
+      if current_help_topic then
+        table.insert (help_text, (string.gsub (line, "\r", "")))
+      else
+        table.insert (help_fallback, (string.gsub (line, "\r", "")))      
+      end -- have topic 
+    end -- not a tag
+  end -- if
+
+end -- function help_redirect 
+
+
+function OnPluginInstall ()
+  assert (loadstring (GetVariable ("helps") or "")) ()
+  assert (loadstring (GetVariable ("help_lookup") or "")) ()
+  assert (loadstring (GetVariable ("help_time") or "")) ()
+
+  if GetVariable ("enabled") == "false" then
+    ColourNote ("yellow", "", "Warning: Plugin " .. GetPluginName ().. " is currently disabled.")
+    check (EnablePlugin(GetPluginID (), false))
+    return
+  end -- they didn't enable us last time
+  
+  OnPluginEnable ()  -- do initialization stuff
+  
+end -- OnPluginInstall
+
+-- pull in telnet option handling
+dofile (GetPluginInfo (GetPluginID (), 20) .. "telnet_options.lua")
+  
+function OnPluginConnect ()
+  TelnetOptionOn (TELOPT_HELPS)
+end -- function OnPluginConnect
+
+function OnPluginClose ()
+  -- if enabled
+  if GetPluginInfo (GetPluginID (), 17) then
+    TelnetOptionOff (TELOPT_HELPS)
+  end -- if enabled
+end -- OnPluginClose
+
+function OnPluginEnable ()
+  
+  -- if we are connected when the plugin loads, it must have been reloaded whilst playing
+  if IsConnected () then
+    OnPluginConnect ()
+  end -- if already connected
+  
+  -- see if we are playing at install time
+  playing = GetPluginVariable ("f5b05e8826711cdb0d141939", "playing") == "y"
+
+end -- OnPluginEnable
+
+function OnPluginDisable ()
+  TelnetOptionOff (TELOPT_HELPS)
+end -- OnPluginDisable
+
+-- save_simple is for simple tables that do not have cycles (self-reference)
+-- or refer to other tables
+
+function OnPluginSaveState ()
+  SetVariable ("helps", 
+               "helps = " .. serialize.save_simple (helps))
+               
+  SetVariable ("help_lookup", 
+               "help_lookup = " .. serialize.save_simple (help_lookup))               
+               
+  SetVariable ("help_time", 
+               "help_time = " .. serialize.save_simple (help_time))               
+               
+  SetVariable ("enabled", tostring (GetPluginInfo (GetPluginID (), 17)))
+
+end -- function OnPluginSaveState
+
+
+]]>
+</script>
+</muclient>
