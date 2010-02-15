@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<!-- MuClient version 4.37 -->
+
+<muclient>
+<plugin
+   name="Combat_Text"
+   author="Nick Gammon"
+   id="4de91eaa2624f202c4bb6837"
+   language="Lua"
+   purpose="Shows messages in the middle of the output window"
+   date_written="2009-02-08 14:00"
+   requires="4.37"
+   version="1.0"
+   >
+
+</plugin>
+
+<!--  Aliases  -->
+
+
+<aliases>
+  <alias
+   script="combat_message"
+   match="combat_message *"
+   enabled="y"
+   sequence="100"
+  >
+  </alias>
+</aliases>
+
+<!--  Timers  -->
+
+<timers>
+  <timer script="remove_message" 
+         second="5.00" 
+         active_closed="y" 
+         name="remove_message"
+         >
+  </timer>
+</timers>
+
+
+<!--  Script  -->
+
+
+<script>
+<![CDATA[
+
+-- configuration
+
+-- font
+FONT_NAME = "Arial Black"
+FONT_SIZE = 30
+TEXT_COLOUR = ColourNameToRGB ("yellow")
+BACKGROUND_COLOUR = ColourNameToRGB ("darkred")
+
+
+-- where to put the window
+WINDOW_POSITION = 12  -- centered
+OFFSET = 5  -- gap inside box
+
+-- what sound to play
+SOUND_FILE = "/Windows/Media/Windows XP Balloon.wav"
+
+-- alias goes here
+function combat_message (name, line, wildcards)
+
+  message = wildcards [1]
+
+  width   = WindowTextWidth (win, "f", message) 
+
+  -- make the window
+  WindowCreate (win, 0, 0, 
+                width + (OFFSET * 2), 
+                font_height + (OFFSET * 2), 
+                WINDOW_POSITION, 0, 
+                BACKGROUND_COLOUR) -- create window
+
+  WindowText (win, "f", message, OFFSET, OFFSET, 0, 0, TEXT_COLOUR)
+                    
+  WindowRectOp (win, 1, 0, 0, 0, 0, TEXT_COLOUR)
+  
+  -- show window
+  WindowShow (win,  true)  -- show it 
+  
+  -- play a warning sound
+  Sound (SOUND_FILE)
+  
+  -- enable and reset the timer which removes the message
+  EnableTimer ("remove_message")
+  ResetTimer ("remove_message")
+  
+end -- end combat_message
+
+-- here to remove the message
+function remove_message ()
+  WindowShow (win,  false)
+end -- remove_message
+
+-- startup stuff
+
+win = GetPluginID ()  -- get a unique name
+
+-- make the window
+WindowCreate (win, 0, 0, 0, 0, WINDOW_POSITION, 0, 0x000000)  -- create window
+               
+-- grab a font
+WindowFont (win, "f", FONT_NAME, FONT_SIZE) -- define font
+
+-- work out how high it is
+font_height = WindowFontInfo (win, "f", 1)   -- height of the font  
+
+]]>
+</script>
+
+
+</muclient>
