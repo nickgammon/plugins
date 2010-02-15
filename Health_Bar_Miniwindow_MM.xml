@@ -1,0 +1,244 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE muclient>
+
+<muclient>
+<plugin
+   name="Health_Bar_Miniwindow_MM"
+   author="Nick Gammon"
+   id="78dcd04fc1096e8988f03892"
+   language="Lua"
+   purpose="Shows stats in a mini window"
+   date_written="2010-02-12"
+   requires="4.40"
+   version="1.0"
+   save_state="y"
+   >
+<description trim="y">
+<![CDATA[
+Install this plugin to show an info bar with HP, Endurance, 
+and Guile points shown as a bar.
+
+The window can be dragged to a new location with the mouse.
+]]>
+</description>
+
+</plugin>
+
+<!--  Triggers  -->
+
+<triggers>
+  <trigger
+   enabled="y"
+   match="^(\d+)h, (\d+)e, (\d+)g "
+   regexp="y"
+   script="do_prompt"
+   sequence="100"
+  >
+  </trigger>
+  
+  <trigger
+   enabled="y"
+   lines_to_match="2"
+   match="^Health\:\s+(\d+)\/(\d+)\s+Endurance\:\s+(\d+)\/(\d+)\nGuile:\s+(\d+)/(\d+)\Z"
+   multi_line="y"
+   regexp="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>
+  
+hp = %1
+max_hp = %2
+endurance = %3
+max_endurance = %4
+guile = %5
+max_guile = %6
+
+-- draw gauge
+do_prompt ("", "", { hp, endurance, guile } )
+
+</send>
+  </trigger>
+ 
+</triggers>
+
+<!--  Script  -->
+
+<script>
+<![CDATA[
+
+GAUGE_HEIGHT = 15
+
+WINDOW_WIDTH = 300
+WINDOW_HEIGHT = 65
+NUMBER_OF_TICKS = 5
+
+BACKGROUND_COLOUR = ColourNameToRGB "rosybrown"
+FONT_COLOUR       = ColourNameToRGB "darkred"
+BORDER_COLOUR     = ColourNameToRGB "#553333"
+
+function DoGauge (sPrompt, current, max, Colour)
+
+  if max <= 0 then 
+    return 
+  end -- no divide by zero
+  
+  -- fraction in range 0 to 1
+  local Fraction = math.min (math.max (current / max, 0), 1) 
+   
+  local width = WindowTextWidth (win, font_id, sPrompt)
+  
+  WindowText (win, font_id, sPrompt, gauge_left - width, vertical, 0, 0, FONT_COLOUR)
+
+  WindowRectOp (win, 2, gauge_left, vertical, WINDOW_WIDTH - 5, vertical + GAUGE_HEIGHT, 
+                          BACKGROUND_COLOUR)  -- fill entire box
+  
+  local gauge_width = (WINDOW_WIDTH - gauge_left - 5) * Fraction
+  
+   -- box size must be > 0 or WindowGradient fills the whole thing 
+  if math.floor (gauge_width) > 0 then
+    
+    -- top half
+    WindowGradient (win, gauge_left, vertical, gauge_left + gauge_width, vertical + GAUGE_HEIGHT / 2, 
+                    0x000000,
+                    Colour, 2) 
+    
+    -- bottom half
+    WindowGradient (win, gauge_left, vertical + GAUGE_HEIGHT / 2, 
+                    gauge_left + gauge_width, vertical +  GAUGE_HEIGHT,   
+                    Colour,
+                    0x000000,
+                    2) 
+
+  end -- non-zero
+  
+  -- show ticks
+  local ticks_at = (WINDOW_WIDTH - gauge_left - 5) / (NUMBER_OF_TICKS + 1)
+  
+  -- ticks
+  for i = 1, NUMBER_OF_TICKS do
+    WindowLine (win, gauge_left + (i * ticks_at), vertical, 
+                gauge_left + (i * ticks_at), vertical + GAUGE_HEIGHT, ColourNameToRGB ("silver"), 0, 1)
+  end -- for
+
+  -- draw a box around it
+  WindowRectOp (win, 1, gauge_left, vertical, WINDOW_WIDTH - 5, vertical + GAUGE_HEIGHT, 
+          ColourNameToRGB ("lightgrey"))  -- frame entire box
+  
+  -- mouse-over information: add hotspot if not there
+  if not WindowHotspotInfo(win, sPrompt, 1) then
+    WindowAddHotspot (win, sPrompt, gauge_left, vertical, WINDOW_WIDTH - 5, vertical + font_height, 
+                  "", "", "", "", "", "", 0, 0)
+  end -- if
+  
+  -- store numeric values in case they mouse over it
+  WindowHotspotTooltip(win, sPrompt, string.format ("%s\t%i / %i (%i%%)", 
+                        sPrompt, current, max, Fraction * 100) )
+                                  
+  vertical = vertical + font_height + 3
+end -- function
+
+function do_prompt (name, line, wildcards)
+
+  hp        = tonumber (wildcards [1])
+  endurance = tonumber (wildcards [2])
+  guile     = tonumber (wildcards [3])
+    
+  -- don't know maxima yet? can't proceed
+  if max_hp <= 0 or 
+     max_endurance <= 0 or 
+     max_guile <= 0 then
+    return
+  end
+
+  -- fill entire box to clear it
+  WindowRectOp (win, 2, 0, 0, 0, 0, BACKGROUND_COLOUR)
+  
+  -- Edge around box rectangle
+  WindowCircleOp (win, 3, 0, 0, 0, 0, BORDER_COLOUR, 0, 2, 0, 1)
+
+  vertical = 6  -- pixel to start at
+
+  DoGauge ("HP: ",        hp ,        max_hp,         ColourNameToRGB "darkgreen")
+  DoGauge ("Endurance: ", endurance,  max_endurance,  ColourNameToRGB "mediumblue")
+  DoGauge ("Guile: ",     guile,      max_guile,      ColourNameToRGB "gold")
+
+  WindowShow (win, true)
+  
+end -- draw_bar
+
+
+function OnPluginInstall ()
+  
+  win = GetPluginID ()
+  font_id = "fn"
+  
+  require "movewindow"  -- load the movewindow.lua module
+
+  -- install the window movement handler, get back the window position
+  windowinfo = movewindow.install (win, 7)  -- default to 7 (on right, center top/bottom)
+                   
+  font_name = "Fixedsys"    -- the font
+
+  -- get maxima from last time
+  max_hp        = tonumber (GetVariable ("max_hp")) or 0
+  max_endurance = tonumber (GetVariable ("max_endurance")) or 0 
+  max_guile     = tonumber (GetVariable ("max_guile")) or 0
+    
+  -- make miniwindow so I can grab the font info
+  WindowCreate (win, 
+                windowinfo.window_left,
+                windowinfo.window_top,
+                WINDOW_WIDTH, 
+                WINDOW_HEIGHT,  
+                windowinfo.window_mode,   
+                windowinfo.window_flags,    
+                BACKGROUND_COLOUR)
+
+  -- add the drag handler so they can move the window around
+  movewindow.add_drag_handler (win, 0, 0, 0, 0)
+                 
+  WindowFont (win, font_id, font_name, 9)
+  font_height = WindowFontInfo (win, font_id, 1)  -- height
+  
+  -- work out how far in to start the gauge
+  gauge_left =                        WindowTextWidth (win, font_id, "HP: ")
+  gauge_left = math.max (gauge_left,  WindowTextWidth (win, font_id, "Endurance: "))
+  gauge_left = math.max (gauge_left,  WindowTextWidth (win, font_id, "Guile: "))
+  
+  gauge_left = gauge_left + 5  -- allow gap from edge
+  
+  if GetVariable ("enabled") == "false" then
+    ColourNote ("yellow", "", "Warning: Plugin " .. GetPluginName ().. " is currently disabled.")
+    EnablePlugin (GetPluginID (), false)
+  end -- they didn't enable us last time
+ 
+end -- OnPluginInstall
+
+function OnPluginDisable ()
+  WindowShow (win, false)
+end -- OnPluginDisable
+
+function OnPluginEnable ()
+  WindowShow (win, true)
+  
+  -- draw gauge again if possible
+  if hp and endurance and guile then
+    do_prompt ("", "", { hp, endurance, guile } )
+  end -- if know hp, endurance and guile
+end -- OnPluginEnable
+
+function OnPluginSaveState ()
+   -- save window current location for next time  
+  movewindow.save_state (win)
+  SetVariable ("enabled", tostring (GetPluginInfo (GetPluginID (), 17)))
+  SetVariable ("max_hp", max_hp or 0)
+  SetVariable ("max_endurance", max_endurance or 0)
+  SetVariable ("max_guile", max_guile or 0)
+end -- OnPluginSaveState
+
+
+]]>
+</script>
+
+</muclient>
