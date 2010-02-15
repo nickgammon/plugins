@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<!-- MuClient version 4.37 -->
+
+<muclient>
+<plugin
+   name="Exits_Window"
+   author="Nick Gammon"
+   id="fd1a20e303e48b78eceb103c"
+   language="Lua"
+   purpose="Redirects exits to a miniwindow"
+   date_written="2009-02-03 17:00"
+   requires="4.37"
+   version="1.0"
+   >
+
+</plugin>
+
+<!--  Triggers  -->
+
+<triggers>
+  <trigger
+   enabled="y"
+   match="Exits: *."
+   script="exits_line"
+   sequence="100"
+  >
+  </trigger>
+</triggers>
+
+<!--  Script  -->
+
+
+<script>
+<![CDATA[
+
+-- configuration
+
+-- font
+FONT_NAME = "Lucida Console"
+FONT_SIZE = 9
+
+-- where to put the window
+WINDOW_POSITION = 4  -- see below (4 is top left)
+
+--[[
+Useful positions:
+
+4 = top left
+5 = center left-right at top
+6 = top right
+7 = on right, center top-bottom
+8 = on right, at bottom
+9 = center left-right at bottom
+--]]
+
+
+-- colours
+WINDOW_BACKGROUND_COLOUR = ColourNameToRGB ("olivedrab")
+WINDOW_TEXT_COLOUR = ColourNameToRGB ("#002800")
+
+-- offset of text from edge
+HORIZONTAL_OFFSET = 5
+VERTICAL_OFFSET = 2
+
+-- here on getting an exits line
+function exits_line (name, line, wildcards, styles)
+
+  exits = line
+
+  width   = WindowTextWidth (win, "f", exits) 
+
+  -- make the window again the correct size
+  WindowCreate (win, 0, 0, 
+                width + (HORIZONTAL_OFFSET * 2), 
+                font_height + (VERTICAL_OFFSET * 2), 
+                WINDOW_POSITION, 0, 
+                WINDOW_BACKGROUND_COLOUR)  -- create window
+
+  WindowText (win, "f", exits, HORIZONTAL_OFFSET, VERTICAL_OFFSET, 0, 0, WINDOW_TEXT_COLOUR)
+                    
+  -- show window
+  WindowShow (win,  true)  -- show it 
+  
+end -- end exits_line
+
+-- hide window on removal
+function OnPluginClose ()
+  WindowShow (win,  false)  -- hide it
+end -- OnPluginClose
+
+-- hide window on disable
+function OnPluginDisable ()
+  WindowShow (win,  false)  -- hide it
+end -- OnPluginDisable
+
+-- show window on enable
+function OnPluginEnable ()
+  if exits then
+    WindowShow (win,  true)  -- show it
+  end -- if
+end -- OnPluginEnable
+
+-- startup stuff
+
+win = GetPluginID ()  -- get a unique name
+
+-- make the window with zero size to load the font into
+WindowCreate (win, 0, 0, 0, 0, WINDOW_POSITION, 0, 
+              WINDOW_BACKGROUND_COLOUR)  -- create window
+               
+-- grab a font
+WindowFont (win, "f", FONT_NAME, FONT_SIZE) -- define font
+
+-- work out how high it is
+font_height = WindowFontInfo (win, "f", 1)   -- height of the font  
+
+]]>
+</script>
+
+
+</muclient>
