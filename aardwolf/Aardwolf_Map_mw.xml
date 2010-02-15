@@ -1,0 +1,493 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<muclient>
+<plugin
+   name="Aardwolf_Map_mw"
+   author="Nick Gammon"
+   id="86810b755a33169f0f1d9585"
+   language="Lua"
+   purpose="Shows Aardwolf map in a miniwindow"
+   date_written="2008-07-18"
+   date_modified="2009-07-09"
+   requires="4.40"
+   version="3.7"
+   save_state="y"
+   >
+<description trim="y">
+Redirects the map to a mini window.
+</description>
+
+</plugin>
+
+<!--  Triggers  -->
+
+<triggers>
+
+  <trigger
+   enabled="y"
+   match="<MAPSTART>"
+   script="map_redirect"
+   omit_from_output="y"
+   name="map_start"
+   sequence="100"
+  >
+  </trigger>
+  
+  <trigger
+   enabled="n"
+   match="*"
+   script="map_redirect"
+   name="multi_line_map"
+   omit_from_output="y"
+   sequence="10"
+  >
+  </trigger>
+
+  <trigger
+   enabled="y"
+   match="<MAPEND>"
+   script="map_redirect"
+   omit_from_output="y"
+   name="map_end"
+   sequence="5"
+  >
+  </trigger>
+    
+  <trigger
+   enabled="y"
+   match="You can now sense anger in your immediate area."
+   sequence="100"
+   send_to="12"
+  >
+  <send>SendNoEcho ("map")</send>
+  </trigger>
+  
+  
+</triggers>
+
+<!--  Script  -->
+
+
+<script>
+<![CDATA[
+
+background_colour = 0x00220E
+title_colour = 0x696969
+hyperlink_colour = 0x00FFFF
+drag_hotspot = "z_drag_hotspot"  -- put beneath colour configuration
+
+require "checkplugin"
+require "commas"
+
+map_lines = {}
+
+function hyperlink_configure_background ()
+  local new_colour = PickColour (background_colour)
+  if new_colour ~= -1 then
+    background_colour = new_colour
+    Display_Map ()
+  end -- new colour
+   
+end -- hyperlink_configure_background
+
+function hyperlink_configure_title ()
+  local new_colour = PickColour (title_colour)
+  if new_colour ~= -1 then
+    title_colour = new_colour
+    Display_Map ()
+  end -- new colour
+   
+end -- hyperlink_configure_title
+
+function mouseover (flags, hotspotid)
+
+ -- work out coordinates
+  
+  local left =  WindowInfo (win, 10)
+  local top =  WindowInfo (win, 11)
+ 
+
+  -- what to say - one line per table entry, with imbedded colour codes
+  
+  info = { 
+"@WRoom contents:@w",
+"",     
+"  @M#@w  - You                      --- - North/south wall",
+"  @R*@w  - Other players             |  - East/west wall",
+"  @Y!@w  - Mobiles                   +  - Door (closed)",
+"  @C!@w  - Pet/other charmed mob     @B+@w  - Door (locked)",
+"  @R!@w  - Angry mob (with Sense     >  - Up exit",
+"       Anger cast)               @y>@w  - Up exit (closed)",
+"  @G!@w  - Unkillable Mob            <  - Down exit",
+"  @G$@w  - Shopkeeper                @y<@w  - Down exit (closed)",
+"",
+" @C[@W?@C]@w - Area exit                 @R#@w  - PK-flagged room",
+" @G[@W?@G]@w - Clan public hall exit     @RD@w  - Donation room",
+"",
+"@WTerrains:@w",
+"",     
+" [ ]   Inside                   . .   City",
+" @g, `@w   Field                    @G; ;@w   Hills",
+" @y/@w     Mountain                 @B~ ~@w   Water",
+" @B~ ~@w   Waternoswim              @c. .@w   Air",
+" @y~ ~@w   Desert                   @Y% %@w   Quicksand",
+" @b~ ~@w   Underwater               @C~ ~@w   Ice",
+" @B. .@w   Underground              - -   East/West road",
+" . .   North/South road         @C~ ~@w   River",
+" @R/@w     Volcano                  @b% %@w   Cave",
+" # #   Dungeon                  @g( *@w   Forest",
+        
+         }
+                
+  heading = ""
+  align_right = true
+  align_bottom = false
+  capitalize = true
+
+  -- show it  
+  mw.popup (infowin,           -- window name to use
+            heading_font_id,   -- font to use for the heading
+            popup_font_id,           -- font to use for each line
+            heading,           -- heading text
+            info,              -- table of lines to show (with colour codes)
+            left, top,         -- where to put it
+            border_colour,     -- colour for round rectangle line
+            background_colour, -- colour for background
+            capitalize,        -- if true, force the first letter to upper case
+            align_right,       -- if true, align right side on "Left" parameter
+            align_bottom)      -- if true, align bottom side on "Top" parameter
+            
+end -- mouseover
+
+function cancelmouseover (flags, hotspotid)
+  WindowShow (infowin, false)
+end -- cancelmouseover
+
+function mousedown (flags, hotspotid)
+  
+  if hotspotid == drag_hotspot then
+    -- find where mouse is so we can adjust window relative to mouse
+    startx, starty = WindowInfo (win, 14), WindowInfo (win, 15)
+    
+    -- find where window is in case we drag it offscreen
+    origx, origy = WindowInfo (win, 10), WindowInfo (win, 11)
+  end -- if
+  
+end -- mousedown
+
+function mouseup (flags, hotspotid)
+  local f = hyperlink_functions [hotspotid]
+  if f then
+    f (hotspotid)
+  end -- function found
+end -- mouseup
+
+function dragmove(flags, hotspot_id)
+
+  -- find where it is now
+  local posx, posy = WindowInfo (win, 17),
+                     WindowInfo (win, 18)
+
+  -- move the window to the new location - offset by how far mouse was into window
+  WindowPosition(win, posx - startx, posy - starty, 0, 2);
+  
+  -- change the mouse cursor shape appropriately
+  if posx < 0 or posx > GetInfo (281) or
+     posy < 0 or posy > GetInfo (280) then
+    check (SetCursor ( 11))   -- X cursor
+  else
+    check (SetCursor ( 1))   -- hand cursor
+  end -- if
+  
+end -- dragmove
+
+function dragrelease(flags, hotspot_id)
+
+  Repaint ()  -- update window location
+  
+  -- find where window is now
+  local newx, newy = WindowInfo (win, 10), WindowInfo (win, 11)
+  
+  -- don't let them drag it out of view
+  if newx < 0 or newx > GetInfo (281) or
+     newy < 0 or newy > GetInfo (280) then
+     -- put it back
+    WindowPosition(win, origx, origy, 0, 2)
+    return
+  end -- if out of bounds
+  
+  window_left = newx  -- remember for saving state
+  window_top = newy
+  window_mode = 0
+  window_flags = 2   -- absolute position
+  
+end -- dragrelease
+
+hyperlink_functions = {}
+
+function make_hyperlink (text, id, left, top, action, hint)
+local height = WindowFontInfo (win, font_id, 1)  
+  
+local right = left + WindowTextWidth (win, font_id, text)
+local bottom = top + height
+
+  WindowAddHotspot(win, id,  
+                    left, top, right, bottom, 
+                   "", -- mouseover
+                   "", -- cancelmouseover
+                   "", -- mousedown
+                   "", -- cancelmousedown
+                   "mouseup", -- mouseup
+                   hint,                 
+                   1, 0)
+                   
+  WindowText (win, font_id, text, left, top, right, bottom, hyperlink_colour)               
+  hyperlink_functions [id] = action
+      
+  return right
+            
+end -- make_hyperlink       
+
+function Display_Line (line, styles)
+local id = font_id
+
+-- first 2 lines in bold
+if line < 3 then
+  id = font_id_bold
+end
+
+local left = 10
+local top =  (line - 1) * font_height + 5
+
+  for _, v in ipairs (styles) do
+    left = left + WindowText (win, id, v.text,
+                             left, top, 0, 0, v.textcolour)
+  end -- for each style run                 
+
+end -- Display_Line
+
+function Display_Map ()
+
+
+  local width = max_width * font_width + 50
+  local height = (#map_lines + 1) * font_height
+  
+   -- recreate the window the correct size
+   check (WindowCreate (win, 
+                 window_left, window_top,   -- left, top (auto-positions)
+                 width,     -- width
+                 height,  -- height
+                 window_mode,       -- auto-position: middle right
+                 window_flags,  -- flags
+                 background_colour) )
+                
+   -- DrawEdge rectangle
+   check (WindowRectOp (win, 5, 0, 0, 0, 0, 10, 15))
+   
+   WindowDeleteAllHotspots (win)
+     
+   -- title rectangle
+   check (WindowRectOp (win, 2, 2, 2, -2, font_height * 2 + 10, title_colour))
+   check (WindowRectOp (win, 5, 2, 2, -2, font_height * 2 + 10, 5, 8))
+ 
+   -- display each line        
+   for i, v in ipairs (map_lines) do
+      Display_Line (i, v)
+   end -- for           
+ 
+   make_hyperlink ("?", "back_colour", width - 15, height - 5 - font_height, 
+                    hyperlink_configure_background, "Choose background colour")
+
+   make_hyperlink ("?", "title_colour", width - 15, font_height + 5, 
+                    hyperlink_configure_title, "Choose title colour")
+                                          
+  -- make a hotspot
+  WindowAddHotspot(win, drag_hotspot,  
+                   0, 0, 0, font_height * 3,   -- first 3 lines
+                   "",   -- MouseOver
+                   "",   -- CancelMouseOver
+                   "mousedown",
+                   "",   -- CancelMouseDown
+                   "",   -- MouseUp
+                   "Drag to move",  -- tooltip text
+                   10, 0)  -- movement cursor
+                   
+  WindowDragHandler(win, drag_hotspot, "dragmove", "dragrelease", 0) 
+                    
+  -- make a hotspot
+  WindowAddHotspot(win, "legend_hotspot",  
+                   0, font_height * 3, 0, 0,   -- remainder
+                   "mouseover",   -- MouseOver
+                   "cancelmouseover",   -- CancelMouseOver
+                   "",   -- MouseDown
+                   "",   -- CancelMouseDown
+                   "",   -- MouseUp
+                   "",  -- tooltip text
+                   0, 0)  -- movement cursor
+   
+   -- show it now (or refresh)
+   WindowShow (win, true)
+                 
+end -- Display_Map
+
+-- map redirector
+function map_redirect (name, line, wildcards, styles)
+  EnableTrigger ("multi_line_map", true)  -- capture subsequent lines
+
+  if name == "map_start" then
+    map_lines = {}
+    max_width = 0
+  elseif name == "map_end" then
+    EnableTrigger ("multi_line_map", false)  -- no more lines to go
+    Display_Map ()
+  else
+--    local len = #(trim (line))
+      local len = #line
+ --   if len > 0 or #map_lines < 3 then
+      table.insert (map_lines, styles)
+      max_width = math.max (max_width, len)
+ --   end -- if
+  end -- if
+
+end -- function map_redirect 
+
+function OnPluginInstall ()
+
+  win = GetPluginID ()
+
+  local fonts = utils.getfontfamilies ()
+  if fonts.Dina then
+    font_size = 8
+    font_name = "Dina"    -- the actual font
+  else
+    font_size = 10
+    font_name = "Courier"
+  end -- if
+  
+  window_left, window_top, window_mode, window_flags = 
+      tonumber (GetVariable ("windowx")) or 0,
+      tonumber (GetVariable ("windowy")) or 0,
+      tonumber (GetVariable ("windowmode")) or 7, -- middle right
+      tonumber (GetVariable ("windowflags")) or 0
+  
+  font_id = "map_font"  -- our internal name
+  font_id_bold = "map_font_bold"  -- our internal name
+
+  -- make miniwindow so I can grab the font info
+  check (WindowCreate (win, 
+                 window_left, window_top, 1, 1,  
+                 window_mode,   -- top right
+                 window_flags, 
+                 background_colour) )
+
+  -- give main world window time to stabilize its size and position                
+  DoAfterSpecial (5, "check_map_position ()", sendto.script)
+  
+  check (WindowFont (win, font_id, font_name, font_size, false, false, false, false, 0, 49))  -- normal
+  check (WindowFont (win, font_id_bold, font_name, font_size, false, false, false, false, 0, 49))   -- bold
+  
+  font_height = WindowFontInfo (win, font_id, 1) -  WindowFontInfo (win, font_id, 4) + 1 -- height
+  font_width = WindowFontInfo (win, font_id, 6)  -- avg width
+  
+  background_colour = tonumber (GetVariable ("background_colour")) or background_colour
+  title_colour = tonumber (GetVariable ("title_colour")) or title_colour
+  
+  
+  -- map key window
+  
+  require "mw"  -- see: http://www.gammon.com.au/forum/?id=8947
+  
+  -- our window frame/background colours
+  border_colour = ColourNameToRGB "dimgray"
+  
+  -- a unique ID
+  infowin = GetPluginID () .. ":info"
+
+  -- font IDs
+  popup_font_id = "popup_font"  
+  heading_font_id = "popup_heading_font"  
+ 
+  -- load fonts - mouseover window
+  WindowCreate (infowin, 0, 0, 1, 1, 0, 0, 0)   -- make 1-pixel wide window
+  
+  -- install the fonts  (49 is modern / fixed pitch)
+  WindowFont (infowin, popup_font_id, font_name, font_size, false, false, false, false, 0, 49) 
+  WindowFont (infowin, heading_font_id, font_name, font_size + 2, false, false, false, false, 0, 49)
+              
+  if GetVariable ("enabled") == "false" then
+    ColourNote ("yellow", "", "Warning: Plugin " .. GetPluginName ().. " is currently disabled.")
+    check (EnablePlugin(GetPluginID (), false))
+    return
+  end -- they didn't enable us last time
+  
+  OnPluginEnable ()  -- do initialization stuff
+  
+end -- OnPluginInstall
+
+-- pull in telnet option handling
+dofile (GetPluginInfo (GetPluginID (), 20) .. "telnet_options.lua")
+  
+function OnPluginConnect ()
+  TelnetOptionOn (TELOPT_AUTOMAP)
+  TelnetOptionOff (TELOPT_SHORTMAP)
+  TelnetOptionOn (TELOPT_MAP)
+  TelnetOptionOn (TELOPT_ROOM_NAMES)
+  TelnetOptionOn (TELOPT_EXIT_NAMES)
+  just_connected = true
+end -- function OnPluginConnect
+
+function OnPluginClose ()
+  -- if enabled
+  if GetPluginInfo (GetPluginID (), 17) then
+    TelnetOptionOff (TELOPT_MAP)
+    TelnetOptionOff (TELOPT_ROOM_NAMES)
+    TelnetOptionOff (TELOPT_EXIT_NAMES)
+  end -- if was enabled
+end -- OnPluginClose
+
+function OnPluginEnable ()
+ 
+  -- if we are connected when the plugin loads, it must have been reloaded whilst playing
+  if IsConnected () then
+    OnPluginConnect ()
+  end -- if already connected
+  
+end -- OnPluginEnable
+
+function OnPluginDisable ()
+  TelnetOptionOff (TELOPT_MAP)
+  TelnetOptionOff (TELOPT_ROOM_NAMES)
+  TelnetOptionOff (TELOPT_EXIT_NAMES)
+  
+  WindowShow (win, false)
+  
+end -- OnPluginDisable
+
+function OnPluginSaveState ()
+  SetVariable ("enabled", tostring (GetPluginInfo (GetPluginID (), 17)))
+  SetVariable ("background_colour", background_colour)
+  SetVariable ("title_colour", title_colour)
+  SetVariable ("windowx", tostring (window_left))
+  SetVariable ("windowy", tostring (window_top))
+  SetVariable ("windowmode", tostring (window_mode))
+  SetVariable ("windowflags", tostring (window_flags))
+  
+end -- OnPluginSaveState
+
+function check_map_position ()
+ -- check miniwindow visible
+  if window_left < 0 or window_left > GetInfo (281) or
+     window_top < 0 or window_top > GetInfo (280) then
+     window_left, window_top = 0, 0  -- reset to top left
+     window_mode = 7
+     window_flags = 0
+  end -- if not visible
+
+  WindowPosition (win, window_left, window_top, window_mode, window_flags)
+  
+end -- check_map_position
+
+]]>
+</script>
+</muclient>
