@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient [
+  <!ENTITY timer_mins "5" > 
+  <!ENTITY timer_secs "0" > 
+]>
+<!-- Saved on Saturday, June 30, 2007, 10:48  -->
+<!-- MuClient version 4.13 -->
+
+<muclient>
+<plugin
+   name="xStats_Detector"
+   author="Nick Gammon"
+   id="8a710e0783b431c06d61a54c"
+   language="Lua"
+   purpose="Process {stats} line into variables"
+   date_written="2008-07-02"
+   requires="4.33"
+   version="1.1"
+   >
+<description trim="y">
+
+[FOR PLUGIN AUTHORS ONLY]
+
+Detects and processes the {stats} tag, for the benefit of other plugins.
+
+First, await the OnPluginBroadcast which notifies you stats have changed
+(or just check them when you need to).
+
+Then pull out one of more variables. You can use GetPluginVariableList to
+get the lot, or GetPluginVariable to get one.
+
+Example:
+
+function OnPluginBroadcast (msg, id, name, text)
+  if msg == 1 and id == "8a710e0783b431c06d61a54c" then
+  
+    -- get all variables
+    local stats = GetPluginVariableList("8a710e0783b431c06d61a54c")
+    
+    -- pull one out of table
+    print (stats.str, stats.fighting)
+    
+    -- get one variable
+    fighting = GetPluginVariable ("8a710e0783b431c06d61a54c", "fighting")
+     
+  end -- stats changed
+end
+
+</description>
+
+</plugin>
+
+
+<triggers>
+  <trigger
+   enabled="y"
+   match="{stats}*"
+   send_to="12"
+   sequence="100"
+   script="process_prompt"
+   omit_from_output="y"
+  >
+  <send>
+
+</send>
+  </trigger>
+</triggers>
+
+
+<!--  Script  -->
+
+<script>
+<![CDATA[
+
+--[[ 
+
+Example of stats line:
+
+{stats}39/30,16/13,13/13,28/25,29/25,13/10,93,100,100,44,34,
+      You are Standing.,9999,532/567,510/510,880/880,3199,0,0,2500,241,25,5
+
+1="39/30"     -->  current str / base str,
+2="16/13"     -->  current int / base int,  
+3="13/13"     -->  current wis / base wis,  
+4="28/25"     -->  current dex / base dex,  
+5="29/25"     -->   current con / base con,  
+6="13/10"     -->   current luck / base luck,
+7="93"        --> hp percent,
+8="100"       --> mana percent,
+9="100"       --> moves percent,
+10="44"       -->  hitroll,
+11="34"       --> damroll, 
+12="You are Standing."  --> position, 
+13="9999"     --> enemy pct (9999 if not fighting),
+14="532/567"  --> hp / maxhp,
+15="510/510"  --> mana / max mana,
+16="880/880"  --> moves / max moves, 
+17="3199"     --> gold,
+18="0"        --> qp,
+19="0"        --> tp,
+20="2500"     --> align,
+21="241"      --> exp to level,
+22="25        --> current level
+23="5"        --> position
+
+Example of converted output:
+
+(after doing: stats = GetPluginVariableList("8a710e0783b431c06d61a54c")
+
+"align"="34"
+"base_con"="15"
+"base_dex"="15"
+"base_int"="11"
+"base_luck"="11"
+"base_str"="16"
+"base_wis"="12"
+"con"="15"
+"damroll"="23"
+"dex"="15"
+"doing"="You are Standing."
+"enemy"=""
+"enemy_percent"="9999"
+"fighting"="n"
+"gold"="256"
+"hitroll"="27"
+"hp"="304"
+"int"="11"
+"last_enemy"="A black manta ray"
+"level"="204"
+"luck"="11"
+"mana"="300"
+"max_hp"="304"
+"max_mana"="300"
+"max_moves"="650"
+"moves"="647"
+"position"="5"
+"position_str"="standing"
+"qp"="96999"
+"str"="16"
+"to_level"="1000"
+"tp"="0"
+"wis"="12"
+
+
+--]]
+ 
+positions = {
+   [0] = "dead",
+   [1] = "sleeping",
+   [2] = "resting",
+   [3] = "sitting  ",
+   [4] = "fighting",
+   [5] = "standing",
+  }
+    
+require "var"
+
+function do_pair (item)
+  return string.match (item, "(%d+)%/(%d+)")
+end -- do_pair
+   
+function capitalize (s)
+  return string.sub (s, 1, 1):upper () .. string.sub (s, 2):lower ()
+end -- capitalize 
+
+function process_prompt (name, line, wildcards)
+
+  local data = {}
+    
+  for item in string.gmatch(wildcards [1], "[^,]+") do 
+     table.insert (data, item)
+  end
+  
+  -- put into our table, other plugins can pull them out
+  var.str, var.base_str   = do_pair (data [1])
+  var.int, var.base_int   = do_pair (data [2])
+  var.wis, var.base_wis   = do_pair (data [3])
+  var.dex, var.base_dex   = do_pair (data [4])
+  var.con, var.base_con   = do_pair (data [5])
+  var.luck, var.base_luck = do_pair (data [6])
+  var.hp_percent = data [7]
+  var.mana_percent = data [8]
+  var.moves_percent = data [9]
+  var.hitroll = data [10]
+  var.damroll = data [11]
+  var.doing = data [12]  -- 'fighting x' for example
+  var.enemy_percent = data [13]
+  var.hp, var.max_hp = do_pair (data [14])
+  var.mana, var.max_mana = do_pair (data [15])
+  var.moves, var.max_moves = do_pair (data [16])
+  var.gold = data [17]
+  var.qp = data [18]
+  var.tp = data [19]
+  var.align = data [20]
+  var.to_level = data [21]
+  var.level = data [22]
+  var.position = data [23]
+  
+  -- interpret a couple of them
+  
+  -- position as a string
+  var.position_str = positions [tonumber (data [23])] or "unknown"
+  
+  -- who we are fighting
+  if var.position == "4" then
+    var.fighting = "y"
+    var.enemy = capitalize (string.match (data [12], "^You are fighting (.+)%.$") or "Enemy")
+    last_enemy = var.enemy
+  else
+    var.fighting = "n"
+    var.enemy = ""
+    var.last_enemy = last_enemy
+  end -- who enemy is
+ 
+  BroadcastPlugin (1, "")
+  
+end -- process_prompt
+
+function OnPluginInstall ()
+  -- if we are connected when the plugin loads, it must have been reloaded whilst playing
+  if IsConnected () then
+    OnPluginConnect ()
+  end -- if already connected
+end -- OnPluginInstall
+
+-- pull in telnet option handling
+dofile (GetPluginInfo (GetPluginID (), 20) .. "telnet_options.lua")
+  
+function OnPluginConnect ()
+  TelnetOptionOn (TELOPT_STATMON)
+end -- function OnPluginConnect
+
+function OnPluginClose ()
+  TelnetOptionOff (TELOPT_STATMON)
+end -- OnPluginClose
+
+function OnPluginEnable ()
+  OnPluginConnect ()
+end -- OnPluginEnable
+
+function OnPluginDisable ()
+  OnPluginClose ()
+end -- OnPluginDisable
+
+]]>
+</script>
+</muclient>
