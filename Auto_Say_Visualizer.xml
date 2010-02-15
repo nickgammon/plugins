@@ -14,7 +14,7 @@
    purpose="Colours command window if auto-say active"
    date_written="2008-07-10 13:27:28"
    requires="4.00"
-   version="1.0"
+   version="1.01"
    >
 
 </plugin>
@@ -26,18 +26,41 @@
   <timer 
     enabled="y" 
     second="1.00" 
-    send_to="12"
+    send_to="10"
     active_closed="y"
+    script="AutoSayVisualize"
   >
-  <send>
-if GetOption ("enable_auto_say") == 1 then
-  SetOption ("input_background_colour", ColourNameToRGB ("palegreen"))
-else
-  SetOption ("input_background_colour", ColourNameToRGB ("white"))
-end -- if
-</send>
-
   </timer>
 </timers>
+
+<!--  Script  -->
+
+
+<script>
+<![CDATA[
+bWasAutoSayActive = 0
+
+function AutoSayVisualize()
+  if GetOption("enable_auto_say") ~= bWasAutoSayActive then
+    bWasAutoSayActive = GetOption("enable_auto_say")
+    if bWasAutoSayActive == 1 then
+      SetOption ("input_background_colour", ColourNameToRGB ("palegreen"))
+    else
+      SetOption ("input_background_colour", ColourNameToRGB ("white"))
+    end -- if
+  end -- if
+end
+
+function OnPluginClose()
+  SetOption ("input_background_colour", ColourNameToRGB ("white"))
+end
+
+function OnPluginDisable()
+  bWasAutoSayActive = 0
+  SetOption ("input_background_colour", ColourNameToRGB ("white"))
+end
+
+]]>
+</script>
 
 </muclient>
