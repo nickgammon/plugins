@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+<muclient>
+<plugin
+   name="xPlaying_Detector"
+   author="Nick Gammon"
+   id="f5b05e8826711cdb0d141939"
+   language="Lua"
+   purpose="Detects if you are actually playing."
+   date_written="2008-07-02"
+   requires="4.33"
+   version="1.0"
+   >
+
+<description trim="y">
+
+[FOR PLUGIN AUTHORS ONLY]
+
+Detects if you are playing (as opposed to logging in, creating
+a new character, etc.)
+
+Example:
+
+  function OnPluginBroadcast (msg, id, name, text)
+    if id == "f5b05e8826711cdb0d141939" then
+      playing = text == "y"
+    end -- playing status changed
+  end
+
+To test if you are currently playing (after a reinstall):
+
+  playing = GetPluginVariable ("f5b05e8826711cdb0d141939", "playing")
+
+</description>
+
+</plugin>
+
+<!--  Script  -->
+
+<script>
+<![CDATA[
+
+require "var"
+
+playing = false
+var.playing = "n"
+
+function OnPluginTelnetOption (option)
+  --- ignore not type 100.
+  if string.byte(option,1) ~= 100 then return end
+
+  if option == string.char (100, 3) then
+    now_playing ()
+  else
+    stopped_playing ()
+  end -- if
+end -- function
+
+function now_playing (name, line, wildcards)
+  if playing then
+    return
+  end -- if already playing
+
+   
+  playing = true
+  var.playing = "y"
+  BroadcastPlugin (1, "y")
+end -- now_playing
+
+function stopped_playing (name, line, wildcards)
+  if not playing then
+    return
+  end -- if already not playing
+
+  playing = false
+  var.playing = "n"
+  BroadcastPlugin (1, "n")
+end -- stopped_playing
+
+-- pull in telnet option handling
+dofile (GetPluginInfo (GetPluginID (), 20) .. "telnet_options.lua")
+
+function OnPluginInstall ()
+
+  -- if we are connected when the plugin loads, it must have been reloaded whilst playing
+  if IsConnected () then
+    TelnetOptionOn (TELOPT_REQUEST_STATUS)  -- get actual status (eg. afk, playing)
+  end -- if already connected
+ 
+end -- function OnPluginInstall
+
+function OnPluginDisconnect ()
+  stopped_playing ()
+end -- function OnPluginInstall
+
+function OnPluginConnect ()
+  stopped_playing ()  -- wait for playing message
+end -- function OnPluginConnect
+
+
+]]>
+</script>
+</muclient>
