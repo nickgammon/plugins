@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient [
+  <!ENTITY timer_mins "5" > 
+  <!ENTITY timer_secs "0" > 
+]>
+<!-- Saved on Saturday, June 30, 2007, 10:48  -->
+<!-- MuClient version 4.13 -->
+
+<muclient>
+<plugin
+   name="xAFK_Detector"
+   author="Nick Gammon"
+   id="0e191dc7829ff2ac2433c2d8"
+   language="Lua"
+   purpose="Detects if you are AFK"
+   date_written="2008-06-24"
+   requires="4.28"
+   version="1.0"
+   >
+<description trim="y">
+
+[FOR PLUGIN AUTHORS ONLY]
+
+Detects if you are AFK, for the benefit of other plugins.
+
+Example:
+
+function OnPluginBroadcast (msg, id, name, text)
+  if msg == 1 and id == "0e191dc7829ff2ac2433c2d8" then
+    AFK = text == "y"
+   end -- AFK status changed
+end
+
+</description>
+
+</plugin>
+
+
+<triggers>
+
+  <trigger
+   enabled="y"
+   match="You are now in AFK mode."
+   script="gone_afk"
+   sequence="100"
+  >
+  </trigger>
+  
+ <trigger
+   enabled="y"
+   match="You cannot use that command while AFK."
+   script="gone_afk"
+   sequence="100"
+  >
+  </trigger>
+  
+  <trigger
+   enabled="y"
+   match="^AFK mode removed\."
+   script="not_afk"
+   regexp="y"
+   sequence="100"
+  >
+  </trigger>
+  
+</triggers>
+
+<timers>
+  <timer name="afk_timer" 
+         second="&timer_secs;"  
+         minute="&timer_mins;"  
+         send_to="12"    
+         enabled="y"
+>
+  <send>
+    ColourNote ("salmon", "", "You are now AFK (client-side).")
+    SetStatus ("AFK")
+    check (EnableTimer ("afk_timer", 0))
+    BroadcastPlugin (1, "y")
+  </send>
+  </timer>
+</timers>
+
+<!--  Script  -->
+
+
+<script>
+<![CDATA[
+
+function gone_afk (name, line, wildcards)
+  SetStatus ("AFK")
+  check (EnableTimer ("afk_timer", 0))
+  BroadcastPlugin (1, "y")
+end -- gone_afk
+
+function not_afk (name, line, wildcards)
+  FixTimer ()
+end -- not_afk
+
+-- when they type something, reset AFK status
+
+function OnPluginCommand (sText)
+  FixTimer ()
+  return true  -- process the command
+end
+
+-- when you connect to the MUD, presumably you are not AFK
+
+function OnPluginConnect ()
+  FixTimer ()
+end
+
+-- shared routine to handle turning AFK off
+
+function FixTimer ()
+  if GetTimerOption ("afk_timer", "enabled") == 0 then
+    ColourNote ("salmon", "", "You are no longer AFK  (client-side).")
+    SetStatus ("Ready")
+    BroadcastPlugin (1, "n")
+  end
+
+-- turn timer back on
+  check (EnableTimer ("afk_timer", 1))
+
+-- make sure the full time interval elapses
+  check (ResetTimer ("afk_timer"))
+
+end
+
+assert (GetOption ("enable_timers") == 1, "Timers not enabled")
+
+]]>
+</script>
+</muclient>
