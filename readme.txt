@@ -58,6 +58,11 @@ Date:     Sun 08 Feb 2009
 Purpose:  Shows experience (amount needed to level) in a bar.
 Info at:  http://www.gammon.com.au/forum/bbshowpost.php?id=9224
 
+Name:     Experience_Bar_Telnet.xml
+Date:     Wed 03 Feb 2010
+Purpose:  Shows experience bar - data from telnet negotiation.
+Info at:  http://www.gammon.com.au/forum/bbshowpost.php?id=10043&page=1
+
 Name:     Grab.xml
 Date:     Fri 15 Nov 2002
 Purpose:  Grab MUSH attributes into command window, ready for editing.
