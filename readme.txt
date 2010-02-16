@@ -73,6 +73,11 @@ Date:     Sat 13 Feb 2010
 Purpose:  Shows health / mana / movement in a window for Materia Magica MUD.
 Info at:  http://www.gammon.com.au/forum/bbshowpost.php?id=9270
 
+Name:     Health_Bar_Miniwindow_Telnet
+Date:     Wed 03 Feb 2010
+Purpose:  Shows health / mana / movement in a miniwindow - data from telnet info.
+Info at:  http://www.gammon.com.au/forum/bbshowpost.php?id=10043&page=1
+
 Name:     Level_Timer.xml
 Date:     Mon 11 Aug 2003
 Purpose:  Shows how long it took you to level.

@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE muclient>
+
+<muclient>
+<plugin
+   name="Health_Bar_Miniwindow_Telnet"
+   author="Nick Gammon"
+   id="083960a6b070bb36e8775b1e"
+   language="Lua"
+   purpose="Shows stats in a mini window"
+   date_written="2010-02-01"
+   requires="4.40"
+   version="1.0"
+   save_state="y"
+   >
+<description trim="y">
+<![CDATA[
+Install this plugin to show an info bar with HP, Mana, 
+and Movement points shown as a bar.
+
+The window can be dragged to a new location with the mouse.
+]]>
+</description>
+
+</plugin>
+
+
+<!--  Script  -->
+
+
+<script>
+<![CDATA[
+
+GAUGE_LEFT = 55  -- how far across the gauge part starts
+GAUGE_COUNT = 3  -- how many bars we are planning to draw
+GAP_BETWEEN_BARS = 3
+ 
+WINDOW_WIDTH = 300   -- width of entire status window
+NUMBER_OF_TICKS = 5  -- number of tick marks
+
+FONT_NAME = "Fixedsys"    -- the font we want to use
+FONT_SIZE = 9
+FONT_ID = "fn"  -- internal font identifier
+  
+require "movewindow"
+
+function DoGauge (sPrompt, current, max, Colour)
+
+  if max <= 0 then 
+    return 
+  end -- no divide by zero
+  
+  -- fraction in range 0 to 1
+  local Fraction = math.min (math.max (current / max, 0), 1) 
+   
+  -- find text width so we can right-justify it
+  local width = WindowTextWidth (win, FONT_ID, sPrompt)
+  
+  WindowText (win, FONT_ID, sPrompt,
+                             GAUGE_LEFT - width, vertical, 0, 0, ColourNameToRGB "darkred")
+
+  WindowRectOp (win, 2, GAUGE_LEFT, vertical, WINDOW_WIDTH - 5, vertical + font_height, 
+                          ColourNameToRGB "gray")  -- fill entire box
+ 
+  
+  local gauge_width = (WINDOW_WIDTH - GAUGE_LEFT - 5) * Fraction
+  
+   -- box size must be > 0 or WindowGradient fills the whole thing 
+  if math.floor (gauge_width) > 0 then
+    
+    -- top half - fade black to wanted colour
+    WindowGradient (win, GAUGE_LEFT, vertical, GAUGE_LEFT + gauge_width, vertical + font_height / 2, 
+                    0,  -- black
+                    Colour, 
+                    2)  -- vertical
+    
+    -- bottom half - fade wanted colour back to black
+    WindowGradient (win, GAUGE_LEFT, vertical + font_height / 2, 
+                    GAUGE_LEFT + gauge_width, vertical +  font_height,   
+                    Colour,
+                    0,  -- black
+                    2)  -- vertical
+
+  end -- non-zero
+  
+  -- show ticks
+  local ticks_at = (WINDOW_WIDTH - GAUGE_LEFT - 5) / (NUMBER_OF_TICKS + 1)
+  
+  -- ticks
+  for i = 1, NUMBER_OF_TICKS do
+    WindowLine (win, GAUGE_LEFT + (i * ticks_at), vertical, 
+                GAUGE_LEFT + (i * ticks_at), vertical + font_height, ColourNameToRGB ("silver"), 0, 1)
+  end -- for
+
+  -- draw a box around it
+  WindowRectOp (win, 1, GAUGE_LEFT, vertical, WINDOW_WIDTH - 5, vertical + font_height, 
+          ColourNameToRGB ("lightgrey"))  -- frame entire box
+  
+  -- mouse-over information: add hotspot if not there
+  if not WindowHotspotInfo(win, sPrompt, 1) then
+    WindowAddHotspot (win, sPrompt, GAUGE_LEFT, vertical, WINDOW_WIDTH - 5, vertical + font_height, 
+                  "", "", "", "", "", "", 0, 0)
+  end -- if
+  
+  -- store numeric values in case they mouse over it
+  WindowHotspotTooltip(win, sPrompt, string.format ("%s\t%i / %i (%i%%)", 
+                        sPrompt, current, max, Fraction * 100) )
+
+  vertical = vertical + font_height + GAP_BETWEEN_BARS
+end -- function DoGauge
+
+function OnPluginInstall ()
+  
+  win = GetPluginID ()
+
+  WindowCreate (win, 0, 0, 0, 0, 0, 0, 0)
+                 
+  -- add the font
+  WindowFont (win, FONT_ID, FONT_NAME, FONT_SIZE)
+  
+  -- see how high it is
+  font_height = WindowFontInfo (win, FONT_ID, 1)  -- height
+
+  -- find where window was last time
+  windowinfo = movewindow.install (win, 7)
+  
+  window_height = (font_height * GAUGE_COUNT) + (GAUGE_COUNT * 2 + 1) * GAP_BETWEEN_BARS 
+  
+    
+  WindowCreate (win, 
+                 windowinfo.window_left, 
+                 windowinfo.window_top, 
+                 WINDOW_WIDTH, window_height,  
+                 windowinfo.window_mode,   -- top right
+                 windowinfo.window_flags,
+                 0) 
+
+  -- let them move it around                 
+  movewindow.add_drag_handler (win, 0, 0, 0, 0)
+  
+end -- OnPluginInstall
+
+function OnPluginEnable ()
+  WindowShow (win, true)
+end -- OnPluginDisable
+
+function OnPluginDisable ()
+  WindowShow (win, false)
+end -- OnPluginDisable
+
+-- hide window on removal
+function OnPluginClose ()
+  WindowShow (win,  false)  -- hide it
+end -- OnPluginClose
+
+function OnPluginSaveState ()
+  movewindow.save_state (win)
+end -- OnPluginSaveState
+
+-- here when status changes
+--[[
+ example line (extra lines added here for clarity): 
+ 
+ tt="status";hp=64;maxhp=1000;mana=145;maxmana=145;
+ move=110;maxmove=110;xp=2000;maxxp=370741750;level=2;
+ gold=10010;combat=false;dead=false;poisoned=false;
+ victim={name="the naga";hp=3;maxhp=11;level=1;};  -- if in combat
+
+--]]
+
+function OnPluginTelnetOption (option)
+
+  local t = {}  -- incoming server variables will go into table t
+  setfenv (assert (loadstring (option)), t) () -- compile and load into t
+  
+  if t.tt ~= "status" then
+    return
+  end
+   
+  -- require "tprint"
+  -- tprint (t)
+  
+  local background_colour = ColourNameToRGB "lightgreen"
+  if t.dead then
+    background_colour = ColourNameToRGB "mistyrose"
+  elseif t.combat then 
+    background_colour = ColourNameToRGB "rosybrown"
+  end -- if
+  
+  -- fill entire box to clear it
+  WindowRectOp (win, 2, 0, 0, 0, 0, background_colour)  -- fill entire box
+
+  -- a green inside border indicates you are poisoned
+  if t.poisoned then
+    WindowCircleOp(win, 2,         -- draw rectangle
+                   0, 0, 0, 0,     -- entire window
+                   ColourNameToRGB "olivedrab", 6, 4, -- pen, inside border, width 4
+                   0, 1)  -- no brush
+  end -- if
+    
+  -- Edge around box rectangle
+  WindowCircleOp (win, 3, 0, 0, 0, 0, ColourNameToRGB "darkgray", 0, 2, 0, 1)
+
+  -- stats don't really matter if you are dead
+  if t.dead then
+    local dead_message = "<You are dead>"
+    local width = WindowTextWidth (win, FONT_ID, dead_message)
+    local left = (WINDOW_WIDTH - width) / 2
+    local top = (window_height - font_height) / 2
+    WindowText (win, FONT_ID, dead_message, left, top, 0, 0, ColourNameToRGB "darkred")
+  else
+    vertical = 6  -- pixel to start at
+  
+    DoGauge ("HP: ",   t.hp,    t.maxhp,    ColourNameToRGB "darkgreen")
+    DoGauge ("Mana: ", t.mana,  t.maxmana,  ColourNameToRGB "mediumblue")
+    DoGauge ("Move: ", t.move,  t.maxmove,  ColourNameToRGB "gold")
+  end -- if 
+  
+  -- make sure window visible
+  WindowShow (win, true)
+
+end -- function OnPluginTelnetOption
+
+
+]]>
+</script>
+
+</muclient>
