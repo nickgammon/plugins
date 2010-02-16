@@ -29,8 +29,8 @@
 -- configuration
 
 -- window size in pixels
-WINDOW_WIDTH = 400
-WINDOW_HEIGHT = 200   -- 200 is 16 lines of 9-point Lucida Console
+WINDOW_WIDTH = 600
+WINDOW_HEIGHT = 300   -- 200 is 16 lines of 9-point Lucida Console
 
 -- font
 FONT_NAME = "Lucida Console"
