@@ -33,107 +33,73 @@ win = GetPluginID ()  -- get a unique name
 -- configuration
 
 GAUGE_HEIGHT = 11
-NUMBER_OF_TICKS = 20
+NUMBER_OF_TICKS = 19  -- (ie. 20 bars)
 
 BACKGROUND_COLOUR = 0x808080
 BOX_COLOUR = ColourNameToRGB "dodgerblue"
 
+require "gauge"
+
 -- draw the bar here, on getting the status info, or window resize
 function draw_bar ()
 
-  -- check numbers for validity
-  if not current_xp or  
-     not max_xp or
-     current_xp < 0 or
-     max_xp <= 0 then
-     return
-  end -- if
-
-  -- cannot have more than max xp
-  if current_xp > max_xp then
-     current_xp = max_xp
-  end -- if
+  if not pct_xp then
   
- -- width is window width minus 2
- local gauge_width = GetInfo (281) - 2
- 
- -- make room for the bar
- local bottom_margin = GetInfo (275)
- 
- -- adjust text rectangle, keeping existing settings where possible
- if bottom_margin == 0 or 
+    -- check numbers for validity
+    if not cur_xp or  
+       not max_xp or
+       cur_xp < 0 or
+       max_xp <= 0 then
+       return
+    end -- if
+  
+    -- cannot have more than max xp
+    if cur_xp > max_xp then
+       cur_xp = max_xp
+    end -- if
+  end -- not percentage
+    
+  -- width is window width minus 2
+  local gauge_width = GetInfo (281) - 2  -- GetInfo (281) = Output window client width
+  
+  -- make room for the bar
+  local bottom_margin = GetInfo (275)  -- = Text rectangle - bottom
+  
+  -- adjust text rectangle, keeping existing settings where possible
+  if bottom_margin == 0 or 
     (bottom_margin < 0 and math.abs (bottom_margin) < (GAUGE_HEIGHT + 2)) then
    TextRectangle(GetInfo (272), GetInfo (273),   -- left, top
                   GetInfo (274), -- right
                   - (GAUGE_HEIGHT + 2),  -- bottom (gauge height plus 2 more)
                   GetInfo (276), GetInfo (282) or 0, GetInfo (277),  --  BorderOffset, BorderColour, BorderWidth
                   GetInfo (278), GetInfo (279)) -- OutsideFillColour, OutsideFillStyle
- end -- if
+  end -- if
   
- -- make the miniwindow
- WindowCreate (win, 
+  -- make the miniwindow
+  WindowCreate (win, 
              0, 0,   -- left, top (auto-positions)
              gauge_width,     -- width
              GAUGE_HEIGHT,  -- height
              10,       -- auto-position: bottom left
              0,  -- flags
              BACKGROUND_COLOUR) 
+             
+  local cur, max = cur_xp, max_xp
   
-  WindowRectOp (win, 2, 0, 0, 0, 0, BACKGROUND_COLOUR)  -- fill entire box
- 
-  -- how far through the level we are 
-  local done = current_xp / max_xp
- 
-  -- box size must be > 0 or WindowGradient fills the whole thing 
-  if math.floor (gauge_width * done) > 0 then
-    
-    -- top half
-    WindowGradient (win, 0, 0, gauge_width * done, GAUGE_HEIGHT / 2, 
-                    0x000000,
-                    BOX_COLOUR, 2) 
-    
-    -- bottom half
-    WindowGradient (win, 0, GAUGE_HEIGHT / 2, gauge_width * done, 0, 
-                    BOX_COLOUR,
-                    0x000000,
-                    2) 
+  if pct_xp then
+    cur = pct_xp
+    max = nil
+  end -- if percentage given
+  
+  gauge (win, "XP", cur, max, 
+          0, 0, gauge_width, GAUGE_HEIGHT,
+          BOX_COLOUR, BACKGROUND_COLOUR,
+          NUMBER_OF_TICKS)
 
-  end -- any experience to speak of
-  
-  -- show ticks
-  local ticks_at = gauge_width / NUMBER_OF_TICKS
-  
-  -- ticks
-  for i = 1, NUMBER_OF_TICKS do
-    WindowLine (win, i * ticks_at, 0, i * ticks_at, GAUGE_HEIGHT, ColourNameToRGB ("silver"), 0, 1)
-  end -- for
-
-  -- draw a box around it
-  check (WindowRectOp (win, 1, 0, 0, 0, 0, ColourNameToRGB ("lightgrey")))  -- frame entire box
-    
-  -- mouse-over information: add hotspot if not there
-  if not WindowHotspotInfo(win, "xp", 1) then
-    WindowAddHotspot (win, "xp", 0, 0, 0, 0, "", "", "", "", "", "", 0, 0)
-  end -- if
-  
-  -- store numeric values in case they mouse over it
-  WindowHotspotTooltip(win, "xp", string.format ("Experience\t%i / %i (%i%%)", 
-                        current_xp, max_xp,  current_xp / max_xp * 100) )
-  
   -- ensure window visible
   WindowShow (win, true)
   
 end -- draw_bar
-
---[[
- example line (extra lines added here for clarity): 
- 
-    tt="status";hp=284;maxhp=1000;mana=145;maxmana=145;
-    move=110;maxmove=110;xp=2000;maxxp=370741750;
-    gold=10010;combat=true;dead=true;poisoned=false;
-    victim={name="the naga";hp=3;maxhp=11;level=1;};  -- if in combat
- 
---]]
 
 
 function OnPluginTelnetOption (option)
@@ -141,13 +107,22 @@ function OnPluginTelnetOption (option)
   local t = {}  -- incoming server variables will go into table t
   setfenv (assert (loadstring (option)), t) () -- compile and load into t
   
-  if t.tt == "status" then
-    current_xp = t.xp
-    max_xp = t.maxxp
+  -- update the bar if we received updated xp
+  if t.xp then
+    -- if current or max changes, save it  
+    cur_xp = cur_xp or t.xp.cur
+    max_xp = max_xp or t.xp.max
+    pct_xp = pct_xp or t.xp.pct
     draw_bar ()
   end -- if
   
 end -- function OnPluginTelnetOption
+
+function OnPluginTelnetRequest (type, data)
+  if type == 102 and data == "WILL" then
+    return true
+  end -- if
+end -- function OnPluginTelnetRequest
 
 function OnPluginWorldOutputResized ()
   draw_bar ()
@@ -163,6 +138,12 @@ function OnPluginDisable ()
   WindowShow (win,  false)  -- hide it
 end -- OnPluginDisable
 
+-- show window on enable
+function OnPluginEnable ()
+  if (cur_xp and max_xp) or pct_xp then
+    WindowShow (win,  true)  -- show it
+  end -- if
+end -- OnPluginEnable
 
 ]]>
 </script>
