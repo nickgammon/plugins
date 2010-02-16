@@ -279,23 +279,18 @@ Date:     Sun 13 Jul 2008
 Purpose:  Detects if you are playing - used by some other plugins.
 Info at:  http://www.gammon.com.au/forum/bbshowpost.php?id=8778
 
-Name:     xxxx
-Date:     xxxx
-Purpose:  xxxx
-Info at:  xxxx
+Name:     aardwolf/Spellups.mcl
+Date:     Sun 13 Jul 2008
+Purpose:  Dummy world file used by spellups plugin.
+Info at:  http://www.gammon.com.au/forum/bbshowpost.php?id=8780
 
-Name:     xxxx
-Date:     xxxx
-Purpose:  xxxx
-Info at:  xxxx
+Name:     aardwolf/Stats_Detector.xml
+Date:     Sun 13 Jul 2008
+Purpose:  Detects your stats, broadcasts to other plugins.
+Info at:  http://www.gammon.com.au/forum/bbshowpost.php?id=8776
 
-Name:     xxxx
-Date:     xxxx
-Purpose:  xxxx
-Info at:  xxxx
-
-Name:     xxxx
-Date:     xxxx
-Purpose:  xxxx
-Info at:  xxxx
+Name:     aardwolf/telnet_options.lua
+Date:     Sun 13 Jul 2008
+Purpose:  Helps with telnet negotiation.
+Info at:  http://www.gammon.com.au/forum/bbshowpost.php?id=8775
 
