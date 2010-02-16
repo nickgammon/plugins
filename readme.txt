@@ -184,6 +184,116 @@ Date:     Sun 26 Jul 2009
 Purpose:  Shows the "big map" (zone map) in a miniwindow.
 Info at:  07a562eee63e9577db747e32
 
+Name:     aardwolf/Aardwolf_Campaign_Noter.xml
+Date:     15 Jul 2008
+Purpose:  Tracks your current campaign in a notepad window.
+Info at:  http://www.gammon.com.au/forum/bbshowpost.php?id=8815
+
+Name:     aardwolf/Aardwolf_Campaign_Noter_mw.xml
+Date:     Sun 27 Jul 2008
+Purpose:  Tracks your current campaign in a miniwindow.
+Info at:  http://www.gammon.com.au/forum/bbshowpost.php?id=8815
+
+Name:     aardwolf/Aardwolf_Chat_Hyperlinked.xml
+Date:     Sun 30 Aug 2009
+Purpose:  Chat plugin with hyperlinks.
+Info at:  http://www.gammon.com.au/forum/bbshowpost.php?id=9713
+
+Name:     aardwolf/Aardwolf_Consider_Miniwindow.xml
+Date:     http://www.gammon.com.au/forum/bbshowpost.php?id=9681
+Purpose:  Shows "consider all" output in a miniwindow.
+Info at:  http://www.gammon.com.au/forum/bbshowpost.php?id=9681
+
+Name:     aardwolf/Aardwolf_Exp_gain.xml
+Date:     Sun 13 Jul 2008
+Purpose:  Estimates time to level based on mob kill rate.
+Info at:  http://www.gammon.com.au/forum/bbshowpost.php?id=8777
+
+Name:     aardwolf/Aardwolf_Experience_Bar.xml
+Date:     Wed 08 Jul 2009 
+Purpose:  Shows experience (amount needed to level) in a bar.
+Info at:  http://www.gammon.com.au/forum/bbshowpost.php?id=9576
+
+Name:     aardwolf/Aardwolf_Health_Bar_Miniwindow.xml
+Date:     Wed 08 Jul 2009
+Purpose:  Shows health / mana / moves in a miniwindow.
+Info at:  http://www.gammon.com.au/forum/bbshowpost.php?id=9575
+
+Name:     aardwolf/Aardwolf_Help.xml
+Date:     Sun 13 Jul 2008
+Purpose:  Shows help output in separate notepad windows.
+Info at:  aardwolf/Aardwolf_Help.xml
+
+Name:     aardwolf/Aardwolf_Help_mw.xml
+Date:     Mon 28 Jul 2008
+Purpose:  Shows help output in separate miniwindows.
+Info at:  aardwolf/Aardwolf_Help_mw.xml
+
+Name:     aardwolf/Aardwolf_Helplist.xml
+Date:     Thu 10 Jul 2008
+Purpose:  Shows general information about the game in a separate world window.
+Info at:  http://www.gammon.com.au/forum/bbshowpost.php?id=8770
+
+Name:     aardwolf/Aardwolf_Map_mw.xml
+Date:     Sun 27 Jul 2008
+Purpose:  Shows minimap in a miniwindow.
+Info at:  http://www.gammon.com.au/forum/bbshowpost.php?id=8816
+
+Name:     aardwolf/Aardwolf_Quest_Tracker_mw.xml
+Date:     Sun 27 Jul 2008
+Purpose:  Shows current quest in a miniwindow.
+Info at:  http://www.gammon.com.au/forum/bbshowpost.php?id=8814
+
+Name:     aardwolf/Aardwolf_Scan.xml
+Date:     Sat 10 Oct 2009
+Purpose:  Does a "scan" showing results in a miniwindow.
+Info at:  73766b7b4dfab1cd1ce9494d
+
+Name:     aardwolf/Aardwolf_Spellups.xml
+Date:     Sun 13 Jul 2008
+Purpose:  Automatically does "spell-ups" (buffs).
+Info at:  http://www.gammon.com.au/forum/bbshowpost.php?id=8780
+
+Name:     aardwolf/Consider_info.xml
+Date:     Wed 06 Aug 2008
+Purpose:  Modifies "consider" output to estimate mob levels.
+Info at:  http://www.gammon.com.au/forum/bbshowpost.php?id=8847
+
+Name:     aardwolf/Copy_Colour_Output.xml
+Date:     Mon 28 Jul 2008
+Purpose:  Copies MUD output, adding colour codes back in.
+Info at:  http://www.gammon.com.au/forum/bbshowpost.php?id=8821
+
+Name:     aardwolf/Create_World_File.xml
+Date:     Sun 13 Jul 2008
+Purpose:  Creates a dummy world file - needed by some plugins.
+Info at:  http://www.gammon.com.au/forum/bbshowpost.php?id=8782
+
+Name:     aardwolf/Helplist_Miniwindow.xml
+Date:     Wed 12 Aug 2009 
+Purpose:  Shows general information about the game in a miniwindow.
+Info at:  http://www.gammon.com.au/forum/bbshowpost.php?id=9664
+
+Name:     aardwolf/Playing_Detector.xml
+Date:     Sun 13 Jul 2008
+Purpose:  Detects if you are playing - used by some other plugins.
+Info at:  http://www.gammon.com.au/forum/bbshowpost.php?id=8778
+
+Name:     xxxx
+Date:     xxxx
+Purpose:  xxxx
+Info at:  xxxx
+
+Name:     xxxx
+Date:     xxxx
+Purpose:  xxxx
+Info at:  xxxx
+
+Name:     xxxx
+Date:     xxxx
+Purpose:  xxxx
+Info at:  xxxx
+
 Name:     xxxx
 Date:     xxxx
 Purpose:  xxxx
