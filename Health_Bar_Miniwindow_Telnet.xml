@@ -31,7 +31,7 @@ The window can be dragged to a new location with the mouse.
 <script>
 <![CDATA[
 
-GAP_BETWEEN_BARS = 3
+GAP_BETWEEN_BARS = 4
  
 WINDOW_WIDTH = 300   -- width of entire status window
 NUMBER_OF_TICKS = 5  -- number of tick marks
@@ -69,19 +69,27 @@ end --  DoGauge
 function OnPluginInstall ()
   
   player_win = GetPluginID () .. "_player"
+  victim_win = GetPluginID () .. "_victim"
 
+  -- make initial window
   WindowCreate (player_win, 0, 0, 0, 0, 0, 0, 0)
-                 
   -- add the fonts
   WindowFont (player_win, FONT_ID, FONT_NAME, FONT_SIZE)
   WindowFont (player_win, BUFF_FONT_ID, BUFF_FONT_NAME, BUFF_FONT_SIZE)
+  -- find where window was last time
+  player_windowinfo = movewindow.install (player_win, 4)
   
   -- see how high it is
   font_height = WindowFontInfo (player_win, FONT_ID, 1)  -- height
   buff_font_height = WindowFontInfo (player_win, BUFF_FONT_ID, 1)  -- height
 
+  -- make initial window
+  WindowCreate (victim_win, 0, 0, 0, 0, 0, 0, 0)
+  -- add the fonts
+  WindowFont (victim_win, FONT_ID, FONT_NAME, FONT_SIZE)
+  WindowFont (victim_win, BUFF_FONT_ID, BUFF_FONT_NAME, BUFF_FONT_SIZE)
   -- find where window was last time
-  windowinfo = movewindow.install (player_win, 7)
+  victim_windowinfo = movewindow.install (victim_win, 5)
   
   -- get old colours, sequence etc.
   assert (loadstring (GetVariable ("player_info") or "")) ()
@@ -92,6 +100,7 @@ function OnPluginInstall ()
   for k, v in pairs (player_info.stats) do
     v.cur = nil
     v.pct = nil
+    victim_info.stats [k] = { clr = v.clr, seq = v.seq }
   end -- for each stat
   
 end -- OnPluginInstall
@@ -102,11 +111,13 @@ end -- OnPluginDisable
 
 function OnPluginDisable ()
   WindowShow (player_win, false)
+  WindowShow (victim_win, false)
 end -- OnPluginDisable
 
 -- hide window on removal
 function OnPluginClose ()
   WindowShow (player_win,  false)  -- hide it
+  WindowShow (victim_win, false)
 end -- OnPluginClose
 
 function OnPluginSaveState ()
@@ -116,12 +127,13 @@ function OnPluginSaveState ()
 end -- OnPluginSaveState
 
 player_info = { stats = {} }
+victim_info = { stats = {} }
 
 function Buff_Processing (tbl, win)
   local display_buffs
 
   if tbl then
-    window_height = window_height + buff_font_height + GAP_BETWEEN_BARS
+    window_height = window_height + buff_font_height
     
     -- we may get: bless, bless  so we convert that to bless(2)
     local counted_buffs = {}
@@ -193,12 +205,12 @@ function Show_Buffs (tbl, colour, win)
 
 end -- Show_Buffs
 
-function Show_Stats_Bar (t, info, win)
+function Show_Stats_Bar (t, info, win, windowinfo)
 
   -- remember his level 
   info.level = t.level or info.level
   -- and name
-  info.playername = t.name or info.playername
+  info.unitname = t.name or info.unitname
 
   -- can't pull things out of bar table if it isn't there
   if not t.bar then
@@ -239,7 +251,7 @@ function Show_Stats_Bar (t, info, win)
   table.sort (labels, function (a, b) return stats [a].seq < stats [b].seq end)
   
   window_height = (font_height * gauge_count) + (gauge_count * 2 + 1) * GAP_BETWEEN_BARS 
-  if info.playername or info.level then
+  if info.unitname or info.level then
     window_height = window_height + font_height + GAP_BETWEEN_BARS
   end -- if another line needed
     
@@ -248,6 +260,8 @@ function Show_Stats_Bar (t, info, win)
 
   -- calculate lines needed for debuffs
   local display_debuffs = Buff_Processing (t.debuffs, win)
+  
+  window_height = window_height + GAP_BETWEEN_BARS
   
   WindowCreate (win, 
                  windowinfo.window_left, 
@@ -264,7 +278,7 @@ function Show_Stats_Bar (t, info, win)
   -- work out how far in to start the gauge
   gauge_left =  max_text_width (win, FONT_ID, labels) + 5
   
-  local background_colour = ColourNameToRGB "lightgreen"
+  local background_colour = ColourNameToRGB "bisque"
   
   if t.dead then
     background_colour = ColourNameToRGB "mistyrose"
@@ -302,7 +316,7 @@ function Show_Stats_Bar (t, info, win)
   WindowLine (win, 1, 1, 1, window_height - 1, 0xC2C2C2, 0, 1)  -- light left edge (for 3D look)
   
   vertical = 6  -- pixel to start at
-  if info.playername or info.level then
+  if info.unitname or info.level then
   
     -- seperator line
     WindowLine (win, 5, font_height + GAP_BETWEEN_BARS, WINDOW_WIDTH - 5, font_height + GAP_BETWEEN_BARS, 
@@ -323,9 +337,9 @@ function Show_Stats_Bar (t, info, win)
     end -- of having info.level
     
     -- show player name
-    if info.playername then    
-      WindowText (win, FONT_ID, info.playername, 5, 2, 0, 0, ColourNameToRGB "#444444")
-    end -- of having info.playername
+    if info.unitname then    
+      WindowText (win, FONT_ID, capitalize (info.unitname), 5, 2, 0, 0, ColourNameToRGB "#444444")
+    end -- of having info.unitname
     
     vertical = vertical + font_height + GAP_BETWEEN_BARS
   end
@@ -359,8 +373,14 @@ function OnPluginTelnetOption (option)
   local t = {}  -- incoming server variables will go into table t
   setfenv (assert (loadstring (option)), t) () -- compile and load into t
   
-  Show_Stats_Bar (t, player_info, player_win)
+  Show_Stats_Bar (t, player_info, player_win, player_windowinfo)
 
+  if t.victim then
+    Show_Stats_Bar (t.victim, victim_info, victim_win, victim_windowinfo)
+  else
+    WindowShow (victim_win, false)
+  end -- if
+  
 end -- function OnPluginTelnetOption
 
 function OnPluginTelnetRequest (type, data)
@@ -374,6 +394,7 @@ end -- function OnPluginTelnetRequest
 function OnPluginConnect ()
   WindowShow (player_win, false)
   player_info = { stats = {} }
+  victim_info = { stats = {} }
 end -- OnConnect
 
 ]]>
