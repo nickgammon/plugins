@@ -45,7 +45,7 @@ FONT_SIZE = 10
 FONT_ID = "fn"  -- internal font identifier
   
 BUFF_FONT_NAME = get_preferred_font {"Trebuchet MS", "Sylfaen", "Lucida Console", "Fixedsys", "Courier" } 
-BUFF_FONT_SIZE = 9
+BUFF_FONT_SIZE = 8
 BUFF_FONT_ID = "fb"  -- internal font identifier
 
                 
@@ -156,7 +156,7 @@ end -- function Buff_Processing
 function Show_Buffs (tbl, colour)
  if tbl then
     -- seperator line
-    WindowLine (win, 0, vertical, WINDOW_WIDTH, vertical, 
+    WindowLine (win, 5, vertical, WINDOW_WIDTH - 5, vertical, 
                 ColourNameToRGB "darkgray", 0, 1)
     
     vertical = vertical + 2    
@@ -264,7 +264,7 @@ function OnPluginTelnetOption (option)
   if playername or level then
   
     -- seperator line
-    WindowLine (win, 0, font_height + GAP_BETWEEN_BARS, WINDOW_WIDTH, font_height + GAP_BETWEEN_BARS, 
+    WindowLine (win, 5, font_height + GAP_BETWEEN_BARS, WINDOW_WIDTH - 5, font_height + GAP_BETWEEN_BARS, 
                 ColourNameToRGB "darkgray", 0, 1)
 
     -- show level number inside circle
