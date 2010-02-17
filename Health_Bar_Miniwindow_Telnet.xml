@@ -8,9 +8,9 @@
    id="083960a6b070bb36e8775b1e"
    language="Lua"
    purpose="Shows stats in a mini window"
-   date_written="2010-02-01"
-   requires="4.40"
-   version="1.0"
+   date_written="2010-02-17"
+   requires="4.49"
+   version="2.0"
    save_state="y"
    >
 <description trim="y">
