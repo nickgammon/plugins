@@ -50,7 +50,7 @@ BUFF_FONT_SIZE = 8
 BUFF_FONT_ID = "fb"  -- internal font identifier
 
                 
-function DoGauge (sPrompt, current, max, Colour)
+function DoGauge (sPrompt, win, current, max, Colour)
   local width = WindowTextWidth (win, FONT_ID, sPrompt)  -- to right-justify it
   WindowText (win, FONT_ID, sPrompt, gauge_left - width + 5, vertical, 0, 0, ColourNameToRGB "#444444")
   
@@ -68,59 +68,56 @@ end --  DoGauge
 
 function OnPluginInstall ()
   
-  win = GetPluginID ()
+  player_win = GetPluginID () .. "_player"
 
-  WindowCreate (win, 0, 0, 0, 0, 0, 0, 0)
+  WindowCreate (player_win, 0, 0, 0, 0, 0, 0, 0)
                  
   -- add the fonts
-  WindowFont (win, FONT_ID, FONT_NAME, FONT_SIZE)
-  WindowFont (win, BUFF_FONT_ID, BUFF_FONT_NAME, BUFF_FONT_SIZE)
+  WindowFont (player_win, FONT_ID, FONT_NAME, FONT_SIZE)
+  WindowFont (player_win, BUFF_FONT_ID, BUFF_FONT_NAME, BUFF_FONT_SIZE)
   
   -- see how high it is
-  font_height = WindowFontInfo (win, FONT_ID, 1)  -- height
-  buff_font_height = WindowFontInfo (win, BUFF_FONT_ID, 1)  -- height
+  font_height = WindowFontInfo (player_win, FONT_ID, 1)  -- height
+  buff_font_height = WindowFontInfo (player_win, BUFF_FONT_ID, 1)  -- height
 
   -- find where window was last time
-  windowinfo = movewindow.install (win, 7)
+  windowinfo = movewindow.install (player_win, 7)
   
   -- get old colours, sequence etc.
-  assert (loadstring (GetVariable ("known_stats") or "")) ()
+  assert (loadstring (GetVariable ("player_info") or "")) ()
  
-  -- reset current figure, may have changed
-  for k, v in pairs (known_stats) do
-    known_stats [k].cur = nil
-    known_stats [k].pct = nil
-  end -- for each stat
+  player_info = player_info or { stats = {} }
   
-  playername = GetVariable ("playername")
-  level = tonumber (GetVariable ("level"))
+  -- reset current figure, may have changed
+  for k, v in pairs (player_info.stats) do
+    v.cur = nil
+    v.pct = nil
+  end -- for each stat
   
 end -- OnPluginInstall
 
 function OnPluginEnable ()
-  WindowShow (win, true)
+  WindowShow (player_win, true)
 end -- OnPluginDisable
 
 function OnPluginDisable ()
-  WindowShow (win, false)
+  WindowShow (player_win, false)
 end -- OnPluginDisable
 
 -- hide window on removal
 function OnPluginClose ()
-  WindowShow (win,  false)  -- hide it
+  WindowShow (player_win,  false)  -- hide it
 end -- OnPluginClose
 
 function OnPluginSaveState ()
-  movewindow.save_state (win)
-  SetVariable ("known_stats", 
-               "known_stats = " .. serialize.save_simple (known_stats))
-  SetVariable ("playername", playername or "")
-  SetVariable ("level", level or "")
+  movewindow.save_state (player_win)
+  SetVariable ("player_info", 
+               "player_info = " .. serialize.save_simple (player_info))
 end -- OnPluginSaveState
 
-known_stats = {}
+player_info = { stats = {} }
 
-function Buff_Processing (tbl)
+function Buff_Processing (tbl, win)
   local display_buffs
 
   if tbl then
@@ -172,7 +169,7 @@ function Buff_Processing (tbl)
   
 end -- function Buff_Processing
 
-function Show_Buffs (tbl, colour)
+function Show_Buffs (tbl, colour, win)
  if tbl then
     -- seperator line
     WindowLine (win, 5, vertical, WINDOW_WIDTH - 5, vertical, ColourNameToRGB "darkgray", 0, 1)
@@ -196,39 +193,38 @@ function Show_Buffs (tbl, colour)
 
 end -- Show_Buffs
 
-function OnPluginTelnetOption (option)
+function Show_Stats_Bar (t, info, win)
 
-  local t = {}  -- incoming server variables will go into table t
-  setfenv (assert (loadstring (option)), t) () -- compile and load into t
-  
   -- remember his level 
-  level = t.level or level
+  info.level = t.level or info.level
   -- and name
-  playername = t.name or playername
+  info.playername = t.name or info.playername
 
   -- can't pull things out of bar table if it isn't there
   if not t.bar then
     return
   end
-    
-  -- find how many (eg. HP, mana, move)
+
+  stats = info.stats
+  
+ -- find how many (eg. HP, mana, move)
   for k, v in pairs (t.bar) do
-    known_stats [k] = known_stats [k] or {}
+    stats [k] = stats [k] or {}
     -- save new stats in case not supplied in future
-    known_stats [k].cur = v.cur or known_stats [k].cur
-    known_stats [k].max = v.max or known_stats [k].max
-    known_stats [k].pct = v.pct or known_stats [k].pct
+    stats [k].cur = v.cur or stats [k].cur
+    stats [k].max = v.max or stats [k].max
+    stats [k].pct = v.pct or stats [k].pct
     
     -- remember colour to display in
-    known_stats [k].clr = v.clr or known_stats [k].clr
+    stats [k].clr = v.clr or stats [k].clr
     
     -- display sequence (defaults to name)
-    known_stats [k].seq = v.seq or known_stats [k].seq or k
+    stats [k].seq = v.seq or stats [k].seq or k
   end -- for
 
   local labels = {}
   local gauge_count = 0
-  for k, v in pairs (known_stats) do
+  for k, v in pairs (stats) do
     if (v.cur and v.max) or v.pct then
       table.insert (labels, k)
       gauge_count = gauge_count + 1
@@ -240,16 +236,18 @@ function OnPluginTelnetOption (option)
   end -- nothing known yet
   
   -- sort into wanted order
-  table.sort (labels, function (a, b) return known_stats [a].seq < known_stats [b].seq end)
+  table.sort (labels, function (a, b) return stats [a].seq < stats [b].seq end)
   
   window_height = (font_height * gauge_count) + (gauge_count * 2 + 1) * GAP_BETWEEN_BARS 
-  if playername or level then
+  if info.playername or info.level then
     window_height = window_height + font_height + GAP_BETWEEN_BARS
   end -- if another line needed
     
-  display_buffs   = Buff_Processing (t.buffs)
-  display_debuffs = Buff_Processing (t.debuffs)
-  
+  -- calculate lines needed for buffs
+  local display_buffs   = Buff_Processing (t.buffs, win)
+
+  -- calculate lines needed for debuffs
+  local display_debuffs = Buff_Processing (t.debuffs, win)
   
   WindowCreate (win, 
                  windowinfo.window_left, 
@@ -304,16 +302,16 @@ function OnPluginTelnetOption (option)
   WindowLine (win, 1, 1, 1, window_height - 1, 0xC2C2C2, 0, 1)  -- light left edge (for 3D look)
   
   vertical = 6  -- pixel to start at
-  if playername or level then
+  if info.playername or info.level then
   
     -- seperator line
     WindowLine (win, 5, font_height + GAP_BETWEEN_BARS, WINDOW_WIDTH - 5, font_height + GAP_BETWEEN_BARS, 
                 ColourNameToRGB "darkgray", 0, 1)
     WindowLine (win, 6, font_height + GAP_BETWEEN_BARS + 1, WINDOW_WIDTH - 4, font_height + GAP_BETWEEN_BARS + 1, ColourNameToRGB "#444444", 0, 1)
 
-    -- show level number inside circle
-    if level then
-      local levelsize = WindowTextWidth (win, FONT_ID, level)
+    -- show info.level number inside circle
+    if info.level then
+      local levelsize = WindowTextWidth (win, FONT_ID, info.level)
       local size = math.max (levelsize, font_height) + 4
       WindowCircleOp(win, 1, WINDOW_WIDTH - size , 0, WINDOW_WIDTH, size, 
                     ColourNameToRGB "#333333", 0, 3,  -- pen
@@ -321,45 +319,47 @@ function OnPluginTelnetOption (option)
       WindowCircleOp(win, 1, WINDOW_WIDTH - size + 1 , 1, WINDOW_WIDTH - 1, size - 1, 
                     ColourNameToRGB "#888888", 0, 1,  -- pen
                     0, 1) --  no brush
-      WindowText (win, FONT_ID, level, WINDOW_WIDTH - size / 2 - levelsize / 2, 2, 0, 0, ColourNameToRGB "#444444")
-    end -- of having level
+      WindowText (win, FONT_ID, info.level, WINDOW_WIDTH - size / 2 - levelsize / 2, 2, 0, 0, ColourNameToRGB "#444444")
+    end -- of having info.level
     
     -- show player name
-    if playername then    
-      WindowText (win, FONT_ID, playername, 5, 2, 0, 0, ColourNameToRGB "#444444")
-    end -- of having playername
+    if info.playername then    
+      WindowText (win, FONT_ID, info.playername, 5, 2, 0, 0, ColourNameToRGB "#444444")
+    end -- of having info.playername
     
     vertical = vertical + font_height + GAP_BETWEEN_BARS
   end
 
   -- make sure window visible
   WindowShow (win, true)
-  
-  -- stats don't really matter if you are dead
-  if t.dead then
-    local dead_message = "<You are dead>"
-    local width = WindowTextWidth (win, FONT_ID, dead_message)
-    local left = (WINDOW_WIDTH - width) / 2
-    local top = (window_height - font_height) / 2
-    WindowText (win, FONT_ID, dead_message, left, top, 0, 0, ColourNameToRGB "darkred")
-    return
-  end -- if dead
         
   -- show stats in sequence
   for _, name in ipairs (labels) do
-    stats = known_stats [name]
+    local st = stats [name]
     
-    if stats.pct then
-      DoGauge (name, stats.pct, nil,       stats.clr)
+    if st.pct then
+      DoGauge (name, win, st.pct, nil,    st.clr)
     else
-      DoGauge (name, stats.cur, stats.max, stats.clr)
+      DoGauge (name, win, st.cur, st.max, st.clr)
     end -- if
   end -- for
   
   vertical = vertical + 1
   
-  Show_Buffs (display_buffs, ColourNameToRGB "#003C00")
-  Show_Buffs (display_debuffs, ColourNameToRGB "darkred")
+  -- buffs
+  Show_Buffs (display_buffs, ColourNameToRGB "#003C00", win)
+  
+  -- debuffs
+  Show_Buffs (display_debuffs, ColourNameToRGB "darkred", win)
+
+end -- Show_Stats_Bar
+
+function OnPluginTelnetOption (option)
+
+  local t = {}  -- incoming server variables will go into table t
+  setfenv (assert (loadstring (option)), t) () -- compile and load into t
+  
+  Show_Stats_Bar (t, player_info, player_win)
 
 end -- function OnPluginTelnetOption
 
@@ -372,10 +372,8 @@ end -- function OnPluginTelnetRequest
 -- on a new connection, this might be a new character, and name
 -- and all stats different
 function OnPluginConnect ()
-  WindowShow (win, false)
-  known_stats = {}
-  playername = nil
-  level = nil
+  WindowShow (player_win, false)
+  player_info = { stats = {} }
 end -- OnConnect
 
 ]]>
