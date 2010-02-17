@@ -240,6 +240,7 @@ function OnPluginTelnetOption (option)
                  windowinfo.window_flags,
                  0) 
 
+ 
   -- let them move it around                 
   movewindow.add_drag_handler (win, 0, 0, 0, 0)
 
@@ -256,10 +257,33 @@ function OnPluginTelnetOption (option)
   
   -- fill entire box to clear it
   WindowRectOp (win, 2, 0, 0, 0, 0, background_colour)  -- fill entire box
-    
-  -- Edge around box rectangle
-  WindowCircleOp (win, 3, 0, 0, 0, 0, ColourNameToRGB "darkgray", 0, 2, 0, 1)
 
+  --[[
+  -- some texture
+  WindowCreate ("texture", 
+                 0, 
+                 0, 
+                 WINDOW_WIDTH, window_height,  
+                 4,   -- top right
+                 0,  -- flags
+                 ColourNameToRGB "limegreen")  -- colour
+                                  
+  WindowImageFromWindow (win, "tex", "texture")
+        
+  WindowBlendImage (win, "tex", 0, 0, 0, 0, 4, 0.02)
+  
+  --]]
+  
+  -- Edge around box rectangle
+  --WindowCircleOp (win, 3, 0, 0, 0, 0, ColourNameToRGB "darkgray", 0, 2, 0, 1)
+  --WindowRectOp (win, 5, 0, 0, 0, 0, 5, 15 + 0x1000)
+
+  WindowCircleOp (win, 3, 0, 0, 0, 0, 0x505050, 0, 3, 0, 1)   -- dark grey border (3 pixels)
+  WindowCircleOp (win, 3, 1, 1, -1, -1, 0x7C7C7C, 0, 1, 0, 1)  -- lighter inner border
+  WindowCircleOp (win, 3, 2, 2, -2, -2, 0, 0, 1, 0, 1)  -- black inside that
+  WindowLine (win, 1, 1, WINDOW_WIDTH - 1, 1, 0xC2C2C2, 0, 1)  -- light top edge
+  WindowLine (win, 1, 1, 1, window_height - 1, 0xC2C2C2, 0, 1)  -- light left edge (for 3D look)
+  
   vertical = 6  -- pixel to start at
   if playername or level then
   
@@ -271,12 +295,12 @@ function OnPluginTelnetOption (option)
     if level then
       local levelsize = WindowTextWidth (win, FONT_ID, level)
       local size = math.max (levelsize, font_height) + 4
-      WindowCircleOp(win, 1, WINDOW_WIDTH - size + 1 , 1, WINDOW_WIDTH + 1, size + 1, 
-                    ColourNameToRGB "#333333", 0, 2,  -- pen
-                    0, 1) --  no brush
       WindowCircleOp(win, 1, WINDOW_WIDTH - size , 0, WINDOW_WIDTH, size, 
-                    ColourNameToRGB "dimgray", 0, 2,  -- pen
-                    ColourNameToRGB "lightgrey", 0) -- no brush
+                    ColourNameToRGB "#333333", 0, 3,  -- pen
+                    ColourNameToRGB "lightgrey", 0) -- brush
+      WindowCircleOp(win, 1, WINDOW_WIDTH - size + 1 , 1, WINDOW_WIDTH - 1, size - 1, 
+                    ColourNameToRGB "#888888", 0, 1,  -- pen
+                    0, 1) --  no brush
       WindowText (win, FONT_ID, level, WINDOW_WIDTH - size / 2 - levelsize / 2, 2, 0, 0, ColourNameToRGB "#444444")
     end -- of having level
     
