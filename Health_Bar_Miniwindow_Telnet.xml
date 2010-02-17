@@ -40,15 +40,18 @@ require "movewindow"
 require "gauge"
 require "pairsbykeys"
 
-FONT_NAME = get_preferred_font {"Dina", "Sylfaen", "Lucida Console", "Fixedsys", "Courier" } 
-FONT_SIZE = 9
+FONT_NAME = get_preferred_font {"Sylfaen", "Dina", "Lucida Console", "Fixedsys", "Courier" } 
+FONT_SIZE = 10
 FONT_ID = "fn"  -- internal font identifier
   
+BUFF_FONT_NAME = get_preferred_font {"Trebuchet MS", "Sylfaen", "Lucida Console", "Fixedsys", "Courier" } 
+BUFF_FONT_SIZE = 9
+BUFF_FONT_ID = "fb"  -- internal font identifier
 
                 
 function DoGauge (sPrompt, current, max, Colour)
   local width = WindowTextWidth (win, FONT_ID, sPrompt)  -- to right-justify it
-  WindowText (win, FONT_ID, sPrompt, gauge_left - width + 5, vertical, 0, 0, ColourNameToRGB "darkred")
+  WindowText (win, FONT_ID, sPrompt, gauge_left - width + 5, vertical, 0, 0, ColourNameToRGB "#444444")
   
   gauge (win, sPrompt, 
           current, max, 
@@ -65,11 +68,13 @@ function OnPluginInstall ()
 
   WindowCreate (win, 0, 0, 0, 0, 0, 0, 0)
                  
-  -- add the font
+  -- add the fonts
   WindowFont (win, FONT_ID, FONT_NAME, FONT_SIZE)
+  WindowFont (win, BUFF_FONT_ID, BUFF_FONT_NAME, BUFF_FONT_SIZE)
   
   -- see how high it is
   font_height = WindowFontInfo (win, FONT_ID, 1)  -- height
+  buff_font_height = WindowFontInfo (win, BUFF_FONT_ID, 1)  -- height
 
   -- find where window was last time
   windowinfo = movewindow.install (win, 7)
@@ -95,6 +100,82 @@ function OnPluginSaveState ()
 end -- OnPluginSaveState
 
 known_stats = {}
+
+function Buff_Processing (tbl)
+  local display_buffs
+
+  if tbl then
+    window_height = window_height + buff_font_height + GAP_BETWEEN_BARS
+    
+    -- we may get: bless, bless  so we convert that to bless(2)
+    local counted_buffs = {}
+    for _, name in ipairs (tbl) do
+      name = capitalize (name)
+      counted_buffs [name] = (counted_buffs [name] or 0) + 1
+    end -- for
+    
+    -- count them
+    local total_buffs = 0
+    for x in pairs (counted_buffs) do
+      total_buffs = total_buffs + 1
+    end -- for
+    
+    local count = 0
+    display_buffs = {}
+    
+    -- add to new table with count and comma
+    for name, n in pairsByKeys (counted_buffs) do
+      count = count + 1
+      if n > 1 then
+        name = name .. "(" .. n .. ")"
+      end -- if
+      if count < total_buffs then
+        name = name .. ", "
+      end -- if
+      table.insert (display_buffs, name)       
+    end -- for
+    
+    local x = 5  
+    
+    -- see how many lines we need
+    for _, name in ipairs (display_buffs) do
+      local width = WindowTextWidth (win, BUFF_FONT_ID, name)
+      if x + width >= WINDOW_WIDTH - 5 then
+        x = 5
+        window_height = window_height + buff_font_height
+      end -- if new line
+      x = x + width
+    end -- for
+        
+  end -- if some buffs there
+  
+  return display_buffs
+  
+end -- function Buff_Processing
+
+function Show_Buffs (tbl, colour)
+ if tbl then
+    -- seperator line
+    WindowLine (win, 0, vertical, WINDOW_WIDTH, vertical, 
+                ColourNameToRGB "darkgray", 0, 1)
+    
+    vertical = vertical + 2    
+    local x = 5  
+    
+    for _, name in ipairs (tbl) do
+      local width = WindowTextWidth (win, BUFF_FONT_ID, name)
+      if x + width >= WINDOW_WIDTH - 5 then
+        x = 5
+        vertical = vertical + buff_font_height
+      end -- if new line
+      x = x + WindowText (win, BUFF_FONT_ID, name, x, vertical, 0, 0, colour)
+    end -- for
+
+  vertical = vertical + buff_font_height + GAP_BETWEEN_BARS
+        
+  end -- if some buffs there
+
+end -- Show_Buffs
 
 function OnPluginTelnetOption (option)
 
@@ -147,50 +228,9 @@ function OnPluginTelnetOption (option)
     window_height = window_height + font_height + GAP_BETWEEN_BARS
   end -- if another line needed
     
-  if t.buffs then
-    window_height = window_height + font_height + GAP_BETWEEN_BARS
-    
-    -- we may get: bless, bless  so we convert that to bless(2)
-    local counted_buffs = {}
-    for _, name in ipairs (t.buffs) do
-      name = capitalize (name)
-      counted_buffs [name] = (counted_buffs [name] or 0) + 1
-    end -- for
-    
-    -- count them
-    local total_buffs = 0
-    for x in pairs (counted_buffs) do
-      total_buffs = total_buffs + 1
-    end -- for
-    
-    local count = 0
-    display_buffs = {}
-    
-    -- add to new table with count and comma
-    for name, n in pairsByKeys (counted_buffs) do
-      count = count + 1
-      if n > 1 then
-        name = name .. "(" .. n .. ")"
-      end -- if
-      if count < total_buffs then
-        name = name .. ", "
-      end -- if
-      table.insert (display_buffs, name)       
-    end -- for
-    
-    local x = 5  
-    
-    -- see how many lines we need
-    for _, name in ipairs (display_buffs) do
-      local width = WindowTextWidth (win, FONT_ID, name)
-      if x + width >= WINDOW_WIDTH - 5 then
-        x = 5
-        window_height = window_height + font_height
-      end -- if new line
-      x = x + width
-    end -- for
-        
-  end -- if some buffs there
+  display_buffs   = Buff_Processing (t.buffs)
+  display_debuffs = Buff_Processing (t.debuffs)
+  
   
   WindowCreate (win, 
                  windowinfo.window_left, 
@@ -272,27 +312,8 @@ function OnPluginTelnetOption (option)
     end -- if
   end -- for
   
-  if t.buffs then
-    -- seperator line
-    WindowLine (win, 0, vertical, WINDOW_WIDTH, vertical, 
-                ColourNameToRGB "darkgray", 0, 1)
-          
- 
-    
-    vertical = vertical + 2    
-    local x = 5  
-    
-    for _, name in ipairs (display_buffs) do
-      local width = WindowTextWidth (win, FONT_ID, name)
-      if x + width >= WINDOW_WIDTH - 5 then
-        x = 5
-        vertical = vertical + font_height
-      end -- if new line
-      x = x + WindowText (win, FONT_ID, name, x, vertical, 0, 0, ColourNameToRGB "#003C00")
-    end -- for
-        
-  end -- if some buffs there
-  
+  Show_Buffs (display_buffs, ColourNameToRGB "#003C00")
+  Show_Buffs (display_debuffs, ColourNameToRGB "darkred")
 
 end -- function OnPluginTelnetOption
 
