@@ -38,9 +38,10 @@ NUMBER_OF_TICKS = 5  -- number of tick marks
 
 require "movewindow"
 require "gauge"
+require "pairsbykeys"
 
 FONT_NAME = get_preferred_font {"Dina", "Sylfaen", "Lucida Console", "Fixedsys", "Courier" } 
-FONT_SIZE = 11
+FONT_SIZE = 9
 FONT_ID = "fn"  -- internal font identifier
   
 
@@ -146,6 +147,51 @@ function OnPluginTelnetOption (option)
     window_height = window_height + font_height + GAP_BETWEEN_BARS
   end -- if another line needed
     
+  if t.buffs then
+    window_height = window_height + font_height + GAP_BETWEEN_BARS
+    
+    -- we may get: bless, bless  so we convert that to bless(2)
+    local counted_buffs = {}
+    for _, name in ipairs (t.buffs) do
+      name = capitalize (name)
+      counted_buffs [name] = (counted_buffs [name] or 0) + 1
+    end -- for
+    
+    -- count them
+    local total_buffs = 0
+    for x in pairs (counted_buffs) do
+      total_buffs = total_buffs + 1
+    end -- for
+    
+    local count = 0
+    display_buffs = {}
+    
+    -- add to new table with count and comma
+    for name, n in pairsByKeys (counted_buffs) do
+      count = count + 1
+      if n > 1 then
+        name = name .. "(" .. n .. ")"
+      end -- if
+      if count < total_buffs then
+        name = name .. ", "
+      end -- if
+      table.insert (display_buffs, name)       
+    end -- for
+    
+    local x = 5  
+    
+    -- see how many lines we need
+    for _, name in ipairs (display_buffs) do
+      local width = WindowTextWidth (win, FONT_ID, name)
+      if x + width >= WINDOW_WIDTH - 5 then
+        x = 5
+        window_height = window_height + font_height
+      end -- if new line
+      x = x + width
+    end -- for
+        
+  end -- if some buffs there
+  
   WindowCreate (win, 
                  windowinfo.window_left, 
                  windowinfo.window_top, 
@@ -201,6 +247,9 @@ function OnPluginTelnetOption (option)
     
     vertical = vertical + font_height + GAP_BETWEEN_BARS
   end
+
+  -- make sure window visible
+  WindowShow (win, true)
   
   -- stats don't really matter if you are dead
   if t.dead then
@@ -209,23 +258,41 @@ function OnPluginTelnetOption (option)
     local left = (WINDOW_WIDTH - width) / 2
     local top = (window_height - font_height) / 2
     WindowText (win, FONT_ID, dead_message, left, top, 0, 0, ColourNameToRGB "darkred")
-  else
+    return
+  end -- if dead
         
-    -- show stats in alpha order
-    for _, name in ipairs (labels) do
-      stats = known_stats [name]
-      
-      if stats.pct then
-        DoGauge (name, stats.pct, nil,       stats.clr)
-      else
-        DoGauge (name, stats.cur, stats.max, stats.clr)
-      end -- if
+  -- show stats in sequence
+  for _, name in ipairs (labels) do
+    stats = known_stats [name]
+    
+    if stats.pct then
+      DoGauge (name, stats.pct, nil,       stats.clr)
+    else
+      DoGauge (name, stats.cur, stats.max, stats.clr)
+    end -- if
+  end -- for
+  
+  if t.buffs then
+    -- seperator line
+    WindowLine (win, 0, vertical, WINDOW_WIDTH, vertical, 
+                ColourNameToRGB "darkgray", 0, 1)
+          
+ 
+    
+    vertical = vertical + 2    
+    local x = 5  
+    
+    for _, name in ipairs (display_buffs) do
+      local width = WindowTextWidth (win, FONT_ID, name)
+      if x + width >= WINDOW_WIDTH - 5 then
+        x = 5
+        vertical = vertical + font_height
+      end -- if new line
+      x = x + WindowText (win, FONT_ID, name, x, vertical, 0, 0, ColourNameToRGB "#003C00")
     end -- for
         
-  end -- if 
+  end -- if some buffs there
   
-  -- make sure window visible
-  WindowShow (win, true)
 
 end -- function OnPluginTelnetOption
 
