@@ -10,9 +10,9 @@
    id="81ea2275b48f841799d27e87"
    language="Lua"
    purpose="Shows XP to level"
-   date_written="2010-02-02"
-   requires="4.35"
-   version="1.0"
+   date_written="2010-02-17"
+   requires="4.40"
+   version="2.0"
    >
 <description trim="y">
 <![CDATA[
@@ -110,9 +110,9 @@ function OnPluginTelnetOption (option)
   -- update the bar if we received updated xp
   if t.xp then
     -- if current or max changes, save it  
-    cur_xp = cur_xp or t.xp.cur
-    max_xp = max_xp or t.xp.max
-    pct_xp = pct_xp or t.xp.pct
+    cur_xp = t.xp.cur or cur_xp
+    max_xp = t.xp.max or max_xp
+    pct_xp = t.xp.pct or pct_xp
     draw_bar ()
   end -- if
   
