@@ -39,6 +39,7 @@ NUMBER_OF_TICKS = 5  -- number of tick marks
 require "movewindow"
 require "gauge"
 require "pairsbykeys"
+require "serialize"
 
 FONT_NAME = get_preferred_font {"Sylfaen", "Dina", "Lucida Console", "Fixedsys", "Courier" } 
 FONT_SIZE = 10
@@ -55,8 +56,11 @@ function DoGauge (sPrompt, current, max, Colour)
   
   gauge (win, sPrompt, 
           current, max, 
-          gauge_left + 10, vertical, WINDOW_WIDTH - gauge_left - 15, font_height,
-          ColourNameToRGB (Colour or "darkgreen"), ColourNameToRGB "gray")
+          gauge_left + 10, vertical, WINDOW_WIDTH - gauge_left - 20, font_height,
+          ColourNameToRGB (Colour or "darkgreen"), ColourNameToRGB "gray",
+          5, ColourNameToRGB "silver", -- ticks
+          ColourNameToRGB "lightgrey",  -- frame
+          0x444444)   -- shadow
 
   vertical = vertical + font_height + GAP_BETWEEN_BARS
 end --  DoGauge
@@ -79,7 +83,18 @@ function OnPluginInstall ()
   -- find where window was last time
   windowinfo = movewindow.install (win, 7)
   
+  -- get old colours, sequence etc.
+  assert (loadstring (GetVariable ("known_stats") or "")) ()
  
+  -- reset current figure, may have changed
+  for k, v in pairs (known_stats) do
+    known_stats [k].cur = nil
+    known_stats [k].pct = nil
+  end -- for each stat
+  
+  playername = GetVariable ("playername")
+  level = tonumber (GetVariable ("level"))
+  
 end -- OnPluginInstall
 
 function OnPluginEnable ()
@@ -97,6 +112,10 @@ end -- OnPluginClose
 
 function OnPluginSaveState ()
   movewindow.save_state (win)
+  SetVariable ("known_stats", 
+               "known_stats = " .. serialize.save_simple (known_stats))
+  SetVariable ("playername", playername or "")
+  SetVariable ("level", level or "")
 end -- OnPluginSaveState
 
 known_stats = {}
@@ -156,8 +175,8 @@ end -- function Buff_Processing
 function Show_Buffs (tbl, colour)
  if tbl then
     -- seperator line
-    WindowLine (win, 5, vertical, WINDOW_WIDTH - 5, vertical, 
-                ColourNameToRGB "darkgray", 0, 1)
+    WindowLine (win, 5, vertical, WINDOW_WIDTH - 5, vertical, ColourNameToRGB "darkgray", 0, 1)
+    WindowLine (win, 6, vertical + 1, WINDOW_WIDTH - 4, vertical + 1, ColourNameToRGB "#444444", 0, 1)
     
     vertical = vertical + 2    
     local x = 5  
@@ -290,6 +309,7 @@ function OnPluginTelnetOption (option)
     -- seperator line
     WindowLine (win, 5, font_height + GAP_BETWEEN_BARS, WINDOW_WIDTH - 5, font_height + GAP_BETWEEN_BARS, 
                 ColourNameToRGB "darkgray", 0, 1)
+    WindowLine (win, 6, font_height + GAP_BETWEEN_BARS + 1, WINDOW_WIDTH - 4, font_height + GAP_BETWEEN_BARS + 1, ColourNameToRGB "#444444", 0, 1)
 
     -- show level number inside circle
     if level then
@@ -336,6 +356,8 @@ function OnPluginTelnetOption (option)
     end -- if
   end -- for
   
+  vertical = vertical + 1
+  
   Show_Buffs (display_buffs, ColourNameToRGB "#003C00")
   Show_Buffs (display_debuffs, ColourNameToRGB "darkred")
 
@@ -350,8 +372,10 @@ end -- function OnPluginTelnetRequest
 -- on a new connection, this might be a new character, and name
 -- and all stats different
 function OnPluginConnect ()
-  known_stats = {}
   WindowShow (win, false)
+  known_stats = {}
+  playername = nil
+  level = nil
 end -- OnConnect
 
 ]]>
