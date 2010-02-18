@@ -31,6 +31,8 @@ The window can be dragged to a new location with the mouse.
 <script>
 <![CDATA[
 
+MAX_GROUP = 5
+
 GAP_BETWEEN_BARS = 4
  
 WINDOW_WIDTH = 300   -- width of entire status window
@@ -71,6 +73,7 @@ function OnPluginInstall ()
   player_win = GetPluginID () .. "_player"
   victim_win = GetPluginID () .. "_victim"
 
+  
   -- make initial window
   WindowCreate (player_win, 0, 0, 0, 0, 0, 0, 0)
   -- add the fonts
@@ -83,13 +86,28 @@ function OnPluginInstall ()
   font_height = WindowFontInfo (player_win, FONT_ID, 1)  -- height
   buff_font_height = WindowFontInfo (player_win, BUFF_FONT_ID, 1)  -- height
 
-  -- make initial window
+  -- make initial window for victim (target)
   WindowCreate (victim_win, 0, 0, 0, 0, 0, 0, 0)
   -- add the fonts
   WindowFont (victim_win, FONT_ID, FONT_NAME, FONT_SIZE)
   WindowFont (victim_win, BUFF_FONT_ID, BUFF_FONT_NAME, BUFF_FONT_SIZE)
   -- find where window was last time
   victim_windowinfo = movewindow.install (victim_win, 5)
+
+  -- set up windows and data structures for groups  
+  groups = {}
+  for i = 1, MAX_GROUP do
+    groups [i] = {}
+    groups [i].win = GetPluginID () .. "_group" .. i
+    groups [i].windowinfo = movewindow.install (groups [i].win, 11)
+    groups [i].info = { stats = {} }
+    
+    -- make initial window for victim (target)
+    WindowCreate (groups [i].win, 0, 0, 0, 0, 0, 0, 0)
+    -- add the fonts
+    WindowFont (groups [i].win, FONT_ID, FONT_NAME, FONT_SIZE)
+    WindowFont (groups [i].win, BUFF_FONT_ID, BUFF_FONT_NAME, BUFF_FONT_SIZE)
+  end -- for each group
   
   -- get old colours, sequence etc.
   assert (loadstring (GetVariable ("player_info") or "")) ()
@@ -101,6 +119,11 @@ function OnPluginInstall ()
     v.cur = nil
     v.pct = nil
     victim_info.stats [k] = { clr = v.clr, seq = v.seq }
+    
+    for _, group in ipairs (groups) do
+      group.info.stats [k] = { clr = v.clr, seq = v.seq }
+    end -- for
+   
   end -- for each stat
   
 end -- OnPluginInstall
@@ -112,16 +135,26 @@ end -- OnPluginDisable
 function OnPluginDisable ()
   WindowShow (player_win, false)
   WindowShow (victim_win, false)
+  for i, v in ipairs (groups) do
+    WindowShow (v.win, false)
+  end -- for
 end -- OnPluginDisable
 
 -- hide window on removal
 function OnPluginClose ()
   WindowShow (player_win,  false)  -- hide it
   WindowShow (victim_win, false)
+  for i, v in ipairs (groups) do
+    WindowShow (v.win, false)
+  end -- for
 end -- OnPluginClose
 
 function OnPluginSaveState ()
   movewindow.save_state (player_win)
+  movewindow.save_state (victim_win)
+  for i, v in ipairs (groups) do
+    movewindow.save_state (v.win)
+  end -- for
   SetVariable ("player_info", 
                "player_info = " .. serialize.save_simple (player_info))
 end -- OnPluginSaveState
@@ -380,6 +413,26 @@ function OnPluginTelnetOption (option)
   else
     WindowShow (victim_win, false)
   end -- if
+  
+  -- if not a status line, don't look for groups
+  if not t.bar then
+    return
+  end -- if
+
+  -- hide groups in case disbanded  
+  for i, v in ipairs (groups) do
+    WindowShow (v.win, false)
+  end -- for
+  
+  if t.group and type (t.group) == "table" then
+    for i, v in ipairs (t.group) do
+      if i > MAX_GROUP then
+        break
+      end -- if
+      Show_Stats_Bar (v, groups [i].info, groups [i].win, groups [i].windowinfo)
+    end -- for each group member
+  
+  end -- if group table there
   
 end -- function OnPluginTelnetOption
 
