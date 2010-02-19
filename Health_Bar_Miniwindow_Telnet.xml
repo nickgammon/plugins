@@ -51,6 +51,9 @@ BUFF_FONT_NAME = get_preferred_font {"Trebuchet MS", "Sylfaen", "Lucida Console"
 BUFF_FONT_SIZE = 8
 BUFF_FONT_ID = "fb"  -- internal font identifier
 
+player_info = { stats = {} }
+victim_info = { stats = {} }
+hint = { stats = {} }
                 
 function DoGauge (sPrompt, win, current, max, Colour)
   local width = WindowTextWidth (win, FONT_ID, sPrompt)  -- to right-justify it
@@ -109,8 +112,10 @@ function OnPluginInstall ()
     WindowFont (groups [i].win, BUFF_FONT_ID, BUFF_FONT_NAME, BUFF_FONT_SIZE)
   end -- for each group
   
-  -- get old colours, sequence etc.
+  -- get old maxima
   assert (loadstring (GetVariable ("player_info") or "")) ()
+  -- get old colours, sequence etc.
+  assert (loadstring (GetVariable ("hint") or "")) ()
  
   player_info = player_info or { stats = {} }
   
@@ -118,12 +123,6 @@ function OnPluginInstall ()
   for k, v in pairs (player_info.stats) do
     v.cur = nil
     v.pct = nil
-    victim_info.stats [k] = { clr = v.clr, seq = v.seq }
-    
-    for _, group in ipairs (groups) do
-      group.info.stats [k] = { clr = v.clr, seq = v.seq }
-    end -- for
-   
   end -- for each stat
   
 end -- OnPluginInstall
@@ -155,17 +154,14 @@ function OnPluginSaveState ()
   for i, v in ipairs (groups) do
     movewindow.save_state (v.win)
   end -- for
-  SetVariable ("player_info", 
-               "player_info = " .. serialize.save_simple (player_info))
+  SetVariable ("player_info", "player_info = " .. serialize.save_simple (player_info))
+  SetVariable ("hint", "hint = " .. serialize.save_simple (hint))
 end -- OnPluginSaveState
-
-player_info = { stats = {} }
-victim_info = { stats = {} }
 
 function Buff_Processing (tbl, win)
   local display_buffs
 
-  if tbl then
+  if tbl and #tbl > 0 then
     window_height = window_height + buff_font_height
     
     -- we may get: bless, bless  so we convert that to bless(2)
@@ -246,25 +242,19 @@ function Show_Stats_Bar (t, info, win, windowinfo)
   info.unitname = t.name or info.unitname
 
   -- can't pull things out of bar table if it isn't there
-  if not t.bar then
+  if not t.stats then
     return
   end
 
   stats = info.stats
   
  -- find how many (eg. HP, mana, move)
-  for k, v in pairs (t.bar) do
+  for k, v in pairs (t.stats) do
     stats [k] = stats [k] or {}
     -- save new stats in case not supplied in future
     stats [k].cur = v.cur or stats [k].cur
     stats [k].max = v.max or stats [k].max
     stats [k].pct = v.pct or stats [k].pct
-    
-    -- remember colour to display in
-    stats [k].clr = v.clr or stats [k].clr
-    
-    -- display sequence (defaults to name)
-    stats [k].seq = v.seq or stats [k].seq or k
   end -- for
 
   local labels = {}
@@ -281,7 +271,12 @@ function Show_Stats_Bar (t, info, win, windowinfo)
   end -- nothing known yet
   
   -- sort into wanted order
-  table.sort (labels, function (a, b) return stats [a].seq < stats [b].seq end)
+  table.sort (labels, function (a, b) 
+              if hint.stats [a] and hint.stats [b] then
+                return hint.stats [a].clr or a < hint.stats [b].clr or b
+              end
+              return a < b 
+              end)
   
   window_height = (font_height * gauge_count) + (gauge_count * 2 + 1) * GAP_BETWEEN_BARS 
   if info.unitname or info.level then
@@ -370,8 +365,26 @@ function Show_Stats_Bar (t, info, win, windowinfo)
     end -- of having info.level
     
     -- show player name
-    if info.unitname then    
-      WindowText (win, FONT_ID, capitalize (info.unitname), 5, 2, 0, 0, ColourNameToRGB "#444444")
+    if info.unitname then  
+      local x = 5
+      if t.leader then
+        -- draw leader's crown
+        WindowPolygon (win, "5,12,13,12,13,4,11,6,9,4,7,6,5,4",
+                                ColourNameToRGB("black"), 0, 1,   -- pen (solid, width 3)
+                                ColourNameToRGB("gold"), 0,       -- brush (solid)
+                                true,    -- fill
+                                false)   
+        x = 20     
+      end -- if leader  
+      x = x + WindowText (win, FONT_ID, capitalize (info.unitname), x, 2, 0, 0, ColourNameToRGB "#444444")
+      if t.follow then
+        x = x + WindowText (win, FONT_ID, " (following " .. capitalize (t.follow) .. ")", x, 2, 0, 0, ColourNameToRGB "#444444")
+      end -- following
+      
+      if t.position and t.position ~= "standing" then
+        x = x + WindowText (win, FONT_ID, " [" .. capitalize (t.position) .. "]", x, 2, 0, 0, ColourNameToRGB "#666666")
+      end -- if
+      
     end -- of having info.unitname
     
     vertical = vertical + font_height + GAP_BETWEEN_BARS
@@ -383,11 +396,16 @@ function Show_Stats_Bar (t, info, win, windowinfo)
   -- show stats in sequence
   for _, name in ipairs (labels) do
     local st = stats [name]
+    local colourhint = hint.stats [name]
+    local colour
+    if colourhint then
+      colour = colourhint.clr
+    end -- if
     
     if st.pct then
-      DoGauge (name, win, st.pct, nil,    st.clr)
+      DoGauge (name, win, st.pct, nil,    colour)
     else
-      DoGauge (name, win, st.cur, st.max, st.clr)
+      DoGauge (name, win, st.cur, st.max, colour)
     end -- if
   end -- for
   
@@ -406,17 +424,44 @@ function OnPluginTelnetOption (option)
   local t = {}  -- incoming server variables will go into table t
   setfenv (assert (loadstring (option)), t) () -- compile and load into t
   
-  Show_Stats_Bar (t, player_info, player_win, player_windowinfo)
+  -- colour hints
+  if t.hint then
+    for k, v in pairs (t.hint) do
+      hint [k] = v
+    end -- for
+  end -- t.hint
+  
+  if not t.group then
+    return
+  end -- nothing about groups here
+  
+  local me
+  for k, v in ipairs (t.group) do
+    if v.me then
+      me = v
+      table.remove (t.group, k)
+      break
+    end -- if found myself
+  end -- for
+  
+  table.sort (t.group, function (a, b) return a.name < b.name end)
+  
+  -- hopefully found myself
+  if not me then
+    return
+  end -- if
+  
+  -- don't lead ourselves
+  if #t.group == 0 then
+    me.leader = false
+  end -- if
+  
+  Show_Stats_Bar (me, player_info, player_win, player_windowinfo)
 
   if t.victim then
     Show_Stats_Bar (t.victim, victim_info, victim_win, victim_windowinfo)
   else
     WindowShow (victim_win, false)
-  end -- if
-  
-  -- if not a status line, don't look for groups
-  if not t.bar then
-    return
   end -- if
 
   -- hide groups in case disbanded  
