@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE muclient>
+
+<muclient>
+<plugin
+   name="Room_Location_Telnet"
+   author="Nick Gammon"
+   id="00ceb6f44bc36ed815a93950"
+   language="Lua"
+   purpose="Shows where we are in a miniwindow"
+   date_written="2010-02-02"
+   requires="4.40"
+   version="1.0"
+   save_state="y"
+   >
+<description trim="y">
+<![CDATA[
+Install this plugin to show an your current room name and exits.
+
+The window can be dragged to a new location with the mouse.
+]]>
+</description>
+
+</plugin>
+
+
+<!--  Script  -->
+
+
+<script>
+<![CDATA[
+
+FONT_NAME = "Fixedsys"    -- the font we want to use
+FONT_SIZE = 9
+FONT_ID = "fn"  -- internal font identifier
+  
+require "movewindow"
+
+function OnPluginInstall ()
+  
+  win = GetPluginID ()
+
+  WindowCreate (win, 0, 0, 0, 0, 0, 0, 0)
+                 
+  -- add the font
+  WindowFont (win, FONT_ID, FONT_NAME, FONT_SIZE)
+  
+  -- see how high it is
+  font_height = WindowFontInfo (win, FONT_ID, 1)  -- height
+
+  -- find where window was last time
+  windowinfo = movewindow.install (win, 7)
+   
+end -- OnPluginInstall
+
+function OnPluginEnable ()
+  WindowShow (win, true)
+end -- OnPluginDisable
+
+function OnPluginDisable ()
+  WindowShow (win, false)
+end -- OnPluginDisable
+
+-- hide window on removal
+function OnPluginClose ()
+  WindowShow (win,  false)  -- hide it
+end -- OnPluginClose
+
+function OnPluginSaveState ()
+  movewindow.save_state (win)
+end -- OnPluginSaveState
+
+-- here when location changes
+--[[
+ example line (extra lines added for clarity): 
+ 
+ tt="move";room=21056;name="Quills and Parchments";
+ blind=false;dark=false;
+ exits={north=21047;west=21053;};
+ 
+--]]
+
+function OnPluginTelnetOption (option)
+
+  local t = {}  -- incoming server variables will go into table t
+  setfenv (assert (loadstring (option)), t) () -- compile and load into t
+  
+  if t.tt ~= "move" then
+    return
+  end
+  
+  local width = 0
+  local lines = 1  -- have at least one line
+  local dark_message = "It is too dark to see."
+  local blind_message = "You are blind!"
+  local exits_message = "Exits:"
+
+  local background_colour = ColourNameToRGB "darkkhaki"
+  
+  if t.dark then
+    width = WindowTextWidth (win, FONT_ID, dark_message)
+  elseif t.blind then
+    width = WindowTextWidth (win, FONT_ID, blind_message)
+  else  
+    width = WindowTextWidth (win, FONT_ID, t.name)
+    if t.exits and next (t.exits) then
+      width = math.max (width, WindowTextWidth (win, FONT_ID, exits_message))
+      lines = lines + 2
+      for k, v in pairs (t.exits) do
+        width = math.max (width, 10 + WindowTextWidth (win, FONT_ID, k))
+         lines = lines + 1
+      end -- for each exit
+    end -- if      
+  end -- if
+  
+  window_width = width + 10
+  window_height = font_height * lines + 10
+  
+  WindowCreate (win, 
+                 windowinfo.window_left, 
+                 windowinfo.window_top, 
+                 window_width, window_height,  
+                 windowinfo.window_mode,   -- top right
+                 windowinfo.window_flags,
+                 0) 
+
+  -- let them move it around                 
+  movewindow.add_drag_handler (win, 0, 0, 0, 0)
+    
+  
+  -- fill entire box to clear it
+  WindowRectOp (win, 2, 0, 0, 0, 0, background_colour)  -- fill entire box
+   
+  -- Edge around box rectangle
+  WindowCircleOp (win, 3, 0, 0, 0, 0, ColourNameToRGB "darkgray", 0, 2, 0, 1)
+
+  if t.blind then
+    WindowText (win, FONT_ID, blind_message, 5, 5, 0, 0, ColourNameToRGB "darkred")
+  elseif t.dark then
+    WindowText (win, FONT_ID, dark_message, 5, 5, 0, 0, ColourNameToRGB "darkgreen")
+  else  
+    vertical = 5  -- pixel to start at
+    WindowText (win, FONT_ID, t.name, 5, 5, 0, 0, ColourNameToRGB "saddlebrown")
+    vertical = vertical + font_height * 2 -- leave blank line
+    if t.exits and next (t.exits) then
+      WindowText (win, FONT_ID, exits_message, 5, vertical, 0, 0, ColourNameToRGB "black")
+      for k, v in pairs (t.exits) do
+        vertical = vertical + font_height
+        WindowText (win, FONT_ID, k, 15, vertical, 0, 0, ColourNameToRGB "darkolivegreen")
+      end -- for each exit
+    end -- if
+  end -- if 
+  
+  -- 3D box
+  WindowCircleOp (win, 3, 0, 0, 0, 0, 0x505050, 0, 3, 0, 1)   -- dark grey border (3 pixels)
+  WindowCircleOp (win, 3, 1, 1, -1, -1, 0x7C7C7C, 0, 1, 0, 1)  -- lighter inner border
+  WindowCircleOp (win, 3, 2, 2, -2, -2, 0, 0, 1, 0, 1)  -- black inside that
+  WindowLine (win, 1, 1, window_width - 1, 1, 0xC2C2C2, 0, 1)  -- light top edge
+  WindowLine (win, 1, 1, 1, window_height - 1, 0xC2C2C2, 0, 1)  -- light left edge (for 3D look)
+    
+  -- make sure window visible
+  WindowShow (win, true)
+
+end -- function OnPluginTelnetOption
+
+]]>
+</script>
+
+</muclient>

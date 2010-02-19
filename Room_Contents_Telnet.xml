@@ -176,7 +176,7 @@ function OnPluginTelnetOption (option)
       for k, v in pairs (t.inroom) do
         for i, item in ipairs (v) do
           if item.lvl then
-            item.dsc = string.format ("%s [%i]", item.dsc, item.lvl)
+            item.dsc = string.format ("%s [lvl %i]", item.dsc, item.lvl)
           end -- if
           width = math.max (width, 10 + WindowTextWidth (win, FONT_ID, item.dsc))
           lines = lines + 1
@@ -262,6 +262,7 @@ function OnPluginTelnetOption (option)
     
   end -- if 
   
+  -- 3D box
   WindowCircleOp (win, 3, 0, 0, 0, 0, 0x505050, 0, 3, 0, 1)   -- dark grey border (3 pixels)
   WindowCircleOp (win, 3, 1, 1, -1, -1, 0x7C7C7C, 0, 1, 0, 1)  -- lighter inner border
   WindowCircleOp (win, 3, 2, 2, -2, -2, 0, 0, 1, 0, 1)  -- black inside that
