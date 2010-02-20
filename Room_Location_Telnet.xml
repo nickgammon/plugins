@@ -85,7 +85,7 @@ function OnPluginTelnetOption (option)
   local t = {}  -- incoming server variables will go into table t
   setfenv (assert (loadstring (option)), t) () -- compile and load into t
   
-  if t.tt ~= "move" then
+  if not t.move then
     return
   end
   
@@ -97,17 +97,17 @@ function OnPluginTelnetOption (option)
 
   local background_colour = ColourNameToRGB "darkkhaki"
   
-  if t.dark then
-    width = WindowTextWidth (win, FONT_ID, dark_message)
-  elseif t.blind then
-    width = WindowTextWidth (win, FONT_ID, blind_message)
+  if t.move.dark then
+    width = WindowTextWidth (win, FONT_ID, dark_message, true)
+  elseif t.move.blind then
+    width = WindowTextWidth (win, FONT_ID, blind_message, true)
   else  
-    width = WindowTextWidth (win, FONT_ID, t.name)
-    if t.exits and next (t.exits) then
-      width = math.max (width, WindowTextWidth (win, FONT_ID, exits_message))
+    width = WindowTextWidth (win, FONT_ID, t.move.name, true)
+    if t.move.exits and next (t.move.exits) then
+      width = math.max (width, WindowTextWidth (win, FONT_ID, exits_message, true))
       lines = lines + 2
-      for k, v in pairs (t.exits) do
-        width = math.max (width, 10 + WindowTextWidth (win, FONT_ID, k))
+      for k, v in pairs (t.move.exits) do
+        width = math.max (width, 10 + WindowTextWidth (win, FONT_ID, k, true))
          lines = lines + 1
       end -- for each exit
     end -- if      
@@ -124,7 +124,7 @@ function OnPluginTelnetOption (option)
                  windowinfo.window_flags,
                  0) 
 
-  -- let them move it around                 
+  -- let them t.move it around                 
   movewindow.add_drag_handler (win, 0, 0, 0, 0)
     
   
@@ -134,19 +134,19 @@ function OnPluginTelnetOption (option)
   -- Edge around box rectangle
   WindowCircleOp (win, 3, 0, 0, 0, 0, ColourNameToRGB "darkgray", 0, 2, 0, 1)
 
-  if t.blind then
-    WindowText (win, FONT_ID, blind_message, 5, 5, 0, 0, ColourNameToRGB "darkred")
-  elseif t.dark then
-    WindowText (win, FONT_ID, dark_message, 5, 5, 0, 0, ColourNameToRGB "darkgreen")
+  if t.move.blind then
+    WindowText (win, FONT_ID, blind_message, 5, 5, 0, 0, ColourNameToRGB "darkred", true)
+  elseif t.move.dark then
+    WindowText (win, FONT_ID, dark_message, 5, 5, 0, 0, ColourNameToRGB "darkgreen", true)
   else  
     vertical = 5  -- pixel to start at
-    WindowText (win, FONT_ID, t.name, 5, 5, 0, 0, ColourNameToRGB "saddlebrown")
+    WindowText (win, FONT_ID, t.move.name, 5, 5, 0, 0, ColourNameToRGB "saddlebrown", true)
     vertical = vertical + font_height * 2 -- leave blank line
-    if t.exits and next (t.exits) then
-      WindowText (win, FONT_ID, exits_message, 5, vertical, 0, 0, ColourNameToRGB "black")
-      for k, v in pairs (t.exits) do
+    if t.move.exits and next (t.move.exits) then
+      WindowText (win, FONT_ID, exits_message, 5, vertical, 0, 0, ColourNameToRGB "black", true)
+      for k, v in pairs (t.move.exits) do
         vertical = vertical + font_height
-        WindowText (win, FONT_ID, k, 15, vertical, 0, 0, ColourNameToRGB "darkolivegreen")
+        WindowText (win, FONT_ID, k, 15, vertical, 0, 0, ColourNameToRGB "darkolivegreen", true)
       end -- for each exit
     end -- if
   end -- if 

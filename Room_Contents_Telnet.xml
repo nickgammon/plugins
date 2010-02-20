@@ -168,9 +168,9 @@ function OnPluginTelnetOption (option)
   local background_colour = ColourNameToRGB "darkkhaki"
   
   if t.dark then
-    width = WindowTextWidth (win, FONT_ID, dark_message)
+    width = WindowTextWidth (win, FONT_ID, dark_message, true)
   elseif t.blind then
-    width = WindowTextWidth (win, FONT_ID, blind_message)
+    width = WindowTextWidth (win, FONT_ID, blind_message, true)
   else  
     if t.inroom then
       for k, v in pairs (t.inroom) do
@@ -178,14 +178,17 @@ function OnPluginTelnetOption (option)
           if item.lvl then
             item.dsc = string.format ("%s [lvl %i]", item.dsc, item.lvl)
           end -- if
-          width = math.max (width, 10 + WindowTextWidth (win, FONT_ID, item.dsc))
+          if item.fight and item.target then
+             item.dsc = string.format ("%s (fighting %s)", item.dsc, item.target)
+          end -- if
+          width = math.max (width, 10 + WindowTextWidth (win, FONT_ID, item.dsc, true))
           lines = lines + 1
           count = count + 1
         end -- for
       end -- for each item
     end -- if t.inroom table 
     if count == 0 then
-      width = WindowTextWidth (win, FONT_ID, nothing_message)
+      width = WindowTextWidth (win, FONT_ID, nothing_message, true)
     else 
       lines = lines - 1
     end -- if  
@@ -213,21 +216,21 @@ function OnPluginTelnetOption (option)
   WindowCircleOp (win, 3, 0, 0, 0, 0, ColourNameToRGB "darkgray", 0, 2, 0, 1)
 
   if t.blind then
-    WindowText (win, FONT_ID, blind_message, 5, 5, 0, 0, ColourNameToRGB "darkred")
+    WindowText (win, FONT_ID, blind_message, 5, 5, 0, 0, ColourNameToRGB "darkred", true)
   elseif t.dark then
-    WindowText (win, FONT_ID, dark_message, 5, 5, 0, 0, ColourNameToRGB "darkgreen")
+    WindowText (win, FONT_ID, dark_message, 5, 5, 0, 0, ColourNameToRGB "darkgreen", true)
   else  
     vertical = 5  -- pixel to start at
     if t.inroom then
   
-      WindowRectOp (win, 2, 0, vertical, 0, vertical + #t.inroom.players * font_height, ColourNameToRGB "darkslategray")  
+      WindowRectOp (win, 2, 0, 0, 0, vertical + #t.inroom.players * font_height, ColourNameToRGB "darkslategray")  
     
       table.sort (t.inroom.players, function (a, b) return a.dsc < b.dsc end)
       
       -- players first            
       for i, item in ipairs (t.inroom.players) do
         local colour = "white"
-        WindowText (win, FONT_ID, item.dsc, 5, vertical, 0, 0, ColourNameToRGB (colour))
+        WindowText (win, FONT_ID, item.dsc, 5, vertical, 0, 0, ColourNameToRGB (colour), true)
         vertical = vertical + font_height
       end -- for
 
@@ -238,8 +241,11 @@ function OnPluginTelnetOption (option)
       -- then NPCs
       for i, item in ipairs (t.inroom.npcs) do
         item.dsc = string.gsub (item.dsc, "[\r\n]", "")
-        local colour = "crimson"
-        WindowText (win, FONT_ID, item.dsc, 5, vertical, 0, 0, ColourNameToRGB (colour))
+        local colour = "chocolate"
+        if item.aggro then
+          colour = "crimson"
+        end -- if
+        WindowText (win, FONT_ID, item.dsc, 5, vertical, 0, 0, ColourNameToRGB (colour), true)
         vertical = vertical + font_height
       end -- for
 
@@ -250,14 +256,14 @@ function OnPluginTelnetOption (option)
         if item.typ then
           colour = item_colours [item.typ]
         end -- if item has a type
-        WindowText (win, FONT_ID, item.dsc, 5, vertical, 0, 0, ColourNameToRGB (colour))
+        WindowText (win, FONT_ID, item.dsc, 5, vertical, 0, 0, ColourNameToRGB (colour), true)
         vertical = vertical + font_height
       end -- for
         
     end -- if t.inroom table 
     
     if count == 0 then
-      WindowText (win, FONT_ID, nothing_message, 5, 5, 0, 0, ColourNameToRGB "darkgreen")
+      WindowText (win, FONT_ID, nothing_message, 5, 5, 0, 0, ColourNameToRGB "darkgreen", true)
     end -- if  
     
   end -- if 
