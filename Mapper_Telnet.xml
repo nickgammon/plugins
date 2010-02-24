@@ -59,7 +59,9 @@ ROOM_COLOUR = ColourNameToRGB "cyan"
 EXIT_COLOUR = ColourNameToRGB "darkgreen"
 OUR_ROOM_FILL_COLOUR = ColourNameToRGB "bisque"
 SHOP_FILL_COLOUR = ColourNameToRGB "darkolivegreen"
-TRAINER_FILL_COLOUR = "gold"
+TRAINER_FILL_COLOUR = ColourNameToRGB "yellowgreen"
+BLACKSMITH_FILL_COLOUR = ColourNameToRGB "darkgray"
+HEALER_FILL_COLOUR = ColourNameToRGB "gold"
 
 require "movewindow"
 require "serialize"
@@ -306,6 +308,10 @@ function draw_room (guid, path, x, y)
     WindowRectOp (win, 2, left, top, right, bottom, SHOP_FILL_COLOUR)
   elseif rooms [guid].train then
     WindowRectOp (win, 2, left, top, right, bottom, TRAINER_FILL_COLOUR)
+  elseif rooms [guid].repair then
+    WindowRectOp (win, 2, left, top, right, bottom, BLACKSMITH_FILL_COLOUR)
+  elseif rooms [guid].healer then
+    WindowRectOp (win, 2, left, top, right, bottom, HEALER_FILL_COLOUR)
   end -- if 
 
   -- draw current room (last, so it goes on top)
