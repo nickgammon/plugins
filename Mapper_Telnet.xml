@@ -36,8 +36,8 @@ FONT_ID = "fn"  -- internal font identifier
   
 WINDOW_WIDTH = 400
 WINDOW_HEIGHT = 400
-ROOM_SIZE = 20
-DISTANCE_TO_NEXT_ROOM = 30
+ROOM_SIZE = 10  -- 20
+DISTANCE_TO_NEXT_ROOM = 15  -- 30
 
 BACKGROUND_COLOUR = ColourNameToRGB "lightseagreen"
 ROOM_COLOUR = ColourNameToRGB "cyan"
@@ -147,16 +147,16 @@ half_connectors = {
 
 function draw_room (guid, x, y)
 
+  local coords = string.format ("%i,%i", x, y)
+
   if drawn [guid] then
     return
   end -- done this one
   
   -- don't draw the same room more than once
-  drawn [guid] = true
+  drawn [guid] = coords
   
   -- don't draw another room on top of one we already drew
-  local coords = string.format ("%i,%i", x, y)
-  
   if drawn_coords [coords] then
     return
   end -- if drawn on this spot
@@ -189,7 +189,7 @@ function draw_room (guid, x, y)
       local next_y = y + exit_info.at [2] * (ROOM_SIZE + DISTANCE_TO_NEXT_ROOM)
       
       local next_coords = string.format ("%i,%i", next_x, next_y)
-      if drawn_coords [next_coords] then
+      if drawn_coords [next_coords] and drawn [exit_guid] ~= next_coords then
         exit_info = half_connectors [name]
       end -- if drawn on this spot
 
