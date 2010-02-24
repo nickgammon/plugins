@@ -39,10 +39,12 @@ WINDOW_HEIGHT = 400
 ROOM_SIZE = 20
 DISTANCE_TO_NEXT_ROOM = 30
 
+BACKGROUND_COLOUR = ColourNameToRGB "lightseagreen"
 ROOM_COLOUR = ColourNameToRGB "cyan"
 EXIT_COLOUR = ColourNameToRGB "darkgreen"
 OUR_ROOM_FILL_COLOUR = ColourNameToRGB "bisque"
 require "movewindow"
+require "serialize"
 
 rooms = {}
 requested_rooms = {}
@@ -90,6 +92,8 @@ function OnPluginInstall ()
   -- find where window was last time
   windowinfo = movewindow.install (win, 7)
    
+  assert (loadstring (GetVariable ("rooms") or "")) ()
+  
 end -- OnPluginInstall
 
 function OnPluginEnable ()
@@ -107,9 +111,12 @@ end -- OnPluginClose
 
 function OnPluginSaveState ()
   movewindow.save_state (win)
+  SetVariable ("rooms", "rooms = " .. serialize.save_simple (rooms))
 end -- OnPluginSaveState
 
 local HALF_ROOM = ROOM_SIZE / 2
+local HALF_WAY  = DISTANCE_TO_NEXT_ROOM / 2
+local THIRD_WAY  = DISTANCE_TO_NEXT_ROOM / 3
 
 connectors = {
   north = { x1 = 0,             y1 = - HALF_ROOM, x2 = 0,             y2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM, at = { 0, -1 } }, 
@@ -120,9 +127,22 @@ connectors = {
   northeast = { x1 =   HALF_ROOM, y1 = - HALF_ROOM, x2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM , y2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM, at = { 1, -1 } }, 
   southeast = { x1 =   HALF_ROOM, y1 =   HALF_ROOM, x2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM , y2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM, at = { 1,  1 } }, 
   northwest = { x1 = - HALF_ROOM, y1 = - HALF_ROOM, x2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM , y2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM, at = {-1, -1 } }, 
-  southwest = { x1 =   HALF_ROOM, y1 = - HALF_ROOM, x2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM , y2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM, at = {-1,  1 } }, 
+  southwest = { x1 = - HALF_ROOM, y1 =   HALF_ROOM, x2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM , y2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM, at = {-1,  1 } }, 
 
   } -- end connectors
+  
+half_connectors = {
+  north = { x1 = 0,             y1 = - HALF_ROOM, x2 = 0,             y2 = - HALF_ROOM - THIRD_WAY, at = { 0, -1 } }, 
+  south = { x1 = 0,             y1 =   HALF_ROOM, x2 = 0,             y2 =   HALF_ROOM + THIRD_WAY, at = { 0,  1 } }, 
+  east  = { x1 =   HALF_ROOM,   y1 = 0,           x2 =   HALF_ROOM + THIRD_WAY, y2 = 0, at = {  1,  0 }}, 
+  west  = { x1 = - HALF_ROOM,   y1 = 0,           x2 = - HALF_ROOM - THIRD_WAY, y2 = 0, at = { -1,  0 }}, 
+
+  northeast = { x1 =   HALF_ROOM, y1 = - HALF_ROOM, x2 =   HALF_ROOM + THIRD_WAY , y2 = - HALF_ROOM - THIRD_WAY, at = { 1, -1 } }, 
+  southeast = { x1 =   HALF_ROOM, y1 =   HALF_ROOM, x2 =   HALF_ROOM + THIRD_WAY , y2 =   HALF_ROOM + THIRD_WAY, at = { 1,  1 } }, 
+  northwest = { x1 = - HALF_ROOM, y1 = - HALF_ROOM, x2 = - HALF_ROOM - THIRD_WAY , y2 = - HALF_ROOM - THIRD_WAY, at = {-1, -1 } }, 
+  southwest = { x1 =   HALF_ROOM, y1 = - HALF_ROOM, x2 =   HALF_ROOM + THIRD_WAY , y2 = - HALF_ROOM - THIRD_WAY, at = {-1,  1 } }, 
+
+  } -- end half_connectors
   
 
 function draw_room (guid, x, y)
@@ -134,6 +154,16 @@ function draw_room (guid, x, y)
   -- don't draw the same room more than once
   drawn [guid] = true
   
+  -- don't draw another room on top of one we already drew
+  local coords = string.format ("%i,%i", x, y)
+  
+  if drawn_coords [coords] then
+    return
+  end -- if drawn on this spot
+  
+  drawn_coords [coords] = true
+  
+  -- can't if we know nothing about it
   if not rooms [guid] then
     return
   end -- not in cache
@@ -144,15 +174,28 @@ function draw_room (guid, x, y)
   if x < 0 or y < 0 or x > WINDOW_WIDTH or y > WINDOW_HEIGHT then
      return
   end -- if
-
+  
   -- exits
   
   for name, exit_guid in pairs (rooms [guid].exits) do
     local exit_info = connectors [name]
     if exit_info then
-      WindowLine (win, x + exit_info.x1, y + exit_info.y1, x + exit_info.x2, y + exit_info.y2, EXIT_COLOUR, 0, 1)
+      local linetype = 0 -- unbroken
+      if not rooms [exit_guid] then
+        linetype = 2 -- dots
+      end -- if
+      
+      local next_x = x + exit_info.at [1] * (ROOM_SIZE + DISTANCE_TO_NEXT_ROOM)
+      local next_y = y + exit_info.at [2] * (ROOM_SIZE + DISTANCE_TO_NEXT_ROOM)
+      
+      local next_coords = string.format ("%i,%i", next_x, next_y)
+      if drawn_coords [next_coords] then
+        exit_info = half_connectors [name]
+      end -- if drawn on this spot
+
+      WindowLine (win, x + exit_info.x1, y + exit_info.y1, x + exit_info.x2, y + exit_info.y2, EXIT_COLOUR, linetype, 1)
       -- recurse to do draw exit
-      draw_room (exit_guid, x + exit_info.at [1] * (ROOM_SIZE + DISTANCE_TO_NEXT_ROOM), y + exit_info.at [2] * (ROOM_SIZE + DISTANCE_TO_NEXT_ROOM))
+      draw_room (exit_guid, next_x, next_y)
     end -- if we know what to do with this direction
   end -- for each exit
 
@@ -163,7 +206,16 @@ function draw_room (guid, x, y)
   -- draw current room (last, so it goes on top)
   WindowRectOp (win, 1, left, top, right, bottom, ROOM_COLOUR)
   
-  
+  WindowAddHotspot(win, guid,  
+                 left, top, right, bottom,   -- rectangle
+                 "",  -- mouseover
+                 "",  -- cancelmouseover
+                 "",  -- mousedown
+                 "",  -- cancelmousedown
+                 "",  -- mouseup
+                 string.format ("%s\t(%s)", rooms [guid].name, guid),  -- tooltip text
+                 1, 0)  -- hand cursor
+                   
 end -- draw_room
 
 -- here when location changes
@@ -201,8 +253,6 @@ function OnPluginTelnetOption (option)
   local dark_message = "It is too dark to see."
   local blind_message = "You are blind!"
   local exits_message = "Exits:"
-
-  local background_colour = ColourNameToRGB "lightseagreen"
    
   room = {}  -- current room
   
@@ -230,7 +280,7 @@ function OnPluginTelnetOption (option)
     
   
   -- fill entire box to clear it
-  WindowRectOp (win, 2, 0, 0, 0, 0, background_colour)  -- fill entire box
+  WindowRectOp (win, 2, 0, 0, 0, 0, BACKGROUND_COLOUR)  -- fill entire box
    
   -- Edge around box rectangle
   WindowCircleOp (win, 3, 0, 0, 0, 0, ColourNameToRGB "darkgray", 0, 2, 0, 1)
@@ -248,6 +298,7 @@ function OnPluginTelnetOption (option)
     end -- if
     -- initial room in middle
     drawn = {}  -- to stop double-drawing
+    drawn_coords = {}
     current_room = t.move.guid
     draw_room (t.move.guid, WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2)
   end -- if 
