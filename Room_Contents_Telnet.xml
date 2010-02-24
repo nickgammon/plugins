@@ -167,11 +167,13 @@ end -- check_cache
 
 function check_cache_table (tbl, type)
 
-  -- for an entire table (eg. objects, players, npcs) check all for cached guids
-  for i, item in ipairs (tbl) do
-    check_cache (item.guid, item, type)
-  end -- for
-
+  if tbl then
+    -- for an entire table (eg. objects, players, npcs) check all for cached guids
+    for i, item in ipairs (tbl) do
+      check_cache (item.guid, item, type)
+    end -- for
+  end -- if
+  
 end -- request_item
 
 function mouseup_player (flags, hotspot_id)

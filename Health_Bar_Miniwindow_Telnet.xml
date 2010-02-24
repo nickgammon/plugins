@@ -422,7 +422,7 @@ end -- Show_Stats_Bar
 function OnPluginTelnetOption (option)
 
   local t = {}  -- incoming server variables will go into table t
-  setfenv (assert (loadstring (option)), t) () -- compile and load into t
+  setfenv (assert (loadstring (option), "Error in: " .. option), t) () -- compile and load into t
   
   -- colour hints
   if t.hint then
