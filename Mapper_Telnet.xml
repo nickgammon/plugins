@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE muclient>
+
+<muclient>
+<plugin
+   name="Mapper_Telnet"
+   author="Nick Gammon"
+   id="6069eacf376f5e9dbfce901f"
+   language="Lua"
+   purpose="Draws room map"
+   date_written="2010-02-24"
+   requires="4.50"
+   version="1.0"
+   save_state="y"
+   >
+<description trim="y">
+<![CDATA[
+Install this plugin to show an your current room name and exits.
+
+The window can be dragged to a new location with the mouse.
+]]>
+</description>
+
+</plugin>
+
+
+<!--  Script  -->
+
+
+<script>
+<![CDATA[
+
+FONT_NAME = "Fixedsys"    -- the font we want to use
+FONT_SIZE = 9
+FONT_ID = "fn"  -- internal font identifier
+  
+WINDOW_WIDTH = 400
+WINDOW_HEIGHT = 400
+
+require "movewindow"
+
+guid_cache = {}
+requested_cache = {}
+
+local IAC, SB, SE = 0xFF, 0xFA, 0xF0
+
+-- check if single item cached
+function check_cache (guid, item, type)
+  local cache = guid_cache [guid]  -- field to check on
+  if cache then
+    -- copy in cached stuff
+    for k, v in pairs (cache) do
+      item [k] = v  
+    end -- for
+  elseif not requested_cache [guid] then
+      SendPkt (string.char (IAC, SB, 102) .. type .. " = \"" .. guid .. "\"" .. string.char (IAC, SE)) 
+      Note ("Requested ", type, " cache ID: ", guid)
+      requested_cache [guid] = GetInfo (232)  -- don't request twice
+  end -- if 
+end -- check_cache
+
+function check_cache_table (tbl, type)
+
+  if tbl then
+    -- for an entire table (eg. objects, players, npcs, rooms) check all for cached guids
+    for i, item in ipairs (tbl) do
+      check_cache (item.guid, item, type)
+    end -- for
+  end -- if
+  
+end -- request_item
+
+function OnPluginInstall ()
+  
+  win = GetPluginID ()
+
+  WindowCreate (win, 0, 0, 0, 0, 0, 0, 0)
+                 
+  -- add the font
+  WindowFont (win, FONT_ID, FONT_NAME, FONT_SIZE)
+  
+  -- see how high it is
+  font_height = WindowFontInfo (win, FONT_ID, 1)  -- height
+
+  -- find where window was last time
+  windowinfo = movewindow.install (win, 7)
+   
+end -- OnPluginInstall
+
+function OnPluginEnable ()
+  WindowShow (win, true)
+end -- OnPluginDisable
+
+function OnPluginDisable ()
+  WindowShow (win, false)
+end -- OnPluginDisable
+
+-- hide window on removal
+function OnPluginClose ()
+  WindowShow (win,  false)  -- hide it
+end -- OnPluginClose
+
+function OnPluginSaveState ()
+  movewindow.save_state (win)
+end -- OnPluginSaveState
+
+-- here when location changes
+
+function OnPluginTelnetOption (option)
+
+  local t = {}  -- incoming server variables will go into table t
+  setfenv (assert (loadstring (option)), t) () -- compile and load into t
+  
+  -- cache incoming object information
+  if t.room_info then
+    for k, v in pairs (t.room_info) do
+      local time_elapsed = GetInfo (232) - (requested_cache [k] or GetInfo (232))
+      local dsc = v.name or "<elapsed>"
+      Note (string.format ("RECEIVED room ID: %s in %.2f seconds (%s).", k, time_elapsed, dsc))
+      guid_cache [k] = v or nil
+      requested_cache [k] = nil
+      -- tprint (v)
+    end -- for
+  end -- if
+    
+  if t.move then
+    redisplay = nil
+  else
+    -- we couldn't display all last time, and we got some cache info, try again
+    if redisplay and t.room_info then
+      t.move = redisplay
+    else
+      return
+    end
+  end
+    
+  local width = 0
+  local lines = 1  -- have at least one line
+  local dark_message = "It is too dark to see."
+  local blind_message = "You are blind!"
+  local exits_message = "Exits:"
+
+  local background_colour = ColourNameToRGB "darkkhaki"
+   
+  room = {}  -- current room
+  
+  check_cache_table (t.move.exits,  "room_info")
+  check_cache (t.move.guid, room, "room_info")
+  
+  if not guid_cache [t.move.guid] then
+    redisplay = t.move  -- need to redisplay when cache info arrives
+  end -- if
+  
+  window_width = width + 10
+  window_height = font_height * lines + 10
+  
+  WindowCreate (win, 
+                 windowinfo.window_left, 
+                 windowinfo.window_top, 
+                 WINDOW_WIDTH, WINDOW_HEIGHT,  
+                 windowinfo.window_mode,   -- top right
+                 windowinfo.window_flags,
+                 0) 
+
+  -- let them t.move it around                 
+  movewindow.add_drag_handler (win, 0, 0, 0, 0)
+    
+  
+  -- fill entire box to clear it
+  WindowRectOp (win, 2, 0, 0, 0, 0, background_colour)  -- fill entire box
+   
+  -- Edge around box rectangle
+  WindowCircleOp (win, 3, 0, 0, 0, 0, ColourNameToRGB "darkgray", 0, 2, 0, 1)
+
+  if t.move.blind then
+    WindowText (win, FONT_ID, blind_message, 5, 5, 0, 0, ColourNameToRGB "darkred", true)
+  elseif t.move.dark then
+    WindowText (win, FONT_ID, dark_message, 5, 5, 0, 0, ColourNameToRGB "darkgreen", true)
+  else  
+    vertical = 5  -- pixel to start at
+    WindowText (win, FONT_ID, t.move.guid, 5, vertical, 0, 0, ColourNameToRGB "saddlebrown", true)
+    vertical = vertical + font_height
+    if room.name then
+      WindowText (win, FONT_ID, room.name, 5, vertical, 0, 0, ColourNameToRGB "saddlebrown", true)
+    end -- if
+    
+  end -- if 
+  
+  -- 3D box
+  WindowCircleOp (win, 3, 0, 0, 0, 0, 0x505050, 0, 3, 0, 1)   -- dark grey border (3 pixels)
+  WindowCircleOp (win, 3, 1, 1, -1, -1, 0x7C7C7C, 0, 1, 0, 1)  -- lighter inner border
+  WindowCircleOp (win, 3, 2, 2, -2, -2, 0, 0, 1, 0, 1)  -- black inside that
+  WindowLine (win, 1, 1, WINDOW_WIDTH - 1, 1, 0xC2C2C2, 0, 1)  -- light top edge
+  WindowLine (win, 1, 1, 1, WINDOW_HEIGHT - 1, 0xC2C2C2, 0, 1)  -- light left edge (for 3D look)
+    
+  -- make sure window visible
+  WindowShow (win, true)
+
+end -- function OnPluginTelnetOption
+
+]]>
+</script>
+
+</muclient>
