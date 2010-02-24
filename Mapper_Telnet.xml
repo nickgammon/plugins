@@ -23,6 +23,20 @@ The window can be dragged to a new location with the mouse.
 
 </plugin>
 
+<aliases>
+  <alias
+   match="clear map cache"
+   enabled="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>
+rooms = {}
+Note "Mapper room cache cleared."
+</send>
+  </alias>
+</aliases>
+
 
 <!--  Script  -->
 
@@ -38,13 +52,18 @@ WINDOW_WIDTH = 400
 WINDOW_HEIGHT = 400
 ROOM_SIZE = 10  -- 20
 DISTANCE_TO_NEXT_ROOM = 15  -- 30
+MAX_DEPTH = 20
 
 BACKGROUND_COLOUR = ColourNameToRGB "lightseagreen"
 ROOM_COLOUR = ColourNameToRGB "cyan"
 EXIT_COLOUR = ColourNameToRGB "darkgreen"
 OUR_ROOM_FILL_COLOUR = ColourNameToRGB "bisque"
+SHOP_FILL_COLOUR = ColourNameToRGB "darkolivegreen"
+TRAINER_FILL_COLOUR = "gold"
+
 require "movewindow"
 require "serialize"
+require "copytable"
 
 rooms = {}
 requested_rooms = {}
@@ -114,38 +133,101 @@ function OnPluginSaveState ()
   SetVariable ("rooms", "rooms = " .. serialize.save_simple (rooms))
 end -- OnPluginSaveState
 
+function mouseup_room (flags, hotspot_id)
+  local guid = hotspot_id
+
+  if bit.band (flags, 0x20) == 0 then
+    if rooms [guid].shop then
+      Execute "list"
+    end -- if
+  
+    
+    return
+  end -- if not RH click
+  
+  -- here for RH click
+  
+  local sw = speedwalks [guid]
+  if not sw then
+    return
+  end -- not found
+  
+  -- build speedwalk string (collect identical directions)
+  local tspeed = {}
+  for _, dir in ipairs (sw) do
+    local n = #tspeed
+    if n == 0 then
+      table.insert (tspeed, { dir = dir, count = 1 })
+    else
+      if tspeed [n].dir == dir then
+        tspeed [n].count = tspeed [n].count + 1
+      else
+        table.insert (tspeed, { dir = dir, count = 1 })
+      end -- if different direction
+    end -- if
+  end -- for
+ 
+  if #tspeed == 0 then
+    return
+  end -- nowhere to go (current room?)
+  
+  -- now build string like: 2n3e4(sw)
+  local s = "#"  -- speedwalk prefix
+  
+  for _, dir in ipairs (tspeed) do
+    if dir.count > 1 then
+      s = s .. dir.count
+    end -- if
+    if #dir.dir == 1 then
+      s = s .. dir.dir
+    else
+      s = s .. "(" .. dir.dir .. ")"
+    end -- if
+  end -- if
+  
+  -- get client to do it  
+  Execute (s)
+  
+end -- mouseup_player
+
 local HALF_ROOM = ROOM_SIZE / 2
 local HALF_WAY  = DISTANCE_TO_NEXT_ROOM / 2
 local THIRD_WAY  = DISTANCE_TO_NEXT_ROOM / 3
 
 connectors = {
-  north = { x1 = 0,             y1 = - HALF_ROOM, x2 = 0,             y2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM, at = { 0, -1 } }, 
-  south = { x1 = 0,             y1 =   HALF_ROOM, x2 = 0,             y2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM, at = { 0,  1 } }, 
-  east  = { x1 =   HALF_ROOM,   y1 = 0,           x2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM, y2 = 0, at = {  1,  0 }}, 
-  west  = { x1 = - HALF_ROOM,   y1 = 0,           x2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM, y2 = 0, at = { -1,  0 }}, 
+  n = { x1 = 0,             y1 = - HALF_ROOM, x2 = 0,             y2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM, at = { 0, -1 } }, 
+  s = { x1 = 0,             y1 =   HALF_ROOM, x2 = 0,             y2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM, at = { 0,  1 } }, 
+  e  = { x1 =   HALF_ROOM,   y1 = 0,           x2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM, y2 = 0, at = {  1,  0 }}, 
+  w  = { x1 = - HALF_ROOM,   y1 = 0,           x2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM, y2 = 0, at = { -1,  0 }}, 
 
-  northeast = { x1 =   HALF_ROOM, y1 = - HALF_ROOM, x2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM , y2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM, at = { 1, -1 } }, 
-  southeast = { x1 =   HALF_ROOM, y1 =   HALF_ROOM, x2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM , y2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM, at = { 1,  1 } }, 
-  northwest = { x1 = - HALF_ROOM, y1 = - HALF_ROOM, x2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM , y2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM, at = {-1, -1 } }, 
-  southwest = { x1 = - HALF_ROOM, y1 =   HALF_ROOM, x2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM , y2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM, at = {-1,  1 } }, 
+  ne = { x1 =   HALF_ROOM, y1 = - HALF_ROOM, x2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM , y2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM, at = { 1, -1 } }, 
+  se = { x1 =   HALF_ROOM, y1 =   HALF_ROOM, x2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM , y2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM, at = { 1,  1 } }, 
+  nw = { x1 = - HALF_ROOM, y1 = - HALF_ROOM, x2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM , y2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM, at = {-1, -1 } }, 
+  sw = { x1 = - HALF_ROOM, y1 =   HALF_ROOM, x2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM , y2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM, at = {-1,  1 } }, 
 
   } -- end connectors
   
 half_connectors = {
-  north = { x1 = 0,             y1 = - HALF_ROOM, x2 = 0,             y2 = - HALF_ROOM - THIRD_WAY, at = { 0, -1 } }, 
-  south = { x1 = 0,             y1 =   HALF_ROOM, x2 = 0,             y2 =   HALF_ROOM + THIRD_WAY, at = { 0,  1 } }, 
-  east  = { x1 =   HALF_ROOM,   y1 = 0,           x2 =   HALF_ROOM + THIRD_WAY, y2 = 0, at = {  1,  0 }}, 
-  west  = { x1 = - HALF_ROOM,   y1 = 0,           x2 = - HALF_ROOM - THIRD_WAY, y2 = 0, at = { -1,  0 }}, 
+  n = { x1 = 0,             y1 = - HALF_ROOM, x2 = 0,             y2 = - HALF_ROOM - THIRD_WAY, at = { 0, -1 } }, 
+  s = { x1 = 0,             y1 =   HALF_ROOM, x2 = 0,             y2 =   HALF_ROOM + THIRD_WAY, at = { 0,  1 } }, 
+  e  = { x1 =   HALF_ROOM,   y1 = 0,           x2 =   HALF_ROOM + THIRD_WAY, y2 = 0, at = {  1,  0 }}, 
+  w  = { x1 = - HALF_ROOM,   y1 = 0,           x2 = - HALF_ROOM - THIRD_WAY, y2 = 0, at = { -1,  0 }}, 
 
-  northeast = { x1 =   HALF_ROOM, y1 = - HALF_ROOM, x2 =   HALF_ROOM + THIRD_WAY , y2 = - HALF_ROOM - THIRD_WAY, at = { 1, -1 } }, 
-  southeast = { x1 =   HALF_ROOM, y1 =   HALF_ROOM, x2 =   HALF_ROOM + THIRD_WAY , y2 =   HALF_ROOM + THIRD_WAY, at = { 1,  1 } }, 
-  northwest = { x1 = - HALF_ROOM, y1 = - HALF_ROOM, x2 = - HALF_ROOM - THIRD_WAY , y2 = - HALF_ROOM - THIRD_WAY, at = {-1, -1 } }, 
-  southwest = { x1 =   HALF_ROOM, y1 = - HALF_ROOM, x2 =   HALF_ROOM + THIRD_WAY , y2 = - HALF_ROOM - THIRD_WAY, at = {-1,  1 } }, 
+  ne = { x1 =   HALF_ROOM, y1 = - HALF_ROOM, x2 =   HALF_ROOM + THIRD_WAY , y2 = - HALF_ROOM - THIRD_WAY, at = { 1, -1 } }, 
+  se = { x1 =   HALF_ROOM, y1 =   HALF_ROOM, x2 =   HALF_ROOM + THIRD_WAY , y2 =   HALF_ROOM + THIRD_WAY, at = { 1,  1 } }, 
+  nw = { x1 = - HALF_ROOM, y1 = - HALF_ROOM, x2 = - HALF_ROOM - THIRD_WAY , y2 = - HALF_ROOM - THIRD_WAY, at = {-1, -1 } }, 
+  sw = { x1 =   HALF_ROOM, y1 = - HALF_ROOM, x2 =   HALF_ROOM + THIRD_WAY , y2 = - HALF_ROOM - THIRD_WAY, at = {-1,  1 } }, 
 
   } -- end half_connectors
-  
 
-function draw_room (guid, x, y)
+    
+function make_particle (guid, path, x, y)
+  particle_count = particle_count + 1
+  local path = path or {}
+  return {guid=guid, path=path, x = x, y = y}
+end
+
+function draw_room (guid, path, x, y)
 
   local coords = string.format ("%i,%i", x, y)
 
@@ -154,7 +236,7 @@ function draw_room (guid, x, y)
   end -- done this one
   
   -- don't draw the same room more than once
-  drawn [guid] = coords
+  drawn [guid] = { coords = coords, path = path }
   
   -- don't draw another room on top of one we already drew
   if drawn_coords [coords] then
@@ -177,7 +259,10 @@ function draw_room (guid, x, y)
   
   -- exits
   
+  local texits = {}
+  
   for name, exit_guid in pairs (rooms [guid].exits) do
+    table.insert (texits, name)
     local exit_info = connectors [name]
     if exit_info then
       local linetype = 0 -- unbroken
@@ -189,22 +274,44 @@ function draw_room (guid, x, y)
       local next_y = y + exit_info.at [2] * (ROOM_SIZE + DISTANCE_TO_NEXT_ROOM)
       
       local next_coords = string.format ("%i,%i", next_x, next_y)
-      if drawn_coords [next_coords] and drawn [exit_guid] ~= next_coords then
+      
+      --[[
+      if guid == "21014" then
+        print ("exit=", name, "exit_guid=", exit_guid, "next_coords=", next_coords)
+        print ("drawn [exit_guid]=", drawn [exit_guid])
+        if drawn [exit_guid] then
+          print ("drawn [exit_guid].coords=", drawn [exit_guid].coords)
+        end -- if
+      end -- if 
+      --]]
+      
+      if drawn_coords [next_coords] and (not drawn [exit_guid] or drawn [exit_guid].coords ~= next_coords) then
         exit_info = half_connectors [name]
+      else
+        -- remember to draw room next iteration
+        local new_path = copytable.deep (path)
+        table.insert (new_path, name)
+        table.insert (particles, make_particle (exit_guid, new_path, next_x, next_y))
       end -- if drawn on this spot
 
       WindowLine (win, x + exit_info.x1, y + exit_info.y1, x + exit_info.x2, y + exit_info.y2, EXIT_COLOUR, linetype, 1)
-      -- recurse to do draw exit
-      draw_room (exit_guid, next_x, next_y)
+      
     end -- if we know what to do with this direction
   end -- for each exit
 
+  -- special room colours
   if guid == current_room then
     WindowRectOp (win, 2, left, top, right, bottom, OUR_ROOM_FILL_COLOUR)
-  end -- if the room we are standing in
+  elseif rooms [guid].shop then
+    WindowRectOp (win, 2, left, top, right, bottom, SHOP_FILL_COLOUR)
+  elseif rooms [guid].train then
+    WindowRectOp (win, 2, left, top, right, bottom, TRAINER_FILL_COLOUR)
+  end -- if 
 
   -- draw current room (last, so it goes on top)
   WindowRectOp (win, 1, left, top, right, bottom, ROOM_COLOUR)
+  
+  speedwalks [guid] = path
   
   WindowAddHotspot(win, guid,  
                  left, top, right, bottom,   -- rectangle
@@ -212,8 +319,13 @@ function draw_room (guid, x, y)
                  "",  -- cancelmouseover
                  "",  -- mousedown
                  "",  -- cancelmousedown
-                 "",  -- mouseup
-                 string.format ("%s\t(%s)", rooms [guid].name, guid),  -- tooltip text
+                 "mouseup_room",  -- mouseup
+                 string.format ("%s\t(%s)\nExits=%s\nSteps=%i\nPath to=%s", 
+                        rooms [guid].name, guid, 
+                        table.concat (texits, ", "), 
+                        depth,
+                        table.concat (path, ",")
+                        ),  -- tooltip text
                  1, 0)  -- hand cursor
                    
 end -- draw_room
@@ -297,10 +409,22 @@ function OnPluginTelnetOption (option)
       WindowText (win, FONT_ID, room.name, 5, vertical, 0, 0, ColourNameToRGB "saddlebrown", true)
     end -- if
     -- initial room in middle
-    drawn = {}  -- to stop double-drawing
-    drawn_coords = {}
+    drawn, drawn_coords, particles, speedwalks = {}, {}, {}, {}
+    depth = 0
+    particle_count = 0
     current_room = t.move.guid
-    draw_room (t.move.guid, WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2)
+    -- insert initial room
+    table.insert (particles, make_particle (t.move.guid, {}, WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2))
+
+    while #particles > 0 and depth < MAX_DEPTH do
+      depth = depth + 1
+      local old_generation = particles
+      particles = {}  -- new generation
+      for i, part in ipairs (old_generation) do 
+        draw_room (part.guid, part.path, part.x, part.y)
+      end -- for each existing particle
+    end -- while all particles
+    
   end -- if 
   
   -- 3D box
