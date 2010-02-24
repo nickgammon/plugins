@@ -57,6 +57,7 @@ MAX_DEPTH = 20
 BACKGROUND_COLOUR = ColourNameToRGB "lightseagreen"
 ROOM_COLOUR = ColourNameToRGB "cyan"
 EXIT_COLOUR = ColourNameToRGB "darkgreen"
+EXIT_COLOUR_UP_DOWN = ColourNameToRGB "darkmagenta"
 OUR_ROOM_FILL_COLOUR = ColourNameToRGB "bisque"
 SHOP_FILL_COLOUR = ColourNameToRGB "darkolivegreen"
 TRAINER_FILL_COLOUR = ColourNameToRGB "yellowgreen"
@@ -197,28 +198,28 @@ local HALF_WAY  = DISTANCE_TO_NEXT_ROOM / 2
 local THIRD_WAY  = DISTANCE_TO_NEXT_ROOM / 3
 
 connectors = {
-  n = { x1 = 0,             y1 = - HALF_ROOM, x2 = 0,             y2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM, at = { 0, -1 } }, 
-  s = { x1 = 0,             y1 =   HALF_ROOM, x2 = 0,             y2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM, at = { 0,  1 } }, 
-  e  = { x1 =   HALF_ROOM,   y1 = 0,           x2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM, y2 = 0, at = {  1,  0 }}, 
-  w  = { x1 = - HALF_ROOM,   y1 = 0,           x2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM, y2 = 0, at = { -1,  0 }}, 
+  n =  { x1 = 0,            y1 = - HALF_ROOM, x2 = 0,                                    y2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM, at = { 0, -1 } }, 
+  s =  { x1 = 0,            y1 =   HALF_ROOM, x2 = 0,                                    y2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM, at = { 0,  1 } }, 
+  e =  { x1 =   HALF_ROOM,  y1 = 0,           x2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM,  y2 = 0,                                   at = {  1,  0 }}, 
+  w =  { x1 = - HALF_ROOM,  y1 = 0,           x2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM,  y2 = 0,                                   at = { -1,  0 }}, 
 
-  ne = { x1 =   HALF_ROOM, y1 = - HALF_ROOM, x2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM , y2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM, at = { 1, -1 } }, 
-  se = { x1 =   HALF_ROOM, y1 =   HALF_ROOM, x2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM , y2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM, at = { 1,  1 } }, 
-  nw = { x1 = - HALF_ROOM, y1 = - HALF_ROOM, x2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM , y2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM, at = {-1, -1 } }, 
-  sw = { x1 = - HALF_ROOM, y1 =   HALF_ROOM, x2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM , y2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM, at = {-1,  1 } }, 
+  ne = { x1 =   HALF_ROOM,  y1 = - HALF_ROOM, x2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM , y2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM, at = { 1, -1 } }, 
+  se = { x1 =   HALF_ROOM,  y1 =   HALF_ROOM, x2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM , y2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM, at = { 1,  1 } }, 
+  nw = { x1 = - HALF_ROOM,  y1 = - HALF_ROOM, x2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM , y2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM, at = {-1, -1 } }, 
+  sw = { x1 = - HALF_ROOM,  y1 =   HALF_ROOM, x2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM , y2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM, at = {-1,  1 } }, 
 
   } -- end connectors
   
 half_connectors = {
-  n = { x1 = 0,             y1 = - HALF_ROOM, x2 = 0,             y2 = - HALF_ROOM - THIRD_WAY, at = { 0, -1 } }, 
-  s = { x1 = 0,             y1 =   HALF_ROOM, x2 = 0,             y2 =   HALF_ROOM + THIRD_WAY, at = { 0,  1 } }, 
-  e  = { x1 =   HALF_ROOM,   y1 = 0,           x2 =   HALF_ROOM + THIRD_WAY, y2 = 0, at = {  1,  0 }}, 
-  w  = { x1 = - HALF_ROOM,   y1 = 0,           x2 = - HALF_ROOM - THIRD_WAY, y2 = 0, at = { -1,  0 }}, 
+  n =  { x1 = 0,            y1 = - HALF_ROOM, x2 = 0,                        y2 = - HALF_ROOM - THIRD_WAY, at = { 0, -1 } }, 
+  s =  { x1 = 0,            y1 =   HALF_ROOM, x2 = 0,                        y2 =   HALF_ROOM + THIRD_WAY, at = { 0,  1 } }, 
+  e =  { x1 =   HALF_ROOM,  y1 = 0,           x2 =   HALF_ROOM + THIRD_WAY,  y2 = 0,                       at = {  1,  0 }}, 
+  w =  { x1 = - HALF_ROOM,  y1 = 0,           x2 = - HALF_ROOM - THIRD_WAY,  y2 = 0,                       at = { -1,  0 }}, 
 
-  ne = { x1 =   HALF_ROOM, y1 = - HALF_ROOM, x2 =   HALF_ROOM + THIRD_WAY , y2 = - HALF_ROOM - THIRD_WAY, at = { 1, -1 } }, 
-  se = { x1 =   HALF_ROOM, y1 =   HALF_ROOM, x2 =   HALF_ROOM + THIRD_WAY , y2 =   HALF_ROOM + THIRD_WAY, at = { 1,  1 } }, 
-  nw = { x1 = - HALF_ROOM, y1 = - HALF_ROOM, x2 = - HALF_ROOM - THIRD_WAY , y2 = - HALF_ROOM - THIRD_WAY, at = {-1, -1 } }, 
-  sw = { x1 =   HALF_ROOM, y1 = - HALF_ROOM, x2 =   HALF_ROOM + THIRD_WAY , y2 = - HALF_ROOM - THIRD_WAY, at = {-1,  1 } }, 
+  ne = { x1 =   HALF_ROOM,  y1 = - HALF_ROOM, x2 =   HALF_ROOM + THIRD_WAY , y2 = - HALF_ROOM - THIRD_WAY, at = { 1, -1 } }, 
+  se = { x1 =   HALF_ROOM,  y1 =   HALF_ROOM, x2 =   HALF_ROOM + THIRD_WAY , y2 =   HALF_ROOM + THIRD_WAY, at = { 1,  1 } }, 
+  nw = { x1 = - HALF_ROOM,  y1 = - HALF_ROOM, x2 = - HALF_ROOM - THIRD_WAY , y2 = - HALF_ROOM - THIRD_WAY, at = {-1, -1 } }, 
+  sw = { x1 =   HALF_ROOM,  y1 = - HALF_ROOM, x2 =   HALF_ROOM + THIRD_WAY , y2 = - HALF_ROOM - THIRD_WAY, at = {-1,  1 } }, 
 
   } -- end half_connectors
 
@@ -240,15 +241,10 @@ function draw_room (guid, path, x, y)
   -- don't draw the same room more than once
   drawn [guid] = { coords = coords, path = path }
   
-  -- don't draw another room on top of one we already drew
-  if drawn_coords [coords] then
-    return
-  end -- if drawn on this spot
-  
-  drawn_coords [coords] = true
+  local room = rooms [guid]
   
   -- can't if we know nothing about it
-  if not rooms [guid] then
+  if not room then
     return
   end -- not in cache
   
@@ -263,9 +259,35 @@ function draw_room (guid, path, x, y)
   
   local texits = {}
   
-  for name, exit_guid in pairs (rooms [guid].exits) do
+  for name, exit_guid in pairs (room.exits) do
     table.insert (texits, name)
     local exit_info = connectors [name]
+    local stub_exit_info = half_connectors [name]
+    local exit_line_colour = EXIT_COLOUR
+    
+    -- draw up in the ne/nw position if not already an exit there at this level
+    if name == "u" then
+      if not room.exits.nw then
+        exit_info = connectors.nw
+        stub_exit_info = half_connectors.nw
+        exit_line_colour = EXIT_COLOUR_UP_DOWN
+      elseif not room.exits.ne then
+        exit_info = connectors.ne
+        stub_exit_info = half_connectors.ne
+        exit_line_colour = EXIT_COLOUR_UP_DOWN
+      end -- if
+    elseif name == "d" then
+      if not room.exits.se then
+        exit_info = connectors.se
+        stub_exit_info = half_connectors.se
+        exit_line_colour = EXIT_COLOUR_UP_DOWN
+      elseif not room.exits.sw then
+        exit_info = connectors.sw
+        stub_exit_info = half_connectors.sw
+        exit_line_colour = EXIT_COLOUR_UP_DOWN
+      end -- if
+    end -- if down
+        
     if exit_info then
       local linetype = 0 -- unbroken
       if not rooms [exit_guid] then
@@ -277,8 +299,10 @@ function draw_room (guid, path, x, y)
       
       local next_coords = string.format ("%i,%i", next_x, next_y)
       
+--      print ("Drawing", guid, "exit", name, "exit_guid", exit_guid)
+      
       --[[
-      if guid == "21014" then
+      if guid == "10300" then
         print ("exit=", name, "exit_guid=", exit_guid, "next_coords=", next_coords)
         print ("drawn [exit_guid]=", drawn [exit_guid])
         if drawn [exit_guid] then
@@ -287,16 +311,19 @@ function draw_room (guid, path, x, y)
       end -- if 
       --]]
       
-      if drawn_coords [next_coords] and (not drawn [exit_guid] or drawn [exit_guid].coords ~= next_coords) then
-        exit_info = half_connectors [name]
+      -- if another room (not where this one leads to) is already there, only draw "stub" lines
+      if drawn_coords [next_coords] and 
+        (not drawn [exit_guid] or drawn [exit_guid].coords ~= next_coords) then
+        exit_info = stub_exit_info
       else
         -- remember to draw room next iteration
         local new_path = copytable.deep (path)
         table.insert (new_path, name)
         table.insert (particles, make_particle (exit_guid, new_path, next_x, next_y))
+        drawn_coords [next_coords] = true
       end -- if drawn on this spot
 
-      WindowLine (win, x + exit_info.x1, y + exit_info.y1, x + exit_info.x2, y + exit_info.y2, EXIT_COLOUR, linetype, 1)
+      WindowLine (win, x + exit_info.x1, y + exit_info.y1, x + exit_info.x2, y + exit_info.y2, exit_line_colour, linetype, 1)
       
     end -- if we know what to do with this direction
   end -- for each exit
@@ -304,13 +331,13 @@ function draw_room (guid, path, x, y)
   -- special room colours
   if guid == current_room then
     WindowRectOp (win, 2, left, top, right, bottom, OUR_ROOM_FILL_COLOUR)
-  elseif rooms [guid].shop then
+  elseif room.shop then
     WindowRectOp (win, 2, left, top, right, bottom, SHOP_FILL_COLOUR)
-  elseif rooms [guid].train then
+  elseif room.train then
     WindowRectOp (win, 2, left, top, right, bottom, TRAINER_FILL_COLOUR)
-  elseif rooms [guid].repair then
+  elseif room.repair then
     WindowRectOp (win, 2, left, top, right, bottom, BLACKSMITH_FILL_COLOUR)
-  elseif rooms [guid].healer then
+  elseif room.healer then
     WindowRectOp (win, 2, left, top, right, bottom, HEALER_FILL_COLOUR)
   end -- if 
 
@@ -327,7 +354,7 @@ function draw_room (guid, path, x, y)
                  "",  -- cancelmousedown
                  "mouseup_room",  -- mouseup
                  string.format ("%s\t(%s)\nExits=%s\nSteps=%i\nPath to=%s", 
-                        rooms [guid].name, guid, 
+                        room.name, guid, 
                         table.concat (texits, ", "), 
                         depth,
                         table.concat (path, ",")
