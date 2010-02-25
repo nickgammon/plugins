@@ -50,15 +50,15 @@ FONT_ID = "fn"  -- internal font identifier
   
 WINDOW_WIDTH = 400
 WINDOW_HEIGHT = 400
-ROOM_SIZE = 10  -- 20
-DISTANCE_TO_NEXT_ROOM = 15  -- 30
+ROOM_SIZE = 20 -- 5 -- 10  -- 20
+DISTANCE_TO_NEXT_ROOM = 30 -- 8 -- 15  -- 30
 MAX_DEPTH = 30
 
 BACKGROUND_COLOUR = ColourNameToRGB "lightseagreen"
 ROOM_COLOUR = ColourNameToRGB "cyan"
 EXIT_COLOUR = ColourNameToRGB "darkgreen"
 EXIT_COLOUR_UP_DOWN = ColourNameToRGB "darkmagenta"
-OUR_ROOM_FILL_COLOUR = ColourNameToRGB "bisque"
+OUR_ROOM_COLOUR = ColourNameToRGB "black"
 SHOP_FILL_COLOUR = ColourNameToRGB "darkolivegreen"
 TRAINER_FILL_COLOUR = ColourNameToRGB "yellowgreen"
 BLACKSMITH_FILL_COLOUR = ColourNameToRGB "darkgray"
@@ -83,7 +83,7 @@ function check_cache (guid, item, type)
     end -- for
   elseif not requested_rooms [guid] then
       SendPkt (string.char (IAC, SB, 102) .. type .. " = \"" .. guid .. "\"" .. string.char (IAC, SE)) 
-      Note ("Requested ", type, " cache ID: ", guid)
+      -- Note ("Requested ", type, " cache ID: ", guid)
       requested_rooms [guid] = GetInfo (232)  -- don't request twice
   end -- if 
 end -- check_cache
@@ -224,15 +224,15 @@ half_connectors = {
   } -- end half_connectors
 
 arrows = {
-   n =  { HALF_ROOM - 3, -3,  HALF_ROOM + 3, -3,  HALF_ROOM, -4 },
-   s =  { HALF_ROOM - 3,  3,  HALF_ROOM + 3,  3,  HALF_ROOM, -4 },
-   e =  {  3, HALF_ROOM - 3,   3, HALF_ROOM + 3,  4, HALF_ROOM },
-   w =  { -3, HALF_ROOM - 3,  -3, HALF_ROOM + 3, -4, HALF_ROOM },
+   n =  { - 2, - HALF_ROOM - 2,  2, - HALF_ROOM - 2,  0, - HALF_ROOM - 6 },
+   s =  { - 2,   HALF_ROOM + 2,  2,   HALF_ROOM + 2,  0,   HALF_ROOM + 6  },
+   e =  {   HALF_ROOM + 2, -2,   HALF_ROOM + 2, 2,   HALF_ROOM + 6, 0 },
+   w =  { - HALF_ROOM - 2, -2, - HALF_ROOM - 2, 2, - HALF_ROOM - 6, 0 },
   
-   ne = {  3,  0,  3, -3,  0, -3 },
-   se = {  3,  0,  3,  3,  0, -3 },
-   nw = { -3,  0, -3, -3,  0, -3 },
-   sw = { -3,  0, -3,  3, -3,  0 },
+   ne = {   HALF_ROOM + 3,  - HALF_ROOM,  HALF_ROOM + 3, - HALF_ROOM - 3,  HALF_ROOM, - HALF_ROOM - 3 },
+   se = {   HALF_ROOM + 3,    HALF_ROOM,  HALF_ROOM + 3,   HALF_ROOM + 3,  HALF_ROOM,   HALF_ROOM + 3 },
+   nw = { - HALF_ROOM - 3,  - HALF_ROOM,  - HALF_ROOM - 3, - HALF_ROOM - 3,  - HALF_ROOM, - HALF_ROOM - 3 },
+   sw = { - HALF_ROOM - 3,    HALF_ROOM,  - HALF_ROOM - 3,   HALF_ROOM + 3,  - HALF_ROOM,   HALF_ROOM + 3},
 
   } -- end of arrows
 
@@ -250,8 +250,26 @@ inverse_direction = {
   nw = "se",
   se = "nw",
   }  -- end of inverse_direction
+
+terrain_colours = {
+   inside = "wheat",
+   city = "wheat",
+   field = "green",
+   forest = "green",
+   hills = "green",
+   mountain = "green",
+   water_swim = "blue",
+   water_noswim = "blue",
+   underwater = "darkblue",
+   air = "lemonchiffon",
+   desert = "lightgoldenrodyellow",
+   dunno = "green",
+   oceanfloor = "green",
+   underground = "green",
+   lava = "red",
+   swamp = "green",
+}  -- end of  terrain_colours
   
-    
 function make_particle (guid, path, x, y)
   particle_count = particle_count + 1
   local path = path or {}
@@ -279,7 +297,7 @@ function draw_room (guid, path, x, y)
   local left, top, right, bottom = x - HALF_ROOM, y - HALF_ROOM, x + HALF_ROOM, y + HALF_ROOM
   
   -- forget it if off screen
-  if x < 0 or y < 0 or x > WINDOW_WIDTH or y > WINDOW_HEIGHT then
+  if x < HALF_ROOM or y < HALF_ROOM or x > WINDOW_WIDTH - HALF_ROOM or y > WINDOW_HEIGHT - HALF_ROOM then
      return
   end -- if
   
@@ -366,12 +384,12 @@ function draw_room (guid, path, x, y)
         -- if inverse direction doesn't point back to us, this is one-way
         if dest.exits [inverse_direction [name]] ~= guid then
           local points = string.format ("%i,%i,%i,%i,%i,%i", 
-              x + exit_info.x1 + arrow [1],
-              y + exit_info.y1 + arrow [2],
-              x + exit_info.x1 + arrow [3],
-              y + exit_info.y1 + arrow [4],
-              x + exit_info.x1 + arrow [5],
-              y + exit_info.y1 + arrow [6])
+              x + arrow [1],
+              y + arrow [2],
+              x + arrow [3],
+              y + arrow [4],
+              x + arrow [5],
+              y + arrow [6])
               
           -- draw arrow
           WindowPolygon(win, points, exit_line_colour, 0, 1, exit_line_colour, 0, true, true)
@@ -384,9 +402,7 @@ function draw_room (guid, path, x, y)
   end -- for each exit
 
   -- special room colours
-  if guid == current_room then
-    WindowRectOp (win, 2, left, top, right, bottom, OUR_ROOM_FILL_COLOUR)
-  elseif room.shop then
+  if room.shop then
     WindowRectOp (win, 2, left, top, right, bottom, SHOP_FILL_COLOUR)
   elseif room.train then
     WindowRectOp (win, 2, left, top, right, bottom, TRAINER_FILL_COLOUR)
@@ -394,10 +410,20 @@ function draw_room (guid, path, x, y)
     WindowRectOp (win, 2, left, top, right, bottom, BLACKSMITH_FILL_COLOUR)
   elseif room.healer then
     WindowRectOp (win, 2, left, top, right, bottom, HEALER_FILL_COLOUR)
+  else
+    -- use terrain colour
+    if room.terrain and terrain_colours [room.terrain] then
+      WindowRectOp (win, 2, left, top, right, bottom, ColourNameToRGB (terrain_colours [room.terrain]))
+    end -- if
   end -- if 
 
+  local bordercolour = ROOM_COLOUR
+  if guid == current_room then
+    bordercolour = OUR_ROOM_COLOUR
+  end -- if current room
+    
   -- draw current room (last, so it goes on top)
-  WindowRectOp (win, 1, left, top, right, bottom, ROOM_COLOUR)
+  WindowRectOp (win, 1, left, top, right, bottom, bordercolour)
   
   -- show up and down in case we can't get a line in
   
@@ -439,7 +465,7 @@ function OnPluginTelnetOption (option)
     for k, v in pairs (t.room_info) do
       local time_elapsed = GetInfo (232) - (requested_rooms [k] or GetInfo (232))
       local dsc = v.name or "<elapsed>"
-      Note (string.format ("RECEIVED room ID: %s in %.2f seconds (%s).", k, time_elapsed, dsc))
+      -- Note (string.format ("RECEIVED room ID: %s in %.2f seconds (%s).", k, time_elapsed, dsc))
       rooms [k] = v or nil
       requested_rooms [k] = nil
       -- tprint (v)
@@ -472,7 +498,9 @@ function OnPluginTelnetOption (option)
     redisplay = t.move  -- need to redisplay when cache info arrives
     return
   end -- if
-  
+
+  check_cache_table (rooms [t.move.guid].exits,  "room_info")
+    
   window_width = width + 10
   window_height = font_height * lines + 10
   
@@ -538,7 +566,7 @@ function OnPluginTelnetOption (option)
 
   local end_time = GetInfo (232)
 
-  print (string.format ("Time to draw= %0.6f", end_time - start_time))
+  --print (string.format ("Time to draw= %0.6f", end_time - start_time))
 end -- function OnPluginTelnetOption
 
 ]]>
