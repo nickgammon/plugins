@@ -15,7 +15,7 @@
    >
 <description trim="y">
 <![CDATA[
-Install this plugin to show an your current room name and exits.
+Automatic mapper.
 
 The window can be dragged to a new location with the mouse.
 ]]>
@@ -48,21 +48,29 @@ FONT_NAME = "Fixedsys"    -- the font we want to use
 FONT_SIZE = 9
 FONT_ID = "fn"  -- internal font identifier
   
+-- size of map window
 WINDOW_WIDTH = 400
 WINDOW_HEIGHT = 400
-ROOM_SIZE = 20 -- 5 -- 10  -- 20
-DISTANCE_TO_NEXT_ROOM = 30 -- 8 -- 15  -- 30
+
+-- size of room box
+ROOM_SIZE = 10
+
+-- how far away to draw rooms from each other
+DISTANCE_TO_NEXT_ROOM =  15
+
+-- how far from where we are standing to draw (rooms)
 MAX_DEPTH = 30
 
-BACKGROUND_COLOUR = ColourNameToRGB "lightseagreen"
-ROOM_COLOUR = ColourNameToRGB "cyan"
-EXIT_COLOUR = ColourNameToRGB "darkgreen"
-EXIT_COLOUR_UP_DOWN = ColourNameToRGB "darkmagenta"
-OUR_ROOM_COLOUR = ColourNameToRGB "black"
-SHOP_FILL_COLOUR = ColourNameToRGB "darkolivegreen"
-TRAINER_FILL_COLOUR = ColourNameToRGB "yellowgreen"
-BLACKSMITH_FILL_COLOUR = ColourNameToRGB "darkgray"
-HEALER_FILL_COLOUR = ColourNameToRGB "gold"
+-- assorted colours
+BACKGROUND_COLOUR       = ColourNameToRGB "lightseagreen"
+ROOM_COLOUR             = ColourNameToRGB "cyan"
+EXIT_COLOUR             = ColourNameToRGB "darkgreen"
+EXIT_COLOUR_UP_DOWN     = ColourNameToRGB "darkmagenta"
+OUR_ROOM_COLOUR         = ColourNameToRGB "black"
+SHOP_FILL_COLOUR        = ColourNameToRGB "darkolivegreen"
+TRAINER_FILL_COLOUR     = ColourNameToRGB "yellowgreen"
+BLACKSMITH_FILL_COLOUR  = ColourNameToRGB "darkgray"
+HEALER_FILL_COLOUR      = ColourNameToRGB "gold"
 
 require "movewindow"
 require "serialize"
@@ -141,9 +149,8 @@ function mouseup_room (flags, hotspot_id)
 
   if bit.band (flags, 0x20) == 0 then
     if rooms [guid].shop then
-      Execute "list"
+      Execute "list"  -- this is kinda silly, we have to be *in* the room
     end -- if
-  
     
     return
   end -- if not RH click
@@ -193,10 +200,11 @@ function mouseup_room (flags, hotspot_id)
   
 end -- mouseup_player
 
-local HALF_ROOM = ROOM_SIZE / 2
-local HALF_WAY  = DISTANCE_TO_NEXT_ROOM / 2
-local THIRD_WAY  = DISTANCE_TO_NEXT_ROOM / 3
+local HALF_ROOM   = ROOM_SIZE / 2
+local HALF_WAY    = DISTANCE_TO_NEXT_ROOM / 2
+local THIRD_WAY   = DISTANCE_TO_NEXT_ROOM / 3
 
+-- how to draw a line from this room to the next one (relative to the center of the room)
 connectors = {
   n =  { x1 = 0,            y1 = - HALF_ROOM, x2 = 0,                                    y2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM, at = { 0, -1 } }, 
   s =  { x1 = 0,            y1 =   HALF_ROOM, x2 = 0,                                    y2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM, at = { 0,  1 } }, 
@@ -210,6 +218,7 @@ connectors = {
 
   } -- end connectors
   
+-- how to draw a stub line
 half_connectors = {
   n =  { x1 = 0,            y1 = - HALF_ROOM, x2 = 0,                        y2 = - HALF_ROOM - THIRD_WAY, at = { 0, -1 } }, 
   s =  { x1 = 0,            y1 =   HALF_ROOM, x2 = 0,                        y2 =   HALF_ROOM + THIRD_WAY, at = { 0,  1 } }, 
@@ -223,6 +232,7 @@ half_connectors = {
 
   } -- end half_connectors
 
+-- how to draw one-way arrows (relative to the center of the room)
 arrows = {
    n =  { - 2, - HALF_ROOM - 2,  2, - HALF_ROOM - 2,  0, - HALF_ROOM - 6 },
    s =  { - 2,   HALF_ROOM + 2,  2,   HALF_ROOM + 2,  0,   HALF_ROOM + 6  },
@@ -237,7 +247,6 @@ arrows = {
   } -- end of arrows
 
 -- for calculating one-way paths
-
 inverse_direction = {
   n = "s",
   s = "n",
@@ -251,6 +260,7 @@ inverse_direction = {
   se = "nw",
   }  -- end of inverse_direction
 
+-- how to colour stuff
 terrain_colours = {
    inside = "wheat",
    city = "wheat",
@@ -297,7 +307,8 @@ function draw_room (guid, path, x, y)
   local left, top, right, bottom = x - HALF_ROOM, y - HALF_ROOM, x + HALF_ROOM, y + HALF_ROOM
   
   -- forget it if off screen
-  if x < HALF_ROOM or y < HALF_ROOM or x > WINDOW_WIDTH - HALF_ROOM or y > WINDOW_HEIGHT - HALF_ROOM then
+  if x < HALF_ROOM or y < HALF_ROOM or 
+     x > WINDOW_WIDTH - HALF_ROOM or y > WINDOW_HEIGHT - HALF_ROOM then
      return
   end -- if
   
@@ -354,6 +365,7 @@ function draw_room (guid, path, x, y)
 --      print ("Drawing", guid, "exit", name, "exit_guid", exit_guid)
       
       --[[
+      -- debug yadda yadda
       if guid == "10300" then
         print ("exit=", name, "exit_guid=", exit_guid, "next_coords=", next_coords)
         print ("drawn [exit_guid]=", drawn [exit_guid])
@@ -383,6 +395,8 @@ function draw_room (guid, path, x, y)
         local dest = rooms [exit_guid]
         -- if inverse direction doesn't point back to us, this is one-way
         if dest.exits [inverse_direction [name]] ~= guid then
+        
+          -- turn points into string, relative to where the room is
           local points = string.format ("%i,%i,%i,%i,%i,%i", 
               x + arrow [1],
               y + arrow [2],
@@ -434,7 +448,7 @@ function draw_room (guid, path, x, y)
     WindowLine (win, left, bottom, left + ROOM_SIZE, bottom, EXIT_COLOUR_UP_DOWN, 0, 1)
   end -- if
   
-  speedwalks [guid] = path
+  speedwalks [guid] = path  -- so we know how to get here
   
   WindowAddHotspot(win, guid,  
                  left, top, right, bottom,   -- rectangle
@@ -544,12 +558,12 @@ function OnPluginTelnetOption (option)
     table.insert (particles, make_particle (t.move.guid, {}, WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2))
 
     while #particles > 0 and depth < MAX_DEPTH do
-      depth = depth + 1
       local old_generation = particles
       particles = {}  -- new generation
       for i, part in ipairs (old_generation) do 
         draw_room (part.guid, part.path, part.x, part.y)
       end -- for each existing particle
+      depth = depth + 1
     end -- while all particles
     
   end -- if 
