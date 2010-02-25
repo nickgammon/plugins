@@ -52,7 +52,7 @@ WINDOW_WIDTH = 400
 WINDOW_HEIGHT = 400
 ROOM_SIZE = 10  -- 20
 DISTANCE_TO_NEXT_ROOM = 15  -- 30
-MAX_DEPTH = 20
+MAX_DEPTH = 30
 
 BACKGROUND_COLOUR = ColourNameToRGB "lightseagreen"
 ROOM_COLOUR = ColourNameToRGB "cyan"
@@ -223,6 +223,34 @@ half_connectors = {
 
   } -- end half_connectors
 
+arrows = {
+   n =  { HALF_ROOM - 3, -3,  HALF_ROOM + 3, -3,  HALF_ROOM, -4 },
+   s =  { HALF_ROOM - 3,  3,  HALF_ROOM + 3,  3,  HALF_ROOM, -4 },
+   e =  {  3, HALF_ROOM - 3,   3, HALF_ROOM + 3,  4, HALF_ROOM },
+   w =  { -3, HALF_ROOM - 3,  -3, HALF_ROOM + 3, -4, HALF_ROOM },
+  
+   ne = {  3,  0,  3, -3,  0, -3 },
+   se = {  3,  0,  3,  3,  0, -3 },
+   nw = { -3,  0, -3, -3,  0, -3 },
+   sw = { -3,  0, -3,  3, -3,  0 },
+
+  } -- end of arrows
+
+-- for calculating one-way paths
+
+inverse_direction = {
+  n = "s",
+  s = "n",
+  e = "w",
+  w = "e",
+  u = "d",
+  d = "u",
+  ne = "sw",
+  sw = "ne",
+  nw = "se",
+  se = "nw",
+  }  -- end of inverse_direction
+  
     
 function make_particle (guid, path, x, y)
   particle_count = particle_count + 1
@@ -264,30 +292,36 @@ function draw_room (guid, path, x, y)
     local exit_info = connectors [name]
     local stub_exit_info = half_connectors [name]
     local exit_line_colour = EXIT_COLOUR
+    local arrow = arrows [name]
     
     -- draw up in the ne/nw position if not already an exit there at this level
     if name == "u" then
       if not room.exits.nw then
         exit_info = connectors.nw
         stub_exit_info = half_connectors.nw
+        arrow = arrows.nw
         exit_line_colour = EXIT_COLOUR_UP_DOWN
       elseif not room.exits.ne then
         exit_info = connectors.ne
         stub_exit_info = half_connectors.ne
+        arrow = arrows.ne
         exit_line_colour = EXIT_COLOUR_UP_DOWN
       end -- if
     elseif name == "d" then
       if not room.exits.se then
         exit_info = connectors.se
         stub_exit_info = half_connectors.se
+        arrow = arrows.se
         exit_line_colour = EXIT_COLOUR_UP_DOWN
       elseif not room.exits.sw then
         exit_info = connectors.sw
         stub_exit_info = half_connectors.sw
+        arrow = arrows.sw
         exit_line_colour = EXIT_COLOUR_UP_DOWN
       end -- if
     end -- if down
         
+    
     if exit_info then
       local linetype = 0 -- unbroken
       if not rooms [exit_guid] then
@@ -325,6 +359,27 @@ function draw_room (guid, path, x, y)
 
       WindowLine (win, x + exit_info.x1, y + exit_info.y1, x + exit_info.x2, y + exit_info.y2, exit_line_colour, linetype, 1)
       
+      -- one-way exit?
+      
+      if rooms [exit_guid] then
+        local dest = rooms [exit_guid]
+        -- if inverse direction doesn't point back to us, this is one-way
+        if dest.exits [inverse_direction [name]] ~= guid then
+          local points = string.format ("%i,%i,%i,%i,%i,%i", 
+              x + exit_info.x1 + arrow [1],
+              y + exit_info.y1 + arrow [2],
+              x + exit_info.x1 + arrow [3],
+              y + exit_info.y1 + arrow [4],
+              x + exit_info.x1 + arrow [5],
+              y + exit_info.y1 + arrow [6])
+              
+          -- draw arrow
+          WindowPolygon(win, points, exit_line_colour, 0, 1, exit_line_colour, 0, true, true)
+        
+        end -- one way
+      
+      end -- if we know of the room where it does
+      
     end -- if we know what to do with this direction
   end -- for each exit
 
@@ -343,6 +398,15 @@ function draw_room (guid, path, x, y)
 
   -- draw current room (last, so it goes on top)
   WindowRectOp (win, 1, left, top, right, bottom, ROOM_COLOUR)
+  
+  -- show up and down in case we can't get a line in
+  
+  if room.exits.u then
+    WindowLine (win, left, top, left + ROOM_SIZE, top, EXIT_COLOUR_UP_DOWN, 0, 1)
+  end -- if
+  if room.exits.d then
+    WindowLine (win, left, bottom, left + ROOM_SIZE, bottom, EXIT_COLOUR_UP_DOWN, 0, 1)
+  end -- if
   
   speedwalks [guid] = path
   
@@ -412,6 +476,8 @@ function OnPluginTelnetOption (option)
   window_width = width + 10
   window_height = font_height * lines + 10
   
+  local start_time = GetInfo (232)
+  
   WindowCreate (win, 
                  windowinfo.window_left, 
                  windowinfo.window_top, 
@@ -436,10 +502,10 @@ function OnPluginTelnetOption (option)
     WindowText (win, FONT_ID, dark_message, 5, 5, 0, 0, ColourNameToRGB "darkgreen", true)
   else  
     vertical = 5  -- pixel to start at
-    WindowText (win, FONT_ID, t.move.guid, 5, vertical, 0, 0, ColourNameToRGB "saddlebrown", true)
+   -- WindowText (win, FONT_ID, t.move.guid, 5, vertical, 0, 0, ColourNameToRGB "saddlebrown", true)
     vertical = vertical + font_height
     if room.name then
-      WindowText (win, FONT_ID, room.name, 5, vertical, 0, 0, ColourNameToRGB "saddlebrown", true)
+   --   WindowText (win, FONT_ID, room.name, 5, vertical, 0, 0, ColourNameToRGB "saddlebrown", true)
     end -- if
     -- initial room in middle
     drawn, drawn_coords, particles, speedwalks = {}, {}, {}, {}
@@ -470,6 +536,9 @@ function OnPluginTelnetOption (option)
   -- make sure window visible
   WindowShow (win, true)
 
+  local end_time = GetInfo (232)
+
+  print (string.format ("Time to draw= %0.6f", end_time - start_time))
 end -- function OnPluginTelnetOption
 
 ]]>
