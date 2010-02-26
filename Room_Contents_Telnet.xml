@@ -30,19 +30,27 @@ The window can be dragged to a new location with the mouse.
 <script>
 <![CDATA[
 
-FONT_NAME = "Dina"    -- the font we want to use
-FONT_SIZE = 8
-FONT_ID = "fn"  -- internal font identifier
   
 require "movewindow"
+require "serialize"
+require "getlines"
+require "gauge"
+
+FONT_NAME = get_preferred_font {"Dina",  "Lucida Console",  "Fixedsys", "Courier", "Sylfaen",} 
+FONT_SIZE = 9
+FONT_ID = "fn"  -- internal font identifier
+
+PARAGRAPH_GAP = 3
 
 guid_cache = {}
 requested_cache = {}
 
+rooms = {}
+requested_rooms = {}
+
 function capitalize (x)
   return string.upper (string.sub(x, 1, 1)) .. string.lower (string.sub(x, 2))
 end -- capitalize
-
 
 function OnPluginInstall ()
   
@@ -54,11 +62,13 @@ function OnPluginInstall ()
   WindowFont (win, FONT_ID, FONT_NAME, FONT_SIZE)
   
   -- see how high it is
-  font_height = WindowFontInfo (win, FONT_ID, 1)  -- height
+  font_height = WindowFontInfo (win, FONT_ID, 1) + WindowFontInfo (win, FONT_ID, 5)  -- height
 
   -- find where window was last time
   windowinfo = movewindow.install (win, 7)
    
+  assert (loadstring (GetVariable ("rooms") or "")) ()
+  
 end -- OnPluginInstall
 
 function OnPluginEnable ()
@@ -76,6 +86,7 @@ end -- OnPluginClose
 
 function OnPluginSaveState ()
   movewindow.save_state (win)
+  SetVariable ("rooms", "rooms = " .. serialize.save_simple (rooms))
 end -- OnPluginSaveState
 
 
@@ -160,7 +171,7 @@ function check_cache (guid, item, type)
     end -- for
   elseif not requested_cache [guid] then
       SendPkt (string.char (IAC, SB, 102) .. type .. " = \"" .. guid .. "\"" .. string.char (IAC, SE)) 
-      Note ("Requested ", type, " cache ID: ", guid)
+      -- Note ("Requested ", type, " cache ID: ", guid)
       requested_cache [guid] = GetInfo (232)  -- don't request twice
   end -- if 
 end -- check_cache
@@ -174,7 +185,33 @@ function check_cache_table (tbl, type)
     end -- for
   end -- if
   
-end -- request_item
+end -- check_cache_table
+
+-- check if single item cached
+function check_room_cache (guid, item, type)
+  local cache = rooms [guid]  -- field to check on
+  if cache then
+    -- copy in cached stuff
+    for k, v in pairs (cache) do
+      item [k] = v  
+    end -- for
+  elseif not requested_rooms [guid] then
+      SendPkt (string.char (IAC, SB, 102) .. type .. " = \"" .. guid .. "\"" .. string.char (IAC, SE)) 
+      -- Note ("Requested ", type, " cache ID: ", guid)
+      requested_rooms [guid] = GetInfo (232)  -- don't request twice
+  end -- if 
+end -- check_room_cache
+
+function check_room_cache_table (tbl, type)
+
+  if tbl then
+    -- for an entire table (eg. objects, players, npcs, rooms) check all for cached guids
+    for i, item in ipairs (tbl) do
+      check_room_cache (item.guid, item, type)
+    end -- for
+  end -- if
+  
+end -- check_room_cache_table
 
 function mouseup_player (flags, hotspot_id)
   if bit.band (flags, 0x20) ~= 0 then
@@ -192,6 +229,20 @@ function mouseup_npc (flags, hotspot_id)
    end -- if
 end -- mouseup_npc
 
+full_exit_name = {
+ n = "North",
+ s = "South",
+ e = "East", 
+ w = "West",
+ u = "Up", 
+ d = "Down",
+ ne = "Northeast",
+ se = "Southeast",
+ nw = "Northwest", 
+ sw = "SouthWest",
+ somewhere = "Somewhere",
+ }
+ 
 function mouseup_object (flags, hotspot_id)
 
   -- RH click
@@ -213,6 +264,8 @@ function mouseup_object (flags, hotspot_id)
       action = "get all"
     elseif item.typ == "corpse_pc" then
       action = "get all"
+    elseif item.typ == "furniture" then
+      action = "look"
     end -- if
     
     SendNoEcho (string.format ("%s <%s>", action, hotspot_id))
@@ -230,12 +283,12 @@ function OnPluginTelnetOption (option)
   if t.obj_info then
     for k, v in pairs (t.obj_info) do
       local time_elapsed = GetInfo (232) - (requested_cache [k] or GetInfo (232))
-      local dsc = "<expired>"
+      local dsc = "<not there>"
       if v then
         dsc = v.short or v.dsc or "(unknown?)"
         v._type = "object"
       end -- if
-      Note (string.format ("RECEIVED object ID: %s in %.2f seconds (%s).", k, time_elapsed, dsc))
+      -- Note (string.format ("RECEIVED object ID: %s in %.2f seconds (%s).", k, time_elapsed, dsc))
       guid_cache [k] = v or nil
       requested_cache [k] = nil
       -- tprint (v)
@@ -251,18 +304,33 @@ function OnPluginTelnetOption (option)
         dsc = v.name or "(unknown?)"
         v._type = "char"
       end -- if
-      Note (string.format ("RECEIVED char ID: %s in %.2f seconds (%s).", k, time_elapsed, dsc))
+      -- Note (string.format ("RECEIVED char ID: %s in %.2f seconds (%s).", k, time_elapsed, dsc))
       guid_cache [k] = v or nil
       requested_cache [k] = nil
       -- tprint (v)
     end -- for
   end -- if
     
+  -- cache incoming object information
+  if t.room_info then
+    for k, v in pairs (t.room_info) do
+      local time_elapsed = GetInfo (232) - (requested_rooms [k] or GetInfo (232))
+      local dsc = "<not there>"
+      if v and v.name then
+        dsc = v.name
+      end -- if
+      -- Note (string.format ("RECEIVED room ID: %s in %.2f seconds (%s).", k, time_elapsed, dsc))
+      rooms [k] = v or nil
+      requested_rooms [k] = nil
+      -- tprint (v)
+    end -- for
+  end -- if
+  
   if t.inroom then
     redisplay = nil
   else
     -- we couldn't display all last time, and we got some cache info, try again
-    if redisplay and (t.obj_info or t.char_info) then
+    if redisplay and (t.obj_info or t.char_info or t.room_info) then
       t.inroom = redisplay
     else
       return
@@ -270,25 +338,71 @@ function OnPluginTelnetOption (option)
   end
   
   local width = 0
+  local extra_depth = 0
   local lines = 1  -- have at least one line
   local dark_message = "It is too dark to see."
   local blind_message = "You are blind!"
   local nothing_message = "There is nothing here."
   local count = 0
   
-  local background_colour = ColourNameToRGB "darkkhaki"
+  local background_colour = ColourNameToRGB "#252525"
   
+  room = {}  -- current room
 
-  check_cache_table (t.inroom.objects,  "obj_info")
-  check_cache_table (t.inroom.npcs,     "char_info")
-  check_cache_table (t.inroom.players,  "char_info")
-      
+  check_cache_table (t.inroom.objects,  "obj_info")   -- objects in this room
+  check_cache_table (t.inroom.npcs,     "char_info")  -- mobs in this room
+  check_cache_table (t.inroom.players,  "char_info")  -- players in this room
+  check_room_cache  (t.inroom.guid, room, "room_info")-- room details
    
   if t.inroom.dark then
     width = WindowTextWidth (win, FONT_ID, dark_message, true)
   elseif t.inroom.blind then
     width = WindowTextWidth (win, FONT_ID, blind_message, true)
   else  
+    -- ROOM DESCRIPTION
+    
+    -- name of room
+    if room.name then
+      width = math.max (width, WindowTextWidth (win, FONT_ID, room.name, true))
+      lines = lines + 1
+      extra_depth = extra_depth + PARAGRAPH_GAP
+    else
+      redisplay = t.inroom  -- need to redisplay when cache info arrives
+    end -- if
+  
+    -- description
+    if room.desc then
+      room.desc = Trim (string.gsub (room.desc, "\r", ""))  -- no carriage-returns
+      for line in getlines (room.desc) do
+        width = math.max (width, WindowTextWidth (win, FONT_ID, line, true))
+        lines = lines + 1
+      end -- for
+      extra_depth = extra_depth + PARAGRAPH_GAP
+    else
+      redisplay = t.inroom  -- need to redisplay when cache info arrives
+    end -- if long description
+    
+    if room.exits then
+      if next (room.exits) then
+        local t = {}
+        for k, v in pairs (room.exits) do
+          table.insert (t, full_exit_name [k] or "Unknown")
+        end -- for each exit
+        table.sort (t)
+        exits_line = "[Exits: " .. table.concat (t, ", ") .. "]"
+      else
+        exits_line = "[No exits]"
+      end -- if    
+      width = math.max (width, WindowTextWidth (win, FONT_ID, exits_line, true))
+      lines = lines + 1
+      extra_depth = extra_depth + PARAGRAPH_GAP
+    else
+      redisplay = t.inroom  -- need to redisplay when cache info arrives
+    end -- if exits
+    
+    
+    -- OTHER STUFF IN THE ROOM
+    
     for k, v in pairs (t.inroom) do
       if type (v) == "table" then
         for i, item in ipairs (v) do
@@ -330,8 +444,13 @@ function OnPluginTelnetOption (option)
           if item.lvl then
             item._extra = string.format (" [%i]", item.lvl)
           end -- if
+          local dsc = item.dsc
           if item.fight and item.target then
+             if guid_cache [item.guid] then
+               dsc = capitalize (guid_cache [item.guid].short) .. " is here"
+             end -- if
              local target = "<unknown>"
+
              if guid_cache [item.target] then
                target = guid_cache [item.target].short
                if not target or target == "" then
@@ -349,7 +468,7 @@ function OnPluginTelnetOption (option)
              my_guid = item.guid
           end -- if
           if guid_cache [item.guid] then
-            width = math.max (width, 10 + WindowTextWidth (win, FONT_ID, item.dsc .. item._extra, true))
+            width = math.max (width, 10 + WindowTextWidth (win, FONT_ID, dsc .. item._extra, true))
             lines = lines + 1
             count = count + 1
           end -- if
@@ -364,7 +483,7 @@ function OnPluginTelnetOption (option)
   end -- if
   
   window_width = width + 10
-  window_height = font_height * lines + 10
+  window_height = font_height * lines + 10 + extra_depth
   
   WindowCreate (win, 
                  windowinfo.window_left, 
@@ -379,7 +498,7 @@ function OnPluginTelnetOption (option)
     
   
   -- fill entire box to clear it
-  WindowRectOp (win, 2, 0, 0, 0, 0, background_colour)  -- fill entire box
+  WindowRectOp (win, 2, 0, 0, 0, 0, 0)  -- fill entire box
    
   -- Edge around box rectangle
   WindowCircleOp (win, 3, 0, 0, 0, 0, ColourNameToRGB "darkgray", 0, 2, 0, 1)
@@ -391,7 +510,34 @@ function OnPluginTelnetOption (option)
   else  
     vertical = 5  -- pixel to start at
 
-    WindowRectOp (win, 2, 0, 0, 0, vertical + #t.inroom.players * font_height, ColourNameToRGB "darkslategray")  
+    -- ROOM DESCRIPTION
+    
+    -- name of room
+    if room.name then
+      WindowRectOp (win, 2, 0, vertical, 0, vertical + font_height, ColourNameToRGB "midnightblue")  
+      WindowText (win, FONT_ID, room.name, 5, vertical, 0, 0, ColourNameToRGB ("white"), true)
+      vertical = vertical + font_height + PARAGRAPH_GAP
+    end -- if
+
+    -- exits
+    if room.exits then
+      WindowRectOp (win, 2, 0, vertical, 0, vertical + font_height, ColourNameToRGB "maroon")  
+      WindowText (win, FONT_ID, exits_line, 5, vertical, 0, 0, ColourNameToRGB ("white"), true)
+      vertical = vertical + font_height + PARAGRAPH_GAP
+    end -- if
+  
+    -- description
+    if room.desc then
+      for line in getlines (room.desc) do
+        WindowText (win, FONT_ID, line, 5, vertical, 0, 0, ColourNameToRGB ("yellow"), true)
+        vertical = vertical + font_height
+      end -- for
+      vertical = vertical + PARAGRAPH_GAP
+    end -- if long description
+        
+    -- OTHER STUFF IN THE ROOM
+        
+    WindowRectOp (win, 2, 0, vertical, 0, vertical + #t.inroom.players * font_height, ColourNameToRGB "darkslategray")  
   
     table.sort (t.inroom.players, function (a, b) return a.dsc < b.dsc end)
     
@@ -446,6 +592,8 @@ function OnPluginTelnetOption (option)
       end -- if
     end -- for
 
+    WindowRectOp (win, 2, 0, vertical, 0, vertical + #t.inroom.objects * font_height, ColourNameToRGB "darkkhaki")  
+    
     table.sort (t.inroom.objects, function (a, b) return a.dsc < b.dsc end)
               
     -- then objects in the room
