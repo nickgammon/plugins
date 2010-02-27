@@ -957,7 +957,7 @@ os.setlocale ("", "time")
 <script>
 <![CDATA[
 function OnHelp (sName, sLine, wildcards)
-  Note (GetPluginInfo (GetPluginID, 3))
+  Note (GetPluginInfo (GetPluginID (), 3))
 end -- function 
 ]]>
 </script> 
