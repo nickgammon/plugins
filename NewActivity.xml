@@ -32,8 +32,7 @@ Customise the entities above if you want:
 <description trim="y">
 Type "&activity_alias;" to switch to the next world with new activity. 
 
-New activity is defined as output that has been received 
-while the world is not the active window.
+New activity is defined as output that has been received while the world is not the active window.
 
 
 Usage
