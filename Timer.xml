@@ -18,12 +18,9 @@
    >
 <description trim="y">
 <![CDATA[
-This plugin displays time connected in the status bar. 
-It can be reset to zero when you like.
+This plugin displays time connected in the status bar. It can be reset to zero when you like.
 
-The time is shown as hours and minutes (eg. 4h 22m) - if you are connected for 
-more than a day then it will show more than 24 hours. 
-You could amend it slightly to change that if you wanted.
+The time is shown as hours and minutes (eg. 4h 22m) - if you are connected for more than a day then it will show more than 24 hours. You could amend it slightly to change that if you wanted.
 
 Commands
 --------

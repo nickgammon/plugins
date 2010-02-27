@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE muclient>
+<!DOCTYPE muclient
+[
+  <!ENTITY PreserveLineBreaksWanted "vbTrue" > 
+  <!ENTITY LogOutputWanted "vbTrue" > 
+  <!ENTITY LogCommandsWanted "vbTrue" > 
+]>
 <!-- Saved on Friday, July 25, 2003, 10:50 AM -->
 <!-- MuClient version 3.42 -->
 
@@ -7,6 +12,14 @@
 
 <!--
 You can change the entities at the top to control the way it works.
+
+PreserveLineBreaksWanted = Whether or not each line ends with a hard carriage return
+LogOutputWanted = Whether output from the MUD is to be logged
+LogCommandsWanted = Whether commands you type are to be logged
+
+vbTrue = yes
+vbFalse = no
+
 -->
 
 <muclient>
@@ -62,6 +75,7 @@ They are set to "keep evaluating" so that other triggers and aliases are still p
    match="^.*$"
    enabled="y"
    omit_from_log="y"
+   omit_from_output="y"
    regexp="y"
    keep_evaluating="y"
    sequence="5"
@@ -74,9 +88,14 @@ They are set to "keep evaluating" so that other triggers and aliases are still p
 
 
 <script>
+dim PreserveLineBreaksWanted
+  PreserveLineBreaksWanted = &PreserveLineBreaksWanted;
+dim LogOutputWanted
+  LogOutputWanted = &LogOutputWanted;
+dim LogCommandsWanted
+  LogCommandsWanted = &LogCommandsWanted;
+
 <![CDATA[
-dim PreserveLineBreaks
-  PreserveLineBreaks = vbTrue
 
 '
 '  Helper function to output code for bold, underline etc.
@@ -109,10 +128,10 @@ dim ul, blink, inverse
 dim i
 
   '
-  ' Not necessary if logging not active
+  ' Not necessary if logging not active or not wanted
   ' 
 
-  If Not IsLogOpen Then
+  If (Not IsLogOpen) Or (not LogOutputWanted) Then
     Exit Sub
   End If
 
@@ -231,8 +250,8 @@ dim i
       end if
 
     end if  ' colour found
-
-  logline = logline & DoExtra (bold, lastbold, 1, 22)
+  
+    logline = logline & DoExtra (bold, lastbold, 1, 22)
     lastbold = bold
 
     target = GetStyleInfo (line, style, 15) ' RGB colour of style background
@@ -269,19 +288,19 @@ dim i
     '
 
     bold = GetStyleInfo (line, style,  8) ' bold flag
-  logline = logline & DoExtra (bold, lastbold, 1, 22)
+    logline = logline & DoExtra (bold, lastbold, 1, 22)
     lastbold = bold
 
     ul = GetStyleInfo (line, style, 9) ' underline flag
-  logline = logline & DoExtra (ul, lastul, 4, 24)
+    logline = logline & DoExtra (ul, lastul, 4, 24)
     lastul = ul
 
     blink = GetStyleInfo (line, style, 10) ' blink flag
-  logline = logline & DoExtra (blink, lastblink, 3, 23)
+    logline = logline & DoExtra (blink, lastblink, 3, 23)
     lastblink = blink
     
     inverse = GetStyleInfo (line, style, 11) ' inverse flag
-  logline = logline & DoExtra (inverse, lastinverse, 7, 27)
+    logline = logline & DoExtra (inverse, lastinverse, 7, 27)
     lastinverse = inverse
 
     '
@@ -296,7 +315,7 @@ dim i
   '  If wanted, keep the original (soft) line breaks
   '
    
-  If PreserveLineBreaks And line <> lastline Then
+  If PreserveLineBreaksWanted And line <> lastline Then
     logline = logline & vbCrLf
   End If
 
@@ -310,10 +329,10 @@ end sub  ' end of LogOutput
 
 sub LogCommand (name, matchingline, wildcards)
   '
-  ' Not necessary if logging not active
+  ' Not necessary if logging not active or not wanted
   ' 
 
-  If Not IsLogOpen Then
+  If (Not IsLogOpen) Or (not LogCommandsWanted) Then
     Exit Sub
   End If
 

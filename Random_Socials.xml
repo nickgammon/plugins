@@ -1,4 +1,4 @@
-<?xml Version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE muclient [
   <!ENTITY socials_command "socials" > 
   <!ENTITY end_socials_regexp "\&gt;" > 
@@ -17,7 +17,7 @@ Change "end_socials_regexp" to whatever will *not* be in a socials line.
   Default: >
  
 Change "timer_interval" to be the number of seconds between checking for socials.
-	Default: 30 seconds
+	Default: 10 seconds
 	
 (Note - every "timer_interval" seconds there is a 20% chance that the social will be sent.)
   
@@ -26,56 +26,57 @@ Change "timer_interval" to be the number of seconds between checking for socials
 <muclient>
 <plugin name="Random_Socials"
   author="Nick Gammon"
-  language="Lua"
-  id = "e032b4b7db80da78a87dc708"
+  language="vbscript"
+  id = "982581e59ab42844527eec80"
   purpose = "Displays a random social from time to time"
   save_state = "y"
-  date_written="2007-05-03 09:30"
-  requires="3.80"
   version = "1.1"
   >
-<description Trim="y">
+<description trim="y">
 <![CDATA[
 
-This plugin checks to see if it has a list of socials (in the "Socials" table).
+This plugin checks to see if it has a list of socials (in the "socials" variable).
 
 If not, it sends "socials" to the MUD to build a list.
 
-Then, every 30 seconds it has a 20% chance of displaying one picked at random.
+Then, every 10 seconds it has a 20% chance of displaying one picked at random.
 
 Commands
 --------
 
-socials:Help       - shows this description in the output window
+socials:help       - shows this description in the output window
 socials:remove:all - removes all socials (ie. reloads the list)
-socials:remove X   - removes social X from the list (eg. socials:remove burp)
+socials:remove X   - removes social X from the list (eg. social:remove burp)
 ]]>            
 </description>
 </plugin>
 
+<!--  Get our standard VB constants -->
+<include name="constants.vbs"/>
+
+<!--  =============================================
+
+Sub "SocialsList" - collects a list of socials.
+
+ =============================================  -->
+
 <script>
-
--- convert socials command (entity) into Lua variable
-
-socials_command = "&socials_command;"
-
 <![CDATA[
+dim SocialsList  ' store list of socials
 
--- on plugin install, convert variable into Lua table
-function OnPluginInstall ()
-  require "serialize"  -- needed to serialize table to string
-  Socials = {}  -- ensure table exists, if not loaded from variable
+Randomize  ' Initialize random-number generator.
 
-  -- seed random number generator
-  math.randomseed (os.time ())
-
-  assert (loadstring (GetVariable ("Socials") or "")) ()
-end -- function OnPluginInstall
-
--- on saving state, convert Lua table back into string variable
-function OnPluginSaveState ()
-  SetVariable ("Socials", serialize.save ("Socials"))
-end -- function OnPluginSaveState
+sub GetSocials
+  world.setvariable "socials", ""
+  world.enabletrigger "Collect_Socials", 1
+  '
+  '  cancel CDATA so we can use the entity (from DOCTYPE header)
+  '
+]]>            
+  world.send "&socials_command;"
+<![CDATA[
+  world.note "Collecting list of socials ..."
+end sub
 
 ]]>            
  </script>
@@ -83,62 +84,69 @@ end -- function OnPluginSaveState
 <!--  =============================================
 
 Timer:   RandomSocial
+Script:  DoRandomSocial
 Purpose: Chooses a social at random, builds the list if necessary
 
  =============================================  -->
  
 <timers>
   <timer 
-  name="RandomSocial" 
-  enabled="y" 
-  second="&timer_interval;" 
-  send_to="12"
-  >
-<send>
-
---
---  Wait a minute after connecting to let them put in the character name and password
--- 
-  if (GetInfo (304) -  GetInfo (301)) &lt; 1 then
-    return
-  end -- if
-  
---
--- if already collecting socials list, just wait for it to finish
---
-   if GetTriggerInfo ("Collect_Socials", 8) then
-      return
-   end -- if already doing it
-
---
--- if no socials list, get one
---
-  if next (Socials) == nil then
-    EnableTrigger ("Collect_Socials", true)
-    Send (socials_command)  -- e.g. "socials"
-    Note ("Collecting list of socials ...")
-    return
-  end -- if
-
---
---  Do a random social (20% of the time)
---
-   if math.random () &lt; 0.20 then
-      Send (Socials [math.random (1, #Socials)])
-   end -- if
-
-</send>
+	  name="RandomSocial" 
+	  script="DoRandomSocial" 
+	  enabled="y" 
+	  second="&timer_interval;" 
+	>
   </timer>
-
-<timer enabled="y" hour="1" send_to="12">
-  <send>SaveState ()</send>
-  </timer>
-
 </timers>
+<script>
+<![CDATA[
+Sub DoRandomSocial (strTimerName)
+
+'
+'  Wait a minute after connecting to let them put in the character name and password
+' 
+
+  If DateDiff ("n", World.GetInfo (301), Now) < 1 Then
+    Exit Sub
+  End If
+  
+'
+' If collecting socials, list, just wait for it to finish
+'
+
+   If World.GetTriggerInfo ("Collect_Socials", 8) then
+      Exit Sub
+   End If
+
+'
+' If no socials list, get one
+'
+
+  If IsEmpty (SocialsList) Then
+     If world.getvariable ("socials") = "" Then
+       Call GetSocials
+     Else  
+       SocialsList = split (world.getvariable ("socials"))
+     End If
+     Exit Sub
+  End If
+
+'
+'  Do a random social
+'
+
+   If Rnd < 0.2 Then
+      World.Send SocialsList ( Rnd * Ubound (SocialsList))
+   End If
+
+End Sub
+]]>            
+ </script>
 
 <!--  =============================================
 
 Trigger:  Collect_Socials
+Script:   Do_Collect_Socials
 Purpose:  Matches a line of socials
 
  =============================================  -->
@@ -146,25 +154,35 @@ Purpose:  Matches a line of socials
 <triggers>
   <trigger
    custom_colour="2"
-   match="^([A-Za-z ]+)$"
+   match="^[A-Za-z ]+$"
    name="Collect_Socials"
    regexp="y"
+   script="Do_Collect_Socials"
    sequence="100"
-   send_to="12"
   >
-<send>
-  EnableTrigger ("End_Socials", true)
-  for w in string.gmatch ("%1", "%a+") do
-    table.insert (Socials, w)
-  end -- for each social
-</send>
   </trigger>
 </triggers>
+
+<script>
+<![CDATA[
+sub Do_Collect_Socials (sName, sLine, wildcards)
+  world.enabletrigger "End_Socials", 1
+  sLine = Trim (sLine)
+  while Instr (sLine, "  ") > 0
+    sLine = world.Replace (sLine, "  ", " ", 1)
+  wend
+  world.setvariable "socials", _
+    world.getvariable ("socials") & " " & sLine
+end sub
+
+]]>            
+ </script>
 
 <!--  =============================================
 
 Trigger:  End_Socials
-Purpose:  Detects end of socials list - in this case we look for the > at the
+Script:   Do_End_Socials
+Purpose:  Detects end of socials list - in this case we look for the < at the
           start of a MUD prompt, but you could look for anything that wouldn't be
           a social line.
 
@@ -176,20 +194,30 @@ Purpose:  Detects end of socials list - in this case we look for the > at the
    match="&end_socials_regexp;"
    name="End_Socials"
    regexp="y"
+   script="Do_End_Socials"
    sequence="100"
-   send_to="12"
   >
-<send>
-  EnableTrigger ("Collect_Socials", false)
-  EnableTrigger ("End_Socials", false)
-  Note "End of socials list detected. Random socials now active."
-</send>
   </trigger>
 </triggers>
+<script>
+<![CDATA[
+
+sub Do_End_Socials (sName, sLine, wildcards)
+  world.note "End of socials list detected. Random socials now active."
+  world.enabletrigger "Collect_Socials", 0
+  world.enabletrigger "End_Socials", 0
+
+  SocialsList = split (world.getvariable ("socials"))
+
+end sub
+
+]]>            
+ </script>
 
 <!--  =============================================
 
 Alias:    Remove_Social
+Script:   Do_Remove_Social
 Purpose:  Removes a social from the list (eg. it might be inappropriate)
 
  =============================================  -->
@@ -197,32 +225,48 @@ Purpose:  Removes a social from the list (eg. it might be inappropriate)
 <aliases>
   <alias
    name="Remove_Social"
+   script="Do_Remove_Social"
    match="^socials\:remove ([A-Za-z]+)$"
    enabled="y"
    regexp="y"
-   send_to="12"
   >
-<send>
-  local which = string.lower ("%1")
-
-  -- do linear search for it - key is the item number, value is the social
-  for k, v in ipairs (Socials) do
-    if string.lower (v) == which then
-      table.remove (Socials, k)  -- delete from table
-      Note ("Social '" .. which .. "' removed.")
-      return -- all done
-    end -- if found
-  end -- for each social
-
-  Note ("Social '" .. which .. "' was not in the list.")
-</send>
-
   </alias>
 </aliases>
+
+<script>
+<![CDATA[
+
+sub Do_Remove_Social (sName, sLine, wildcards)
+
+If not Instr (world.GetVariable ("socials") & " ",  wildcards (1) & " ") > 0 then
+  world.note "Social " & wildcards (1) & " was not in the list."
+  Exit Sub
+End If
+
+'
+'  Remove the specified social from the list
+'
+ world.SetVariable "socials", _
+   Trim (world.Replace (world.GetVariable ("socials") & " ", _
+                  wildcards (1) & " ", "", 1))
+ 
+world.note "Removed social " & wildcards (1) & " from the list."
+                  
+'
+'  Regenerate the list
+'                  
+
+  SocialsList = split (world.getvariable ("socials"))
+
+end sub
+
+]]>            
+ </script>
  
 <!--  =============================================
 
 Alias:    Remove_All_Socials
+Script:   Do_Remove_All_Socials
 Purpose:  Removes all socials (ie. forces list to be regenerated)
 
  =============================================  -->
@@ -230,34 +274,51 @@ Purpose:  Removes all socials (ie. forces list to be regenerated)
 <aliases>
   <alias
    name="Remove_All_Socials"
+   script="Do_Remove_All_Socials"
    match="socials:remove:all"
    enabled="y"
-   send_to="12"
   >
-<send>
-  Socials = {}
-  Note ("All socials removed from list.")
-</send>
   </alias>
 </aliases>
 
+<script>
+<![CDATA[
+
+sub Do_Remove_All_Socials (sName, sLine, wildcards)
+
+  World.SetVariable "socials", ""
+  SocialsList = Empty
+  World.Note "All socials removed from list."
+  
+end sub
+
+]]>            
+ </script> 
+
+
 <!--  =============================================
 
-Alias:   socials:Help
-Purpose: Shows plugin Help
+Alias:   socials:help
+Script:  OnHelp
+Purpose: Shows plugin help
 
  =============================================  -->
  
 <aliases>
    <alias
-    match="socials:Help"
+    script="OnHelp"
+    match="socials:help"
     enabled="y"
-    send_to="12"
    >
-<send>
-  Note (GetPluginInfo (GetPluginID (), 3))
-</send>
    </alias>
  </aliases>
 
+<script>
+<![CDATA[
+ sub OnHelp (sName, sLine, wildcards)
+   world.note world.getplugininfo (world.getpluginid, 3)
+ end sub
+]]>            
+ </script> 
+ 
  </muclient>
