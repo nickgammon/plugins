@@ -532,6 +532,9 @@ function draw_everything (move)
   -- let them move it around                 
   movewindow.add_drag_handler (win, 0, 0, 0, 0)
     
+  local dark_message = "It is too dark to see."
+  local blind_message = "You are blind!"
+  local exits_message = "Exits:"
   
   -- fill entire box to clear it
   WindowRectOp (win, 2, 0, 0, 0, 0, BACKGROUND_COLOUR)  -- fill entire box
