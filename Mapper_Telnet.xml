@@ -87,7 +87,7 @@ FONT_ID = "fn"  -- internal font identifier
   
 -- size of map window
 WINDOW_WIDTH = 300
-WINDOW_HEIGHT = 400
+WINDOW_HEIGHT = 300
 
 -- size of room box
 ROOM_SIZE = 10
@@ -505,10 +505,10 @@ function draw_room (guid, path, x, y)
                  "",  -- mousedown
                  "",  -- cancelmousedown
                  "mouseup_room",  -- mouseup
-                 string.format ("%s\tExits=%s",    -- \nGuid=%s\nSteps=%i\nPath to=%s
+                 string.format ("%s\tExits=%s\nRoom=%s",    -- \nSteps=%i\nPath to=%s
                         room.name, 
-                        table.concat (texits, ", ") 
-                        -- guid, 
+                        table.concat (texits, ", "),
+                        guid 
                         -- depth,
                         -- table.concat (path, ",")
                         ),  -- tooltip text
