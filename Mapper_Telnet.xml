@@ -115,21 +115,45 @@ require "copytable"
 
 rooms = {}
 requested_rooms = {}
+not_in_database = {}
+
+function fixsql (s)
+  if s then
+    return "'" .. (string.gsub (s, "'", "''")) .. "'" -- replace single quotes with two lots of single quotes
+  else
+    return "NULL"
+  end -- if
+end -- fixsql
+
+function fixbool (b)
+ if s then
+    return 1
+  else
+    return 0
+  end -- if
+end -- fixbool
 
 local IAC, SB, SE = 0xFF, 0xFA, 0xF0
 
 -- check if single item cached
 function check_room_cache (guid, item, type)
   local cache = rooms [guid]  -- field to check on
+  
+  -- not in memory? check database
+  if not cache then
+     load_room_from_database (guid)
+     cache = rooms [guid] -- there now?
+  end -- if not cached
+  
   if cache then
     -- copy in cached stuff
     for k, v in pairs (cache) do
       item [k] = v  
     end -- for
   elseif not requested_rooms [guid] then
-      SendPkt (string.char (IAC, SB, 102) .. type .. " = \"" .. guid .. "\"" .. string.char (IAC, SE)) 
-      -- Note ("Requested ", type, " cache ID: ", guid)
-      requested_rooms [guid] = GetInfo (232)  -- don't request twice
+    SendPkt (string.char (IAC, SB, 102) .. type .. " = \"" .. guid .. "\"" .. string.char (IAC, SE)) 
+    -- Note ("Requested ", type, " cache ID: ", guid)
+    requested_rooms [guid] = GetInfo (232)  -- don't request twice
   end -- if 
 end -- check_room_cache
 
@@ -158,9 +182,45 @@ function OnPluginInstall ()
 
   -- find where window was last time
   windowinfo = movewindow.install (win, 7)
-   
-  assert (loadstring (GetVariable ("rooms") or "")) ()
   
+  -- open database on disk (uses world name)
+  db = assert (sqlite3.open( GetInfo (66) .. WorldName() .. ".db"))
+  
+  -- create rooms table
+  assert (db:execute[[
+    PRAGMA foreign_keys = ON;
+  
+    CREATE TABLE IF NOT EXISTS 
+      rooms(
+      roomid        INTEGER PRIMARY KEY AUTOINCREMENT,
+      guid          STRING NOT NULL,   -- vnum or how the MUD identifies theroom
+      name          TEXT,     -- name of room
+      desc          TEXT,     -- description
+      train         INTEGER,  -- true if trainer here
+      repair        INTEGER,  -- true if repairer here
+      healer        INTEGER,  -- true if healer here
+      terrain       TEXT,     -- terrain type (eg. "outside"
+      date_added    DATE,     -- date added to database
+      UNIQUE (guid)
+    );
+    
+  ]])
+  
+  -- create exits table
+  assert (db:execute[[
+    CREATE TABLE IF NOT EXISTS 
+      exits(
+      exitid      INTEGER PRIMARY KEY AUTOINCREMENT,
+      dir         TEXT    NOT NULL, -- direction, eg. "n", "s"
+      fromguid    STRING  NOT NULL, -- exit from which room (in rooms table)
+      toguid      string  NOT NULL, -- exit to which room (in rooms table)
+      date_added  DATE,             -- date added to database
+      FOREIGN KEY(fromguid) REFERENCES rooms(guid)
+    );
+  CREATE INDEX IF NOT EXISTS fromguid_index ON exits (fromguid);
+  CREATE INDEX IF NOT EXISTS toguid_index   ON exits (toguid);
+  ]])
+    
   build_room_info ()
   
 end -- OnPluginInstall
@@ -176,11 +236,13 @@ end -- OnPluginDisable
 -- hide window on removal
 function OnPluginClose ()
   WindowShow (win,  false)  -- hide it
+  -- close database
+  db:close()
+
 end -- OnPluginClose
 
 function OnPluginSaveState ()
   movewindow.save_state (win)
-  SetVariable ("rooms", "rooms = " .. serialize.save_simple (rooms))
 end -- OnPluginSaveState
 
 function mouseup_room (flags, hotspot_id)
@@ -342,6 +404,12 @@ function draw_room (guid, path, x, y)
   
   local room = rooms [guid]
   
+  -- not cached - see if in database
+  if not room then
+    load_room_from_database (guid)
+    room = rooms [guid]
+  end -- not in cache
+
   -- can't if we know nothing about it
   if not room then
     return
@@ -590,6 +658,63 @@ function draw_everything (move)
 
 end -- draw_everything
 
+function save_room_to_database (guid, room)
+
+  assert (db:execute (string.format ([[
+      INSERT INTO rooms (guid, name, desc, train, repair, healer, terrain, date_added) 
+          VALUES (%s, %s, %s, %i, %i, %i, %s, DATETIME('NOW'));
+    ]], fixsql  (guid),         -- guid is key (guid)
+        fixsql  (room.name), 
+        fixsql  (room.desc), 
+        fixbool (room.train), 
+        fixbool (room.repair), 
+        fixbool (room.healer), 
+        fixsql  (room.terrain)
+         )))
+        
+  for name, exit_guid in pairs (room.exits) do
+   assert (db:execute (string.format ([[
+      INSERT INTO exits (dir, fromguid, toguid, date_added) 
+          VALUES (%s, %s, %s, DATETIME('NOW'));
+    ]], fixsql  (name),         -- direction (eg. "n")
+        fixsql  (guid),         -- from current room
+        fixsql  (exit_guid)     -- destination room
+        )))
+  end -- for each exit
+  
+  not_in_database [guid] = false
+    
+end -- function 
+
+function load_room_from_database (guid)
+
+  -- if not in database, don't look again
+  if not_in_database [guid] then
+    return
+  end -- no point looking
+  
+  for row in db:nrows(string.format ("SELECT * FROM rooms WHERE guid = %s", fixsql (guid))) do
+     rooms [guid] = {
+       name = row.name,
+       desc = row.desc,
+       train = row.train == 1,
+       repair = row.repair == 1,
+       healer = row.healer == 1,
+       terrain = row.terrain,
+       exits = {} }
+       
+    for exitrow in db:nrows(string.format ("SELECT * FROM exits WHERE fromguid = %s", fixsql (guid))) do
+       rooms [guid].exits [tostring (exitrow.dir)] = tostring (exitrow.toguid)
+    end -- for each exit
+    
+  end   -- finding room
+
+  if not rooms [guid] then
+    not_in_database [guid] = true
+  end -- if
+  
+end -- load_room_from_database
+
 -- here when location changes
 
 function OnPluginTelnetOption (option)
@@ -599,14 +724,27 @@ function OnPluginTelnetOption (option)
   
   -- cache incoming object information
   if t.room_info then
+    
+    if next (t.room_info) then
+        assert (db:execute "BEGIN TRANSACTION;")
+    end -- if at least one room
+    
     for k, v in pairs (t.room_info) do
       local time_elapsed = GetInfo (232) - (requested_rooms [k] or GetInfo (232))
       local dsc = v.name or "<not there>"
       -- Note (string.format ("RECEIVED room ID: %s in %.2f seconds (%s).", k, time_elapsed, dsc))
       rooms [k] = v or nil
       requested_rooms [k] = nil
+      if v then
+        save_room_to_database (k, v)
+      end -- if room data found
       -- tprint (v)
     end -- for
+    
+    if next (t.room_info) then
+        assert (db:execute "COMMIT;")
+    end -- if at least one room
+    
   end -- if
     
   if t.move then
