@@ -24,17 +24,6 @@ The window can be dragged to a new location with the mouse.
 </plugin>
 
 <aliases>
-  <alias
-   match="map clear cache"
-   enabled="y"
-   send_to="12"
-   sequence="100"
-  >
-  <send>
-rooms = {}
-Note "Mapper room cache cleared."
-</send>
-  </alias>
   
  <alias
    match="map zoom out"
@@ -70,6 +59,16 @@ Note "Mapper room cache cleared."
   end -- if
   
   </send>
+  </alias>  
+    
+ <alias
+   match="^map find ([\w*]+)$"
+   enabled="y"
+   sequence="100"
+   script="map_find"
+   regexp="y"
+  >
+  
   </alias>  
     
 </aliases>
@@ -112,61 +111,21 @@ HEALER_FILL_COLOUR      = ColourNameToRGB "gold"
 require "movewindow"
 require "serialize"
 require "copytable"
+PPI = require "ppi"
 
 rooms = {}
-requested_rooms = {}
-not_in_database = {}
-
-function fixsql (s)
-  if s then
-    return "'" .. (string.gsub (s, "'", "''")) .. "'" -- replace single quotes with two lots of single quotes
-  else
-    return "NULL"
-  end -- if
-end -- fixsql
-
-function fixbool (b)
- if s then
-    return 1
-  else
-    return 0
-  end -- if
-end -- fixbool
 
 local IAC, SB, SE = 0xFF, 0xFA, 0xF0
 
 -- check if single item cached
-function check_room_cache (guid, item, type)
-  local cache = rooms [guid]  -- field to check on
-  
-  -- not in memory? check database
-  if not cache then
-     load_room_from_database (guid)
-     cache = rooms [guid] -- there now?
+function check_room_cache (guid, ask_server)
+ 
+  -- get room if we don't have it  
+  if not rooms [guid] then
+     rooms [guid] = ppi.get_room (guid, ask_server)
   end -- if not cached
-  
-  if cache then
-    -- copy in cached stuff
-    for k, v in pairs (cache) do
-      item [k] = v  
-    end -- for
-  elseif not requested_rooms [guid] then
-    SendPkt (string.char (IAC, SB, 102) .. type .. " = \"" .. guid .. "\"" .. string.char (IAC, SE)) 
-    -- Note ("Requested ", type, " cache ID: ", guid)
-    requested_rooms [guid] = GetInfo (232)  -- don't request twice
-  end -- if 
+
 end -- check_room_cache
-
-function check_room_cache_table (tbl, type)
-
-  if tbl then
-    -- for an entire table (eg. objects, players, npcs, rooms) check all for cached guids
-    for i, item in ipairs (tbl) do
-      check_room_cache (item.guid, item, type)
-    end -- for
-  end -- if
-  
-end -- check_room_cache_table
 
 function OnPluginInstall ()
   
@@ -183,44 +142,8 @@ function OnPluginInstall ()
   -- find where window was last time
   windowinfo = movewindow.install (win, 7)
   
-  -- open database on disk (uses world name)
-  db = assert (sqlite3.open( GetInfo (66) .. WorldName() .. ".db"))
-  
-  -- create rooms table
-  assert (db:execute[[
-    PRAGMA foreign_keys = ON;
-  
-    CREATE TABLE IF NOT EXISTS 
-      rooms(
-      roomid        INTEGER PRIMARY KEY AUTOINCREMENT,
-      guid          STRING NOT NULL,   -- vnum or how the MUD identifies theroom
-      name          TEXT,     -- name of room
-      desc          TEXT,     -- description
-      train         INTEGER,  -- true if trainer here
-      repair        INTEGER,  -- true if repairer here
-      healer        INTEGER,  -- true if healer here
-      terrain       TEXT,     -- terrain type (eg. "outside"
-      date_added    DATE,     -- date added to database
-      UNIQUE (guid)
-    );
-    
-  ]])
-  
-  -- create exits table
-  assert (db:execute[[
-    CREATE TABLE IF NOT EXISTS 
-      exits(
-      exitid      INTEGER PRIMARY KEY AUTOINCREMENT,
-      dir         TEXT    NOT NULL, -- direction, eg. "n", "s"
-      fromguid    STRING  NOT NULL, -- exit from which room (in rooms table)
-      toguid      string  NOT NULL, -- exit to which room (in rooms table)
-      date_added  DATE,             -- date added to database
-      FOREIGN KEY(fromguid) REFERENCES rooms(guid)
-    );
-  CREATE INDEX IF NOT EXISTS fromguid_index ON exits (fromguid);
-  CREATE INDEX IF NOT EXISTS toguid_index   ON exits (toguid);
-  ]])
-    
+ 
+      
   build_room_info ()
   
 end -- OnPluginInstall
@@ -236,36 +159,17 @@ end -- OnPluginDisable
 -- hide window on removal
 function OnPluginClose ()
   WindowShow (win,  false)  -- hide it
-  -- close database
-  db:close()
-
 end -- OnPluginClose
 
 function OnPluginSaveState ()
   movewindow.save_state (win)
 end -- OnPluginSaveState
 
-function mouseup_room (flags, hotspot_id)
-  local guid = hotspot_id
+function build_speedwalk (path)
 
-  if bit.band (flags, 0x20) == 0 then
-    if rooms [guid].shop then
-      Execute "list"  -- this is kinda silly, we have to be *in* the room
-    end -- if
-    
-    return
-  end -- if not RH click
-  
-  -- here for RH click
-  
-  local sw = speedwalks [guid]
-  if not sw then
-    return
-  end -- not found
-  
-  -- build speedwalk string (collect identical directions)
+ -- build speedwalk string (collect identical directions)
   local tspeed = {}
-  for _, dir in ipairs (sw) do
+  for _, dir in ipairs (path) do
     local n = #tspeed
     if n == 0 then
       table.insert (tspeed, { dir = dir, count = 1 })
@@ -294,7 +198,32 @@ function mouseup_room (flags, hotspot_id)
     else
       s = s .. "(" .. dir.dir .. ")"
     end -- if
+    s = s .. " "
   end -- if
+  
+  return s
+  
+end -- build_speedwalk
+
+function mouseup_room (flags, hotspot_id)
+  local guid = hotspot_id
+
+  if bit.band (flags, 0x20) == 0 then
+    if rooms [guid].shop then
+      Execute "list"  -- this is kinda silly, we have to be *in* the room
+    end -- if
+    
+    return
+  end -- if not RH click
+  
+  -- here for RH click
+  
+  local sw = speedwalks [guid]
+  if not sw then
+    return
+  end -- not found
+  
+  s = build_speedwalk (sw)
   
   -- get client to do it  
   Execute (s)
@@ -406,7 +335,7 @@ function draw_room (guid, path, x, y)
   
   -- not cached - see if in database
   if not room then
-    load_room_from_database (guid)
+    check_room_cache (guid, false)
     room = rooms [guid]
   end -- not in cache
 
@@ -427,7 +356,8 @@ function draw_room (guid, path, x, y)
   
   local texits = {}
   
-  for name, exit_guid in pairs (room.exits) do
+  for name, exit in pairs (room.exits) do
+    local exit_guid = exit.guid
     table.insert (texits, name)
     local exit_info = connectors [name]
     local stub_exit_info = half_connectors [name]
@@ -505,7 +435,7 @@ function draw_room (guid, path, x, y)
       if rooms [exit_guid] then
         local dest = rooms [exit_guid]
         -- if inverse direction doesn't point back to us, this is one-way
-        if dest.exits [inverse_direction [name]] ~= guid then
+        if dest.exits [inverse_direction [name]] == nil or dest.exits [inverse_direction [name]].guid ~= guid then
         
           -- turn points into string, relative to where the room is
           local points = string.format ("%i,%i,%i,%i,%i,%i", 
@@ -586,8 +516,9 @@ end -- draw_room
 
 
 function draw_everything (move)
-  
+
   local start_time = GetInfo (232)
+  local room = rooms [move.guid]
   
   WindowCreate (win, 
                  windowinfo.window_left, 
@@ -658,62 +589,8 @@ function draw_everything (move)
 
 end -- draw_everything
 
-function save_room_to_database (guid, room)
 
-  assert (db:execute (string.format ([[
-      INSERT INTO rooms (guid, name, desc, train, repair, healer, terrain, date_added) 
-          VALUES (%s, %s, %s, %i, %i, %i, %s, DATETIME('NOW'));
-    ]], fixsql  (guid),         -- guid is key (guid)
-        fixsql  (room.name), 
-        fixsql  (room.desc), 
-        fixbool (room.train), 
-        fixbool (room.repair), 
-        fixbool (room.healer), 
-        fixsql  (room.terrain)
-         )))
-        
-  for name, exit_guid in pairs (room.exits) do
-   assert (db:execute (string.format ([[
-      INSERT INTO exits (dir, fromguid, toguid, date_added) 
-          VALUES (%s, %s, %s, DATETIME('NOW'));
-    ]], fixsql  (name),         -- direction (eg. "n")
-        fixsql  (guid),         -- from current room
-        fixsql  (exit_guid)     -- destination room
-        )))
-  end -- for each exit
-  
-  not_in_database [guid] = false
-    
-end -- function 
 
-function load_room_from_database (guid)
-
-  -- if not in database, don't look again
-  if not_in_database [guid] then
-    return
-  end -- no point looking
-  
-  for row in db:nrows(string.format ("SELECT * FROM rooms WHERE guid = %s", fixsql (guid))) do
-     rooms [guid] = {
-       name = row.name,
-       desc = row.desc,
-       train = row.train == 1,
-       repair = row.repair == 1,
-       healer = row.healer == 1,
-       terrain = row.terrain,
-       exits = {} }
-       
-    for exitrow in db:nrows(string.format ("SELECT * FROM exits WHERE fromguid = %s", fixsql (guid))) do
-       rooms [guid].exits [tostring (exitrow.dir)] = tostring (exitrow.toguid)
-    end -- for each exit
-    
-  end   -- finding room
-
-  if not rooms [guid] then
-    not_in_database [guid] = true
-  end -- if
-  
-end -- load_room_from_database
 
 -- here when location changes
 
@@ -721,31 +598,6 @@ function OnPluginTelnetOption (option)
 
   local t = {}  -- incoming server variables will go into table t
   setfenv (assert (loadstring (option)), t) () -- compile and load into t
-  
-  -- cache incoming object information
-  if t.room_info then
-    
-    if next (t.room_info) then
-        assert (db:execute "BEGIN TRANSACTION;")
-    end -- if at least one room
-    
-    for k, v in pairs (t.room_info) do
-      local time_elapsed = GetInfo (232) - (requested_rooms [k] or GetInfo (232))
-      local dsc = v.name or "<not there>"
-      -- Note (string.format ("RECEIVED room ID: %s in %.2f seconds (%s).", k, time_elapsed, dsc))
-      rooms [k] = v or nil
-      requested_rooms [k] = nil
-      if v then
-        save_room_to_database (k, v)
-      end -- if room data found
-      -- tprint (v)
-    end -- for
-    
-    if next (t.room_info) then
-        assert (db:execute "COMMIT;")
-    end -- if at least one room
-    
-  end -- if
     
   if t.move then
     redisplay = nil
@@ -757,22 +609,161 @@ function OnPluginTelnetOption (option)
       return
     end
   end
-   
-  room = {}  -- current room
-  
-  check_room_cache_table (t.move.exits,  "room_info")
-  check_room_cache (t.move.guid, room, "room_info")
+
+  -- check we have currentroom  
+  check_room_cache (t.move.guid, true)
   
   if not rooms [t.move.guid] then
     redisplay = t.move  -- need to redisplay when cache info arrives
     return
   end -- if
 
-  check_room_cache_table (rooms [t.move.guid].exits,  "room_info")
+  -- load exits for current room
+  for _, exit in pairs (rooms [t.move.guid].exits) do
+    check_room_cache (exit.guid, true)
+    if not rooms [exit.guid] then
+      redisplay = t.move
+    end -- if
+  end -- for
     
   draw_everything (t.move)
  
 end -- function OnPluginTelnetOption
+
+-- see: http://www.gammon.com.au/forum/?id=7306&page=2
+-- Thanks to Ked.
+
+function find_paths (start, destinations)
+
+  local function make_particle (curr_loc, prev_path)
+    local prev_path = prev_path or {}
+    return {current_room=curr_loc, path=prev_path}
+  end
+	
+	local dest_length = #destinations
+	local dest_lookup = {}
+	local depth = 0
+
+	local explored_rooms, particles = {}, {}
+	
+	-- this is where we collect found paths
+	-- the table is keyed by destination, with paths as values
+	local paths = {}
+		
+	for i, room in pairs (destinations) do
+		dest_lookup[room.guid] = true
+		
+		if room.guid == start then
+  		paths[start] = {}
+  	  dest_length = dest_length - 1
+  	end -- if already there
+	end
+	
+	
+	-- create particle for the initial room
+	table.insert (particles, make_particle (start) )
+	
+	while #particles > 0 and depth < 30 do
+	
+		-- create a new generation of particles
+		new_generation = {}
+		depth = depth + 1
+		
+		-- process each active particle
+		for i, part in ipairs (particles) do
+		
+		  check_room_cache (part.current_room, false)   -- grab from database if possible
+		
+			-- if room doesn't exist, forget it
+      if rooms [part.current_room] then
+			
+				-- get a list of exits from the current room
+				exits = rooms [part.current_room].exits
+				
+				-- create one new particle for each exit
+				for dir, dest in pairs(exits) do
+				
+					-- if we've been in this room before, drop it
+					if not explored_rooms[dest.guid] then
+						explored_rooms[dest.guid] = true
+						new_path = copytable.deep (part.path)
+						table.insert(new_path, dir)
+						
+						-- if this room is in the list of destinations then save its path
+						if dest_lookup[dest.guid] then
+							paths[dest.guid] = new_path
+							dest_length = dest_length - 1
+						end -- found one!
+						
+						-- make a new particle in the new room
+	        	table.insert(new_generation, make_particle(dest.guid, new_path))
+	        	
+					end -- not explored this room
+					
+				end  -- for each exit
+			
+			end -- if room exists
+			
+		end  -- for each particle
+		
+		-- check if all destinations have been reached
+		if dest_length == 0 then
+			return paths
+		end -- if
+			
+		particles = new_generation
+	end	  -- while more particles
+	
+	return paths			
+end -- function find_paths
+
+
+
+function map_find (name, line, wildcards)
+
+  if not current_room then
+    print ("We don't know where you are right now.")
+    return
+  end -- if
+  
+  local rooms = ppi.find_rooms (wildcards [1])
+  if #rooms == 0 then
+    Note ("No rooms matched.")
+  end
+  
+  local paths = find_paths (current_room, rooms)
+  
+  table.sort (rooms, function (a, b) 
+    local ap, bp = paths [a.guid], paths [b.guid]
+    local al, bl = 0, 0
+    if ap then
+      al = #ap
+    end -- if
+    if bp then
+      bl = #bp
+    end -- if
+    return al < bl 
+    end)
+  
+  for _, room in ipairs (rooms) do
+    if current_room == room.guid then
+      print (room.name, ": <current room>")
+    elseif not paths [room.guid] then
+      print (room.name, ": <path not found>")
+    else
+      print (room.name, ":", build_speedwalk (paths [room.guid]))
+    end -- if
+  end -- for each room
+  
+end -- map_find
+
+function OnPluginListChanged ()
+  ppi = PPI.Load("8a78c14d185c36109f479926")
+  if not ppi then
+    error("Dependency plugin 'Room_Info_Helper' not installed!")
+  end
+end
+
 
 ]]>
 </script>

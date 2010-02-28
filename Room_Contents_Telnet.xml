@@ -35,6 +35,8 @@ require "movewindow"
 require "serialize"
 require "getlines"
 require "gauge"
+PPI = require "ppi"
+
 
 FONT_NAME = get_preferred_font {"Dina",  "Lucida Console",  "Fixedsys", "Courier", "Sylfaen",} 
 FONT_SIZE = 9
@@ -46,11 +48,7 @@ guid_cache = {}
 requested_cache = {}
 
 rooms = {}
-requested_rooms = {}
 
-function capitalize (x)
-  return string.upper (string.sub(x, 1, 1)) .. string.lower (string.sub(x, 2))
-end -- capitalize
 
 function OnPluginInstall ()
   
@@ -66,8 +64,6 @@ function OnPluginInstall ()
 
   -- find where window was last time
   windowinfo = movewindow.install (win, 7)
-   
-  assert (loadstring (GetVariable ("rooms") or "")) ()
   
 end -- OnPluginInstall
 
@@ -86,7 +82,6 @@ end -- OnPluginClose
 
 function OnPluginSaveState ()
   movewindow.save_state (win)
-  SetVariable ("rooms", "rooms = " .. serialize.save_simple (rooms))
 end -- OnPluginSaveState
 
 
@@ -188,30 +183,14 @@ function check_cache_table (tbl, type)
 end -- check_cache_table
 
 -- check if single item cached
-function check_room_cache (guid, item, type)
-  local cache = rooms [guid]  -- field to check on
-  if cache then
-    -- copy in cached stuff
-    for k, v in pairs (cache) do
-      item [k] = v  
-    end -- for
-  elseif not requested_rooms [guid] then
-      SendPkt (string.char (IAC, SB, 102) .. type .. " = \"" .. guid .. "\"" .. string.char (IAC, SE)) 
-      -- Note ("Requested ", type, " cache ID: ", guid)
-      requested_rooms [guid] = GetInfo (232)  -- don't request twice
-  end -- if 
+function check_room_cache (guid, ask_server)
+ 
+  -- get room if we don't have it  
+  if not rooms [guid] then
+     rooms [guid] = ppi.get_room (guid, ask_server)
+  end -- if not cached
+
 end -- check_room_cache
-
-function check_room_cache_table (tbl, type)
-
-  if tbl then
-    -- for an entire table (eg. objects, players, npcs, rooms) check all for cached guids
-    for i, item in ipairs (tbl) do
-      check_room_cache (item.guid, item, type)
-    end -- for
-  end -- if
-  
-end -- check_room_cache_table
 
 function mouseup_player (flags, hotspot_id)
   if bit.band (flags, 0x20) ~= 0 then
@@ -310,21 +289,6 @@ function OnPluginTelnetOption (option)
       -- tprint (v)
     end -- for
   end -- if
-    
-  -- cache incoming object information
-  if t.room_info then
-    for k, v in pairs (t.room_info) do
-      local time_elapsed = GetInfo (232) - (requested_rooms [k] or GetInfo (232))
-      local dsc = "<not there>"
-      if v and v.name then
-        dsc = v.name
-      end -- if
-      -- Note (string.format ("RECEIVED room ID: %s in %.2f seconds (%s).", k, time_elapsed, dsc))
-      rooms [k] = v or nil
-      requested_rooms [k] = nil
-      -- tprint (v)
-    end -- for
-  end -- if
   
   if t.inroom then
     redisplay = nil
@@ -346,14 +310,14 @@ function OnPluginTelnetOption (option)
   local count = 0
   
   local background_colour = ColourNameToRGB "#252525"
-  
-  room = {}  -- current room
 
   check_cache_table (t.inroom.objects,  "obj_info")   -- objects in this room
   check_cache_table (t.inroom.npcs,     "char_info")  -- mobs in this room
   check_cache_table (t.inroom.players,  "char_info")  -- players in this room
-  check_room_cache  (t.inroom.guid, room, "room_info")-- room details
+  check_room_cache  (t.inroom.guid, true)-- room details
    
+  room = rooms [t.inroom.guid]
+  
   if t.inroom.dark then
     width = WindowTextWidth (win, FONT_ID, dark_message, true)
   elseif t.inroom.blind then
@@ -641,6 +605,15 @@ function OnPluginConnect ()
   guid_cache = {}
   requested_cache = {}
 end -- OnPluginConnect
+
+function OnPluginListChanged ()
+  ppi = PPI.Load("8a78c14d185c36109f479926")
+  if not ppi then
+    error("Dependency plugin 'Room_Info_Helper' not installed!")
+  end
+end
+
+
 ]]>
 </script>
 
