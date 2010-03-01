@@ -255,6 +255,11 @@ end -- mouseup_object
 
 function OnPluginTelnetOption (option)
 
+  -- check Room_Info_Helper.xml was installed
+  if not ppi then
+    return
+  end -- can't get room information
+
   local t = {}  -- incoming server variables will go into table t
   setfenv (assert (loadstring (option)), t) () -- compile and load into t
   
@@ -317,6 +322,11 @@ function OnPluginTelnetOption (option)
   check_room_cache  (t.inroom.guid, true)-- room details
    
   room = rooms [t.inroom.guid]
+  
+  if not room then
+    redisplay = t.inroom
+    return 
+  end -- if
   
   if t.inroom.dark then
     width = WindowTextWidth (win, FONT_ID, dark_message, true)
@@ -550,7 +560,7 @@ function OnPluginTelnetOption (option)
                  "",  -- mousedown
                  "",  -- cancelmousedown
                  "mouseup_npc", 
-                 "LH click to examine\nRH click to attack",  -- tooltip text
+                 string.format ("LH click to examine\nRH click to attack\nGuid: %s", item.guid),  -- tooltip text
                  1, 0)  -- hand cursor
         vertical = vertical + font_height
       end -- if
@@ -576,7 +586,7 @@ function OnPluginTelnetOption (option)
                  "",  -- mousedown
                  "",  -- cancelmousedown
                  "mouseup_object", 
-                 capitalize (item.typ) .. "\tLH click to examine\nRH click to use",  -- tooltip text
+                 string.format ("%s\tLH click to examine\nRH click to use\nGuid: %s", capitalize (item.typ), item.guid),  -- tooltip text
                  1, 0)  -- hand cursor        
         vertical = vertical + font_height
       end -- if
@@ -607,11 +617,24 @@ function OnPluginConnect ()
 end -- OnPluginConnect
 
 function OnPluginListChanged ()
-  ppi = PPI.Load("8a78c14d185c36109f479926")
-  if not ppi then
-    error("Dependency plugin 'Room_Info_Helper' not installed!")
+  ppi = PPI.Load("8a78c14d185c36109f479926")  -- Room_Info_Helper.xml
+  if ppi then
+    return
   end
-end
+  
+  ColourNote ("white", "green", "Plugin 'Room_Info_Helper' not installed. Attempting to install it...") 
+  LoadPlugin (GetPluginInfo(GetPluginID (), 20) .. "Room_Info_Helper.xml")  -- id: 8a78c14d185c36109f479926
+  
+  ppi = PPI.Load("8a78c14d185c36109f479926")  -- Room_Info_Helper.xml
+  if ppi then
+    return
+  end
+
+  ColourNote ("white", "red", string.rep ("-", 60))
+  ColourNote ("white", "red", "Plugin 'Room_Info_Helper' not installed. Please download and install it.") 
+  ColourNote ("white", "red", string.rep ("-", 60))
+  
+end -- OnPluginListChanged
 
 
 ]]>

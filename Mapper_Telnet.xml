@@ -517,6 +517,11 @@ end -- draw_room
 
 function draw_everything (move)
 
+  -- check Room_Info_Helper.xml was installed
+  if not ppi then
+    return
+  end -- can't get room information
+
   local start_time = GetInfo (232)
   local room = rooms [move.guid]
   
@@ -596,6 +601,11 @@ end -- draw_everything
 
 function OnPluginTelnetOption (option)
 
+  -- check Room_Info_Helper.xml was installed
+  if not ppi then
+    return
+  end -- can't get room information
+  
   local t = {}  -- incoming server variables will go into table t
   setfenv (assert (loadstring (option)), t) () -- compile and load into t
     
@@ -758,11 +768,24 @@ function map_find (name, line, wildcards)
 end -- map_find
 
 function OnPluginListChanged ()
-  ppi = PPI.Load("8a78c14d185c36109f479926")
-  if not ppi then
-    error("Dependency plugin 'Room_Info_Helper' not installed!")
+  ppi = PPI.Load("8a78c14d185c36109f479926")  -- Room_Info_Helper.xml
+  if ppi then
+    return
   end
-end
+  
+  ColourNote ("white", "green", "Plugin 'Room_Info_Helper' not installed. Attempting to install it...") 
+  LoadPlugin (GetPluginInfo(GetPluginID (), 20) .. "Room_Info_Helper.xml")  -- id: 8a78c14d185c36109f479926
+  
+  ppi = PPI.Load("8a78c14d185c36109f479926")  -- Room_Info_Helper.xml
+  if ppi then
+    return
+  end
+
+  ColourNote ("white", "red", string.rep ("-", 60))
+  ColourNote ("white", "red", "Plugin 'Room_Info_Helper' not installed. Please download and install it.") 
+  ColourNote ("white", "red", string.rep ("-", 60))
+  
+end -- OnPluginListChanged
 
 
 ]]>
