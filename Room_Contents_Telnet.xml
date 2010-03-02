@@ -35,7 +35,7 @@ require "movewindow"
 require "serialize"
 require "getlines"
 require "gauge"
-PPI = require "ppi"
+require "checkplugin"
 
 
 FONT_NAME = get_preferred_font {"Dina",  "Lucida Console",  "Fixedsys", "Courier", "Sylfaen",} 
@@ -617,22 +617,8 @@ function OnPluginConnect ()
 end -- OnPluginConnect
 
 function OnPluginListChanged ()
-  ppi = PPI.Load("8a78c14d185c36109f479926")  -- Room_Info_Helper.xml
-  if ppi then
-    return
-  end
   
-  ColourNote ("white", "green", "Plugin 'Room_Info_Helper' not installed. Attempting to install it...") 
-  LoadPlugin (GetPluginInfo(GetPluginID (), 20) .. "Room_Info_Helper.xml")  -- id: 8a78c14d185c36109f479926
-  
-  ppi = PPI.Load("8a78c14d185c36109f479926")  -- Room_Info_Helper.xml
-  if ppi then
-    return
-  end
-
-  ColourNote ("white", "red", string.rep ("-", 60))
-  ColourNote ("white", "red", "Plugin 'Room_Info_Helper' not installed. Please download and install it.") 
-  ColourNote ("white", "red", string.rep ("-", 60))
+  ppi = load_ppi ("8a78c14d185c36109f479926", "Room_Info_Helper")
   
 end -- OnPluginListChanged
 

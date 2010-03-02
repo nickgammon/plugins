@@ -42,6 +42,7 @@ require "movewindow"
 require "gauge"
 require "pairsbykeys"
 require "serialize"
+require "checkplugin"
 
 FONT_NAME = get_preferred_font {"Sylfaen", "Dina", "Lucida Console", "Fixedsys", "Courier" } 
 FONT_SIZE = 10
@@ -54,7 +55,20 @@ BUFF_FONT_ID = "fb"  -- internal font identifier
 player_info = { stats = {} }
 victim_info = { stats = {} }
 hint = { stats = {} }
-                
+
+local item_cache = {}
+            
+-- check if single item cached
+local function check_item_cache (hash)
+ 
+  -- get item if we don't have it  
+  if not item_cache [hash] then
+     item_cache [hash] = item_ppi.get_item (hash)
+  end -- if not cached
+
+end -- check_item_cache
+
+    
 function DoGauge (sPrompt, win, current, max, Colour)
   local width = WindowTextWidth (win, FONT_ID, sPrompt, true)  -- to right-justify it
   WindowText (win, FONT_ID, sPrompt, gauge_left - width + 5, vertical, 0, 0, ColourNameToRGB "#444444", true)
@@ -419,10 +433,17 @@ function Show_Stats_Bar (t, info, win, windowinfo)
 
 end -- Show_Stats_Bar
 
+local IAC, SB, SE = 0xFF, 0xFA, 0xF0
+
+
 function OnPluginTelnetOption (option)
 
   local t = {}  -- incoming server variables will go into table t
   setfenv (assert (loadstring (option), "Error in: " .. option), t) () -- compile and load into t
+ 
+  --for k in pairs (t) do
+  --  print ("Received telnet item:", k, "in plugin", GetPluginName ())
+  --end -- for
   
   -- colour hints
   if t.hint then
@@ -436,15 +457,27 @@ function OnPluginTelnetOption (option)
   end -- nothing about groups here
   
   local me
-  for k, v in ipairs (t.group) do
+  for k, v in pairs (t.group) do
+    
+    check_item_cache (v.hash)
+  
+    -- add in cached information
+    if item_cache [v.hash] then 
+      for x, y in pairs (item_cache [v.hash]) do
+        if not v [x] then  -- if value there, takes precedence over cached one
+          v [x] = y
+        end -- if not already there
+      end -- for
+    end -- if not cached
+    
     if v.me then
       me = v
-      table.remove (t.group, k)
+      t.group [k] = nil
       break
     end -- if found myself
   end -- for
   
-  table.sort (t.group, function (a, b) return a.name < b.name end)
+  -- table.sort (t.group, function (a, b) return a.name < b.name end)
   
   -- hopefully found myself
   if not me then
@@ -452,7 +485,7 @@ function OnPluginTelnetOption (option)
   end -- if
   
   -- don't lead ourselves
-  if #t.group == 0 then
+  if next (t.group) == nil then
     me.leader = false
   end -- if
   
@@ -494,6 +527,10 @@ function OnPluginConnect ()
   player_info = { stats = {} }
   victim_info = { stats = {} }
 end -- OnConnect
+
+function OnPluginListChanged ()
+  item_ppi = load_ppi ("928dc37b201539cd14239ff0", "Item_Cache_Helper")
+end -- OnPluginListChanged
 
 ]]>
 </script>

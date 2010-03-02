@@ -111,18 +111,28 @@ HEALER_FILL_COLOUR      = ColourNameToRGB "gold"
 require "movewindow"
 require "serialize"
 require "copytable"
-PPI = require "ppi"
+require "checkplugin"
 
-rooms = {}
+local item_cache = {}
+            
+-- check if single item cached
+local function check_item_cache (hash)
+ 
+  -- get item if we don't have it  
+  if not item_cache [hash] then
+     item_cache [hash] = item_ppi.get_item (hash)
+  end -- if not cached
 
-local IAC, SB, SE = 0xFF, 0xFA, 0xF0
+end -- check_item_cache
+
+local rooms = {}
 
 -- check if single item cached
-function check_room_cache (guid, ask_server)
+local function check_room_cache (uid, ask_server)
  
   -- get room if we don't have it  
-  if not rooms [guid] then
-     rooms [guid] = ppi.get_room (guid, ask_server)
+  if not rooms [uid] then
+     rooms [uid] = room_ppi.get_room (uid, ask_server)
   end -- if not cached
 
 end -- check_room_cache
@@ -206,10 +216,10 @@ function build_speedwalk (path)
 end -- build_speedwalk
 
 function mouseup_room (flags, hotspot_id)
-  local guid = hotspot_id
+  local uid = hotspot_id
 
   if bit.band (flags, 0x20) == 0 then
-    if rooms [guid].shop then
+    if rooms [uid].shop then
       Execute "list"  -- this is kinda silly, we have to be *in* the room
     end -- if
     
@@ -218,7 +228,7 @@ function mouseup_room (flags, hotspot_id)
   
   -- here for RH click
   
-  local sw = speedwalks [guid]
+  local sw = speedwalks [uid]
   if not sw then
     return
   end -- not found
@@ -314,35 +324,50 @@ terrain_colours = {
    swamp = "green",
 }  -- end of  terrain_colours
   
-function make_particle (guid, path, x, y)
+function make_particle (uid, hash, path, x, y)
   particle_count = particle_count + 1
   local path = path or {}
-  return {guid=guid, path=path, x = x, y = y}
+  return {uid=uid, hash=hash, path=path, x = x, y = y}
 end
 
-function draw_room (guid, path, x, y)
+function draw_room (uid, hash, path, x, y)
 
   local coords = string.format ("%i,%i", x, y)
 
-  if drawn [guid] then
+  if drawn [uid] then
     return
   end -- done this one
   
   -- don't draw the same room more than once
-  drawn [guid] = { coords = coords, path = path }
+  drawn [uid] = { coords = coords, path = path }
   
-  local room = rooms [guid]
+  local room = rooms [uid]
   
   -- not cached - see if in database
   if not room then
-    check_room_cache (guid, false)
-    room = rooms [guid]
+    check_room_cache (uid, false)
+    room = rooms [uid]
   end -- not in cache
 
   -- can't if we know nothing about it
   if not room then
     return
   end -- not in cache
+  
+  if hash then
+    check_item_cache (hash)
+  end -- have hash
+  
+  local room_data = item_cache [hash]
+  if room_data then
+     for k, v in pairs (room_data) do
+       if not room [k] then
+          room [k] = v
+       end -- if not there already
+     end -- for
+  end -- if room_data not known
+  
+  room.name = room.name or "<unknown>"
   
   local left, top, right, bottom = x - HALF_ROOM, y - HALF_ROOM, x + HALF_ROOM, y + HALF_ROOM
   
@@ -357,7 +382,8 @@ function draw_room (guid, path, x, y)
   local texits = {}
   
   for name, exit in pairs (room.exits) do
-    local exit_guid = exit.guid
+    local exit_guid = exit.uid
+    local exit_hash = exit.hash
     table.insert (texits, name)
     local exit_info = connectors [name]
     local stub_exit_info = half_connectors [name]
@@ -403,11 +429,11 @@ function draw_room (guid, path, x, y)
       
       local next_coords = string.format ("%i,%i", next_x, next_y)
       
---      print ("Drawing", guid, "exit", name, "exit_guid", exit_guid)
+--      print ("Drawing", uid, "exit", name, "exit_guid", exit_guid)
       
       --[[
       -- debug yadda yadda
-      if guid == "10300" then
+      if uid == "10300" then
         print ("exit=", name, "exit_guid=", exit_guid, "next_coords=", next_coords)
         print ("drawn [exit_guid]=", drawn [exit_guid])
         if drawn [exit_guid] then
@@ -424,7 +450,7 @@ function draw_room (guid, path, x, y)
         -- remember to draw room next iteration
         local new_path = copytable.deep (path)
         table.insert (new_path, name)
-        table.insert (particles, make_particle (exit_guid, new_path, next_x, next_y))
+        table.insert (particles, make_particle (exit_guid, exit_hash, new_path, next_x, next_y))
         drawn_coords [next_coords] = true
       end -- if drawn on this spot
 
@@ -435,7 +461,7 @@ function draw_room (guid, path, x, y)
       if rooms [exit_guid] then
         local dest = rooms [exit_guid]
         -- if inverse direction doesn't point back to us, this is one-way
-        if dest.exits [inverse_direction [name]] == nil or dest.exits [inverse_direction [name]].guid ~= guid then
+        if dest.exits [inverse_direction [name]] == nil or dest.exits [inverse_direction [name]].uid ~= uid then
         
           -- turn points into string, relative to where the room is
           local points = string.format ("%i,%i,%i,%i,%i,%i", 
@@ -473,7 +499,7 @@ function draw_room (guid, path, x, y)
   end -- if 
 
   local bordercolour = ROOM_COLOUR
-  if guid == current_room then
+  if uid == current_room then
     bordercolour = OUR_ROOM_COLOUR
   end -- if current room
     
@@ -481,7 +507,7 @@ function draw_room (guid, path, x, y)
   WindowRectOp (win, 1, left, top, right, bottom, bordercolour)
 
   -- thicker border for our room
-  if guid == current_room then
+  if uid == current_room then
     WindowRectOp (win, 1, left + 1, top + 1, right - 1, bottom - 1, bordercolour)
   end -- if current room
   
@@ -494,9 +520,9 @@ function draw_room (guid, path, x, y)
     WindowLine (win, left, bottom, left + ROOM_SIZE, bottom, EXIT_COLOUR_UP_DOWN, 0, 1)
   end -- if
   
-  speedwalks [guid] = path  -- so we know how to get here
+  speedwalks [uid] = path  -- so we know how to get here
   
-  WindowAddHotspot(win, guid,  
+  WindowAddHotspot(win, uid,  
                  left, top, right, bottom,   -- rectangle
                  "",  -- mouseover
                  "",  -- cancelmouseover
@@ -506,7 +532,7 @@ function draw_room (guid, path, x, y)
                  string.format ("%s\tExits=%s\nRoom=%s",    -- \nSteps=%i\nPath to=%s
                         room.name, 
                         table.concat (texits, ", "),
-                        guid 
+                        uid 
                         -- depth,
                         -- table.concat (path, ",")
                         ),  -- tooltip text
@@ -518,12 +544,14 @@ end -- draw_room
 function draw_everything (move)
 
   -- check Room_Info_Helper.xml was installed
-  if not ppi then
+  if not room_ppi then
     return
   end -- can't get room information
 
   local start_time = GetInfo (232)
-  local room = rooms [move.guid]
+  local room_data = item_cache [move.hash]
+  
+--  tprint (room_data)
   
   WindowCreate (win, 
                  windowinfo.window_left, 
@@ -552,24 +580,24 @@ function draw_everything (move)
     WindowText (win, FONT_ID, dark_message, 5, 5, 0, 0, ColourNameToRGB "darkgreen", true)
   else  
     vertical = 5  -- pixel to start at
-   -- WindowText (win, FONT_ID, move.guid, 5, vertical, 0, 0, ColourNameToRGB "saddlebrown", true)
+   -- WindowText (win, FONT_ID, move.uid, 5, vertical, 0, 0, ColourNameToRGB "saddlebrown", true)
     vertical = vertical + font_height
-    if room.name then
-   --   WindowText (win, FONT_ID, room.name, 5, vertical, 0, 0, ColourNameToRGB "saddlebrown", true)
+    if room_data.name then
+   --   WindowText (win, FONT_ID, room_data.name, 5, vertical, 0, 0, ColourNameToRGB "saddlebrown", true)
     end -- if
     -- initial room in middle
     drawn, drawn_coords, particles, speedwalks = {}, {}, {}, {}
     depth = 0
     particle_count = 0
-    current_room = move.guid
+    current_room = move.uid
     -- insert initial room
-    table.insert (particles, make_particle (move.guid, {}, WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2))
+    table.insert (particles, make_particle (move.uid, move.hash, {}, WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2))
 
     while #particles > 0 and depth < MAX_DEPTH do
       local old_generation = particles
       particles = {}  -- new generation
       for i, part in ipairs (old_generation) do 
-        draw_room (part.guid, part.path, part.x, part.y)
+        draw_room (part.uid, part.hash, part.path, part.x, part.y)
       end -- for each existing particle
       depth = depth + 1
     end -- while all particles
@@ -601,42 +629,69 @@ end -- draw_everything
 
 function OnPluginTelnetOption (option)
 
-  -- check Room_Info_Helper.xml was installed
-  if not ppi then
-    return
-  end -- can't get room information
+  --print ("Got option: '" .. option .. "'")
   
   local t = {}  -- incoming server variables will go into table t
   setfenv (assert (loadstring (option)), t) () -- compile and load into t
-    
-  if t.move then
-    redisplay = nil
+
+  --for k in pairs (t) do
+  --  print ("Received telnet item:", k, "in plugin", GetPluginName ())
+  --end -- for
+  
+  -- check Room_Info_Helper.xml was installed
+  if not (room_ppi and item_ppi) then
+    return
+  end -- can't get room or item information
+
+  if t.inroom then
+    t.location = {hash = t.inroom.hash, uid = t.inroom.uid}
+  end -- if
+  
+      
+ if t.location then
+    redisplay = nil   -- room changed
   else
     -- we couldn't display all last time, and we got some cache info, try again
-    if redisplay and t.room_info then
-      t.move = redisplay
+    if redisplay then
+      check_item_cache (redisplay.hash)
+      if item_cache [redisplay.hash] then
+        t.location = redisplay
+      else
+        return
+      end -- if
     else
       return
     end
   end
-
-  -- check we have currentroom  
-  check_room_cache (t.move.guid, true)
   
-  if not rooms [t.move.guid] then
-    redisplay = t.move  -- need to redisplay when cache info arrives
+  current_room = t.location.uid
+
+  -- check we have current room information
+  check_item_cache (t.location.hash)
+
+  if not item_cache [t.location.hash] then
+    redisplay = t.location  -- need to redisplay when cache info arrives
     return
   end -- if
+    
+  --[[
+  -- and its contents
+  check_room_cache (t.location.uid, true)
+  
+  print ("rooms [t.location.uid]=", rooms [t.location.uid])
+  print ("item_cache [t.location.hash]=", item_cache [t.location.hash])
+  
 
   -- load exits for current room
-  for _, exit in pairs (rooms [t.move.guid].exits) do
-    check_room_cache (exit.guid, true)
-    if not rooms [exit.guid] then
-      redisplay = t.move
+  for _, exit in pairs (rooms [t.location.uid].exits) do
+    check_room_cache (exit.uid, true)
+    if not rooms [exit.uid] then
+      redisplay = t.location
     end -- if
   end -- for
+    --]]
     
-  draw_everything (t.move)
+  draw_everything (t.location)
  
 end -- function OnPluginTelnetOption
 
@@ -661,9 +716,9 @@ function find_paths (start, destinations)
 	local paths = {}
 		
 	for i, room in pairs (destinations) do
-		dest_lookup[room.guid] = true
+		dest_lookup[room.uid] = true
 		
-		if room.guid == start then
+		if room.uid == start then
   		paths[start] = {}
   	  dest_length = dest_length - 1
   	end -- if already there
@@ -694,19 +749,19 @@ function find_paths (start, destinations)
 				for dir, dest in pairs(exits) do
 				
 					-- if we've been in this room before, drop it
-					if not explored_rooms[dest.guid] then
-						explored_rooms[dest.guid] = true
+					if not explored_rooms[dest.uid] then
+						explored_rooms[dest.uid] = true
 						new_path = copytable.deep (part.path)
 						table.insert(new_path, dir)
 						
 						-- if this room is in the list of destinations then save its path
-						if dest_lookup[dest.guid] then
-							paths[dest.guid] = new_path
+						if dest_lookup[dest.uid] then
+							paths[dest.uid] = new_path
 							dest_length = dest_length - 1
 						end -- found one!
 						
 						-- make a new particle in the new room
-	        	table.insert(new_generation, make_particle(dest.guid, new_path))
+	        	table.insert(new_generation, make_particle(dest.uid, new_path))
 	        	
 					end -- not explored this room
 					
@@ -736,7 +791,7 @@ function map_find (name, line, wildcards)
     return
   end -- if
   
-  local rooms = ppi.find_rooms (wildcards [1])
+  local rooms = room_ppi.find_rooms (wildcards [1])
   if #rooms == 0 then
     Note ("No rooms matched.")
   end
@@ -744,7 +799,7 @@ function map_find (name, line, wildcards)
   local paths = find_paths (current_room, rooms)
   
   table.sort (rooms, function (a, b) 
-    local ap, bp = paths [a.guid], paths [b.guid]
+    local ap, bp = paths [a.uid], paths [b.uid]
     local al, bl = 0, 0
     if ap then
       al = #ap
@@ -756,35 +811,20 @@ function map_find (name, line, wildcards)
     end)
   
   for _, room in ipairs (rooms) do
-    if current_room == room.guid then
+    if current_room == room.uid then
       print (room.name, ": <current room>")
-    elseif not paths [room.guid] then
+    elseif not paths [room.uid] then
       print (room.name, ": <path not found>")
     else
-      print (room.name, ":", build_speedwalk (paths [room.guid]))
+      print (room.name, ":", build_speedwalk (paths [room.uid]))
     end -- if
   end -- for each room
   
 end -- map_find
 
 function OnPluginListChanged ()
-  ppi = PPI.Load("8a78c14d185c36109f479926")  -- Room_Info_Helper.xml
-  if ppi then
-    return
-  end
-  
-  ColourNote ("white", "green", "Plugin 'Room_Info_Helper' not installed. Attempting to install it...") 
-  LoadPlugin (GetPluginInfo(GetPluginID (), 20) .. "Room_Info_Helper.xml")  -- id: 8a78c14d185c36109f479926
-  
-  ppi = PPI.Load("8a78c14d185c36109f479926")  -- Room_Info_Helper.xml
-  if ppi then
-    return
-  end
-
-  ColourNote ("white", "red", string.rep ("-", 60))
-  ColourNote ("white", "red", "Plugin 'Room_Info_Helper' not installed. Please download and install it.") 
-  ColourNote ("white", "red", string.rep ("-", 60))
-  
+  room_ppi  = load_ppi ("8a78c14d185c36109f479926", "Room_Info_Helper")
+  item_ppi = load_ppi ("928dc37b201539cd14239ff0", "Item_Cache_Helper")
 end -- OnPluginListChanged
 
 
