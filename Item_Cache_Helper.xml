@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<muclient>
+<plugin
+   name="Item_Cache_Helper"
+   author="Nick Gammon"
+   id="928dc37b201539cd14239ff0"
+   language="Lua"
+   purpose="Manages cached item information for various plugins"
+   date_written="2010-03-02"
+   requires="4.50"
+   version="1.0"
+   >
+<description trim="y">
+<![CDATA[
+Install required for new telnet negotiation plugins.
+]]>
+</description>
+
+</plugin>
+
+
+<!--  Script  -->
+
+
+<script>
+<![CDATA[
+
+local PPI = require("ppi")
+
+item_not_in_database = {}
+requested_items = {}
+
+function dbcheck (code)
+
+ if code ~= sqlite3.OK and    -- no error
+    code ~= sqlite3.ROW and   -- completed OK with another row of data
+    code ~= sqlite3.DONE then -- completed OK, no more rows
+    local err = db:errmsg ()  -- the rollback will change the error message
+    db:exec ("ROLLBACK")      -- rollback any transaction to unlock the database
+    error (err, 2)            -- show error in caller's context
+  end -- if
+
+end -- dbcheck 
+
+function fixsql (s)
+  if s then
+    return "'" .. (string.gsub (s, "'", "''")) .. "'" -- replace single quotes with two lots of single quotes
+  else
+    return "NULL"
+  end -- if
+end -- fixsql
+
+function load_item_from_database (hash)
+
+  local item
+ 
+  assert (hash, "hash is nil in load_item_from_database")
+  
+  -- if not in database, don't look again
+  if item_not_in_database [hash] then
+    return nil
+  end -- no point looking
+  
+  for row in db:nrows(string.format ("SELECT item FROM items WHERE hash = %s", fixsql (hash))) do
+     item = row.item
+  end   -- finding item
+
+  if item then
+    return item
+  end -- if found
+  
+  item_not_in_database [hash] = true
+  return nil
+    
+end -- load_item_from_database
+
+
+local IAC, SB, SE = 0xFF, 0xFA, 0xF0
+
+-- check if single item cached
+function get_item (hash)
+
+  -- see if in database
+  local item = load_item_from_database (hash)
+  
+  -- yes? just return it then
+  if item then
+    -- print ("found item for", hash, "hash of it is", utils.tohex (utils.md5 (item)))
+    local t = {}  
+    setfenv (assert (loadstring (item)), t) () -- compile and load into t
+    return t  
+  end -- if found
+  
+  if requested_items [hash] then
+    return nil
+  end -- if already asked for it
+
+  SendPkt (string.char (IAC, SB, 102) .. "hash_info = \"" .. hash .. "\"" .. string.char (IAC, SE)) 
+  -- Note ("Requested cache ID: ", hash)
+  
+  requested_items [hash] = GetInfo (232)  -- don't request twice
+  return nil
+end -- get_item
+
+function save_item_to_database (hash, item)
+
+  dbcheck (db:execute (string.format ("INSERT INTO items (hash, item, date_added) VALUES (%s, %s, DATETIME('NOW'));", 
+            fixsql (hash), fixsql (item)
+         )))
+  
+  item_not_in_database [hash] = false
+    
+end -- function 
+
+function OnPluginInstall ()
+
+ -- open database on disk (uses world address, that is which MUD we are playing)
+  db = assert (sqlite3.open( GetInfo (66) .. Trim (WorldAddress ()) .. "_" .. WorldPort () .. ".db"))
+  
+  -- create items table
+  dbcheck (db:execute[[
+  
+    CREATE TABLE IF NOT EXISTS 
+      items(
+      itemid        INTEGER PRIMARY KEY AUTOINCREMENT,
+      hash          STRING NOT NULL,  -- hash of contents
+      item          TEXT,             -- item contents
+      date_added    DATE,             -- date added to database
+      UNIQUE (hash)
+    );
+    
+  
+  ]])
+
+ 
+  PPI.Expose "get_item"
+
+end -- function OnPluginInstall
+
+function OnPluginClose ()
+  -- close database
+  db:close()
+end -- OnPluginClose
+
+function OnPluginTelnetOption (option)
+
+  local t = {}  -- incoming server variables will go into table t
+  setfenv (assert (loadstring (option)), t) () -- compile and load into t
+  
+  
+  -- cache incoming item information
+  if t.hash_info then
+    
+    local received_hashes = {}
+  
+    if next (t.hash_info) then
+      dbcheck (db:execute "BEGIN TRANSACTION;")
+    end -- if at least one item
+    
+    for k, v in pairs (t.hash_info) do
+      local time_elapsed = GetInfo (232) - (requested_items [k] or GetInfo (232))
+      -- Note (string.format ("RECEIVED item ID: %s in %.2f seconds.", k, time_elapsed))
+      requested_items [k] = nil
+      if v then
+        save_item_to_database (k, v)
+        table.insert (received_hashes, k)
+      end -- if item data found
+    end -- for
+    
+    if next (t.hash_info) then
+       dbcheck (db:execute "COMMIT;")
+    end -- if at least one item
+
+    for _, v in ipairs (received_hashes) do
+      BroadcastPlugin (1, v)
+    end -- for
+    
+  end -- if t.hash_info
+  
+end -- function OnPluginTelnetOption
+
+function OnPluginTelnetRequest (type, data)
+
+  if type == 102 and data == "WILL" then
+    return true
+  end -- if
+
+end -- function OnPluginTelnetRequest
+
+]]>
+</script>
+
+
+</muclient>
