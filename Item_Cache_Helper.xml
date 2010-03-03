@@ -208,7 +208,7 @@ function OnPluginTelnetOption (option)
   if (count_items_found_in_db + count_items_not_found_in_db) > 0 and
       count_items_received_from_server > 0 then
         
-    SetStatus (string.format ("Cache: %i db reads, %i db fails in %0.6f sec avg, %i requests sent, %i received in %0.6fs avg, written in %0.6f sec avg",
+    SetStatus (string.format ("%i db reads, %i db fails: %0.5f sec avg, %i sent, %i received in %0.3f sec avg, writes: %0.5f sec avg",
                 count_items_found_in_db,
                 count_items_not_found_in_db,
                 time_to_read_from_db / (count_items_found_in_db + count_items_not_found_in_db),

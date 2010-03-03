@@ -524,7 +524,7 @@ function draw_room (uid, hash, path, x, y)
     check_item_cache (hash)
   end -- have hash
 
-  room = room or { name = "<unknown>", exits = {}, unknown = true }
+  room = room or { name = "<Unexplored room>", exits = {}, unknown = true }
     
   local room_data = item_cache [hash]
   if room_data then

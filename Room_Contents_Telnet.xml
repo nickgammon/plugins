@@ -36,6 +36,7 @@ require "serialize"
 require "getlines"
 require "gauge"
 require "checkplugin"
+require "copytable"
 
 
 FONT_NAME = get_preferred_font {"Dina",  "Lucida Console",  "Fixedsys", "Courier", "Sylfaen",} 
@@ -44,11 +45,17 @@ FONT_ID = "fn"  -- internal font identifier
 
 PARAGRAPH_GAP = 3
 
-guid_cache = {}
-requested_cache = {}
+local item_cache = {}
+            
+-- check if single item cached
+local function check_item_cache (hash)
+ 
+  -- get item if we don't have it  
+  if not item_cache [hash] then
+     item_cache [hash] = item_ppi.get_item (hash)
+  end -- if not cached
 
-rooms = {}
-
+end -- check_item_cache
 
 function OnPluginInstall ()
   
@@ -154,44 +161,6 @@ item_colours = {
   mix = "black",
    }
 
-local IAC, SB, SE = 0xFF, 0xFA, 0xF0
-   
--- check if single item cached
-function check_cache (guid, item, type)
-  local cache = guid_cache [guid]  -- field to check on
-  if cache then
-    -- copy in cached stuff
-    for k, v in pairs (cache) do
-      item [k] = v  
-    end -- for
-  elseif not requested_cache [guid] then
-      SendPkt (string.char (IAC, SB, 102) .. type .. " = \"" .. guid .. "\"" .. string.char (IAC, SE)) 
-      -- Note ("Requested ", type, " cache ID: ", guid)
-      requested_cache [guid] = GetInfo (232)  -- don't request twice
-  end -- if 
-end -- check_cache
-
-function check_cache_table (tbl, type)
-
-  if tbl then
-    -- for an entire table (eg. objects, players, npcs) check all for cached guids
-    for i, item in ipairs (tbl) do
-      check_cache (item.guid, item, type)
-    end -- for
-  end -- if
-  
-end -- check_cache_table
-
--- check if single item cached
-function check_room_cache (guid, ask_server)
- 
-  -- get room if we don't have it  
-  if not rooms [guid] then
-     rooms [guid] = ppi.get_room (guid, ask_server)
-  end -- if not cached
-
-end -- check_room_cache
-
 function mouseup_player (flags, hotspot_id)
   if bit.band (flags, 0x20) ~= 0 then
     -- SendNoEcho (string.format ("kill <%s>", hotspot_id))
@@ -226,24 +195,38 @@ function mouseup_object (flags, hotspot_id)
 
   -- RH click
   if bit.band (flags, 0x20) ~= 0 then
-    local item = guid_cache [hotspot_id]
+  
+    local hash
+    
+    for _, v in ipairs (objects) do
+      if v.uid == hotspot_id then
+        hash = v.hash
+        break
+      end -- if
+    end -- for
+    
+    if not hash then
+      return
+    end -- if
+    
+    local item = item_cache [hash]
     if not item then
       return
     end -- not in cache
-    
-    if not item.typ then
+        
+    if not item.objtype then
       return
     end -- don't know what it is
     
     local action = "get"
-    if item.typ == "fountain" then
+    if item.objtype == "fountain" then
       SendNoEcho "drink"
       return
-    elseif item.typ == "corpse" then
+    elseif item.objtype == "corpse" then
       action = "get all"
-    elseif item.typ == "corpse_pc" then
+    elseif item.objtype == "corpse_pc" then
       action = "get all"
-    elseif item.typ == "furniture" then
+    elseif item.objtype == "furniture" then
       action = "look"
     end -- if
     
@@ -253,59 +236,56 @@ function mouseup_object (flags, hotspot_id)
   end -- if
 end -- mouseup_object
 
-function OnPluginTelnetOption (option)
+function fight_text (item)
+  if item.fight and item.targethash then
+     dsc = capitalize (item.short) .. " is here"
+     local target = "<unknown>"
 
-  -- check Room_Info_Helper.xml was installed
-  if not ppi then
-    return
-  end -- can't get room information
+     check_item_cache (item.targethash)
+     if item_cache [item.targethash] then
+       target = item_cache [item.targethash].short
+       if not target or target == "" then
+         target = item_cache [item.targethash].name
+       end -- if
+      end -- if hash known
+     target = target or "<whatever>"
+     if item.targetuid == my_uid then
+       target = "YOU!"
+     end -- if me
+     item._extra = string.format ("%s (fighting %s)", item._extra , target)
+  end -- if fighting
+end -- fight_text
+        
+function OnPluginTelnetOption (option)
 
   local t = {}  -- incoming server variables will go into table t
   setfenv (assert (loadstring (option)), t) () -- compile and load into t
   
-  -- cache incoming object information
-  if t.obj_info then
-    for k, v in pairs (t.obj_info) do
-      local time_elapsed = GetInfo (232) - (requested_cache [k] or GetInfo (232))
-      local dsc = "<not there>"
-      if v then
-        dsc = v.short or v.dsc or "(unknown?)"
-        v._type = "object"
-      end -- if
-      -- Note (string.format ("RECEIVED object ID: %s in %.2f seconds (%s).", k, time_elapsed, dsc))
-      guid_cache [k] = v or nil
-      requested_cache [k] = nil
-      -- tprint (v)
-    end -- for
-  end -- if
-
-  -- cache incoming char information
-  if t.char_info then
-    for k, v in pairs (t.char_info) do
-      local time_elapsed = GetInfo (232) - (requested_cache [k] or GetInfo (232))
-      local dsc = "<expired>"
-      if v then
-        dsc = v.name or "(unknown?)"
-        v._type = "char"
-      end -- if
-      -- Note (string.format ("RECEIVED char ID: %s in %.2f seconds (%s).", k, time_elapsed, dsc))
-      guid_cache [k] = v or nil
-      requested_cache [k] = nil
-      -- tprint (v)
-    end -- for
-  end -- if
-  
   if t.inroom then
-    redisplay = nil
+    check_item_cache (t.inroom.hash)
+    
+    for uid, details in pairs (t.inroom.contents) do
+      check_item_cache (details.hash)
+    end -- for each exit
+    
+  end -- if t.inroom
+    
+  if t.inroom then
+    redisplay = nil   -- room changed
   else
     -- we couldn't display all last time, and we got some cache info, try again
-    if redisplay and (t.obj_info or t.char_info or t.room_info) then
-      t.inroom = redisplay
+    if redisplay then
+      check_item_cache (redisplay.hash)
+      if item_cache [redisplay.hash] then
+        t.inroom = redisplay
+      else
+        return
+      end -- if
     else
       return
     end
   end
-  
+    
   local width = 0
   local extra_depth = 0
   local lines = 1  -- have at least one line
@@ -315,19 +295,40 @@ function OnPluginTelnetOption (option)
   local count = 0
   
   local background_colour = ColourNameToRGB "#252525"
-
-  check_cache_table (t.inroom.objects,  "obj_info")   -- objects in this room
-  check_cache_table (t.inroom.npcs,     "char_info")  -- mobs in this room
-  check_cache_table (t.inroom.players,  "char_info")  -- players in this room
-  check_room_cache  (t.inroom.guid, true)-- room details
    
-  room = rooms [t.inroom.guid]
+  room = item_cache [t.inroom.hash]
   
   if not room then
     redisplay = t.inroom
     return 
   end -- if
   
+  players = {}
+  objects = {}
+  npcs = {}
+
+  for uid, details in pairs (t.inroom.contents) do
+    local item = copytable.deep (item_cache [details.hash])
+    if item then
+      -- copy in extra details
+      for k, v in pairs (details) do
+        item [k] = v
+      end -- for each item
+      item.uid = uid
+      if item.type then
+        if item.type == "object" then
+          table.insert(objects, item)
+        elseif item.type == "char" then
+          if item.npc then
+            table.insert(npcs, item)
+          else
+            table.insert(players, item)
+          end -- if
+        end -- if
+      end -- type known
+    end -- if item exists
+  end -- for each exit
+    
   if t.inroom.dark then
     width = WindowTextWidth (win, FONT_ID, dark_message, true)
   elseif t.inroom.blind then
@@ -375,86 +376,60 @@ function OnPluginTelnetOption (option)
     end -- if exits
     
     
-    -- OTHER STUFF IN THE ROOM
+    -- NPCs
     
-    for k, v in pairs (t.inroom) do
-      if type (v) == "table" then
-        for i, item in ipairs (v) do
-        
-          if not guid_cache [item.guid] then
-            redisplay = t.inroom  -- need to redisplay when cache info arrives
-          end -- if
-          
-          if k == "players" then
-            item.dsc = item.name
-          elseif k == "npcs" then
-            item.dsc = item.longdsc
-          end -- if
+    for _, item in ipairs (npcs) do
+      item.dsc = item.longdsc
+      -- extra stuff we add to description
+      item._extra = ""
+      if item.level then
+        item._extra = string.format (" [%i]", item.level)
+      end -- if
+      fight_text (item)
+      width = math.max (width, 10 + WindowTextWidth (win, FONT_ID, item.dsc .. item._extra, true))
+      lines = lines + 1
+      count = count + 1
+    end -- for each npc
 
-          if not item.dsc then
-            item.dsc = "Unknown"
-            item.typ = "none"
-          end -- if not known yet
-                                
-          -- adjust corpse descriptions
-          if item.typ == "corpse" or item.typ == "corpse_pc" and item.short then
-            item.dsc = capitalize (Trim (item.short))
-            if item.alt <= 0 then
-              item.dsc = item.dsc .. " is in the last stages of decay."
-            elseif item.alt == 1 then
-              item.dsc = item.dsc .. " is crawling with vermin."
-            elseif item.alt == 2 then
-              item.dsc = item.dsc .. " fills the air with a foul stench."
-            elseif item.alt == 3 then
-              item.dsc = item.dsc .. " is buzzing with flies."
-            elseif item.alt == 4 then
-              item.dsc = item.dsc .. " lies here."
-            end -- if           
-          end -- if
-          
-          -- extra stuff we add to description
-          item._extra = ""
-          
-          if item.lvl then
-            item._extra = string.format (" [%i]", item.lvl)
-          end -- if
-          local dsc = item.dsc
-          if item.fight and item.target then
-             if guid_cache [item.guid] then
-               dsc = capitalize (guid_cache [item.guid].short) .. " is here"
-             end -- if
-             local target = "<unknown>"
+    -- PLAYERS
+    
+    for _, item in ipairs (players) do
+      item.dsc = item.name
+      -- extra stuff we add to description
+      item._extra = ""
+      if item.level then
+        item._extra = string.format (" [%i]", item.level)
+      end -- if
+      if item.me then
+         item._extra = string.format ("%s <-- you", item._extra)
+         my_uid = item.uid
+      end -- if
+      fight_text (item)
+      width = math.max (width, 10 + WindowTextWidth (win, FONT_ID, item.dsc .. item._extra, true))
+      lines = lines + 1
+      count = count + 1
+    end -- for each player
 
-             if guid_cache [item.target] then
-               target = guid_cache [item.target].short
-               if not target or target == "" then
-                 target = guid_cache [item.target].name
-               end -- if
-               target = target or "<whatever>"
-             end -- if
-             if item.target == my_guid then
-               target = "YOU!"
-             end -- if me
-             item._extra = string.format ("%s (fighting %s)", item._extra , target)
-          end -- if
-          if item.me then
-             item._extra = string.format ("%s <-- you", item._extra)
-             my_guid = item.guid
-          end -- if
-          if guid_cache [item.guid] then
-            width = math.max (width, 10 + WindowTextWidth (win, FONT_ID, dsc .. item._extra, true))
-            lines = lines + 1
-            count = count + 1
-          end -- if
-        end -- for
-      end -- for each item
-    end -- table
-    if count == 0 then
-      width = WindowTextWidth (win, FONT_ID, nothing_message, true)
-    else 
-      lines = lines - 1
-    end -- if  
+    -- OBJECTS
+    
+    for _, item in ipairs (objects) do
+      -- extra stuff we add to description
+      item._extra = ""
+      if item.lvl then
+        item._extra = string.format (" [%i]", item.lvl)
+      end -- if
+      width = math.max (width, 10 + WindowTextWidth (win, FONT_ID, item.dsc .. item._extra, true))
+      lines = lines + 1
+      count = count + 1
+    end -- for each object
+       
   end -- if
+  
+  if count == 0 then
+    width = math.max (width, WindowTextWidth (win, FONT_ID, nothing_message, true))
+  else 
+    lines = lines - 1
+  end -- if  
   
   window_width = width + 10
   window_height = font_height * lines + 10 + extra_depth
@@ -511,89 +486,83 @@ function OnPluginTelnetOption (option)
         
     -- OTHER STUFF IN THE ROOM
         
-    WindowRectOp (win, 2, 0, vertical, 0, vertical + #t.inroom.players * font_height, ColourNameToRGB "darkslategray")  
+    WindowRectOp (win, 2, 0, vertical, 0, vertical + #players * font_height, ColourNameToRGB "darkslategray")  
   
-    table.sort (t.inroom.players, function (a, b) return a.dsc < b.dsc end)
+    table.sort (players, function (a, b) return a.dsc < b.dsc end)
     
     -- players first            
-    for i, item in ipairs (t.inroom.players) do
-      if guid_cache [item.guid] then
-        local colour = "white"
-        local width
-        width = WindowText (win, FONT_ID, item.dsc .. item._extra, 5, vertical, 0, 0, ColourNameToRGB (colour), true)
-        WindowAddHotspot(win, item.guid,  
-                 5, vertical, 5 + width, vertical + font_height,   -- rectangle
-                 "",  -- mouseover
-                 "",  -- cancelmouseover
-                 "",  -- mousedown
-                 "",  -- cancelmousedown
-                 "mouseup_player", 
-                 "LH click to examine",  -- tooltip text
-                 1, 0)  -- hand cursor
-        vertical = vertical + font_height
-      end -- if
+    for i, item in ipairs (players) do
+      local colour = "white"
+      local width
+      width = WindowText (win, FONT_ID, item.dsc .. item._extra, 5, vertical, 0, 0, ColourNameToRGB (colour), true)
+      WindowAddHotspot(win, item.uid,  
+               5, vertical, 5 + width, vertical + font_height,   -- rectangle
+               "",  -- mouseover
+               "",  -- cancelmouseover
+               "",  -- mousedown
+               "",  -- cancelmousedown
+               "mouseup_player", 
+               "LH click to examine",  -- tooltip text
+               1, 0)  -- hand cursor
+      vertical = vertical + font_height
     end -- for
 
-    WindowRectOp (win, 2, 0, vertical, 0, vertical + #t.inroom.npcs * font_height, ColourNameToRGB "gainsboro") 
+    WindowRectOp (win, 2, 0, vertical, 0, vertical + #npcs * font_height, ColourNameToRGB "gainsboro") 
 
-    table.sort (t.inroom.npcs, function (a, b) return a.dsc < b.dsc end)
+    table.sort (npcs, function (a, b) return a.dsc < b.dsc end)
     
     -- then NPCs
-    for i, item in ipairs (t.inroom.npcs) do
-      if guid_cache [item.guid] then
-        item.dsc = string.gsub (item.dsc, "[\r\n]", "")
-        local colour = "chocolate"
-        if item.aggro then
-          colour = "crimson"
-        end -- if
-        local dsc = item.dsc
-        if item.fight then
-           dsc = capitalize (guid_cache [item.guid].short) .. " is here"
-        end -- if
-          
-        local width
-        width = WindowText (win, FONT_ID, dsc .. item._extra, 5, vertical, 0, 0, ColourNameToRGB (colour), true)
-        WindowAddHotspot(win, item.guid,  
-                 5, vertical, 5 + width, vertical + font_height,   -- rectangle
-                 "",  -- mouseover
-                 "",  -- cancelmouseover
-                 "",  -- mousedown
-                 "",  -- cancelmousedown
-                 "mouseup_npc", 
-                 string.format ("LH click to examine\nRH click to attack\nGuid: %s", item.guid),  -- tooltip text
-                 1, 0)  -- hand cursor
-        vertical = vertical + font_height
+    for i, item in ipairs (npcs) do
+      item.dsc = string.gsub (item.dsc, "[\r\n]", "")
+      local colour = "chocolate"
+      if item.aggro then
+        colour = "crimson"
       end -- if
+      local dsc = item.dsc
+      if item.fight then
+         dsc = capitalize (item.short) .. " is here"
+      end -- if
+        
+      local width
+      width = WindowText (win, FONT_ID, dsc .. item._extra, 5, vertical, 0, 0, ColourNameToRGB (colour), true)
+      WindowAddHotspot(win, item.uid,  
+               5, vertical, 5 + width, vertical + font_height,   -- rectangle
+               "",  -- mouseover
+               "",  -- cancelmouseover
+               "",  -- mousedown
+               "",  -- cancelmousedown
+               "mouseup_npc", 
+               string.format ("LH click to examine\nRH click to attack\nUid: %s", item.uid),  -- tooltip text
+               1, 0)  -- hand cursor
+      vertical = vertical + font_height
     end -- for
 
-    WindowRectOp (win, 2, 0, vertical, 0, vertical + #t.inroom.objects * font_height, ColourNameToRGB "darkkhaki")  
+    WindowRectOp (win, 2, 0, vertical, 0, vertical + #objects * font_height, ColourNameToRGB "darkkhaki")  
     
-    table.sort (t.inroom.objects, function (a, b) return a.dsc < b.dsc end)
+    table.sort (objects, function (a, b) return a.dsc < b.dsc end)
               
     -- then objects in the room
-    for i, item in ipairs (t.inroom.objects) do
-      if guid_cache [item.guid] then
-        item.typ = item.typ or "none"
-        if item.typ then
-          colour = item_colours [item.typ]
-        end -- if item has a type
-        local width
-        width = WindowText (win, FONT_ID, item.dsc .. item._extra, 5, vertical, 0, 0, ColourNameToRGB (colour), true)
-        WindowAddHotspot(win, item.guid,  
-                 5, vertical, 5 + width, vertical + font_height,   -- rectangle
-                 "",  -- mouseover
-                 "",  -- cancelmouseover
-                 "",  -- mousedown
-                 "",  -- cancelmousedown
-                 "mouseup_object", 
-                 string.format ("%s\tLH click to examine\nRH click to use\nGuid: %s", capitalize (item.typ), item.guid),  -- tooltip text
-                 1, 0)  -- hand cursor        
-        vertical = vertical + font_height
-      end -- if
+    for i, item in ipairs (objects) do
+      item.typ = item.typ or "none"
+      if item.objtype then
+        colour = item_colours [item.objtype]
+      end -- if item has a type
+      local width
+      width = WindowText (win, FONT_ID, item.dsc .. item._extra, 5, vertical, 0, 0, ColourNameToRGB (colour), true)
+      WindowAddHotspot(win, item.uid,  
+               5, vertical, 5 + width, vertical + font_height,   -- rectangle
+               "",  -- mouseover
+               "",  -- cancelmouseover
+               "",  -- mousedown
+               "",  -- cancelmousedown
+               "mouseup_object", 
+               string.format ("%s\tLH click to examine\nRH click to use\nUid: %s", capitalize (item.typ), item.uid),  -- tooltip text
+               1, 0)  -- hand cursor        
+      vertical = vertical + font_height
     end -- for
    
     if count == 0 then
-      WindowText (win, FONT_ID, nothing_message, 5, 5, 0, 0, ColourNameToRGB "darkgreen", true)
+      WindowText (win, FONT_ID, nothing_message, 5, vertical, 0, 0, ColourNameToRGB "darkgreen", true)
     end -- if  
     
   end -- if 
@@ -611,14 +580,12 @@ function OnPluginTelnetOption (option)
 end -- function OnPluginTelnetOption
 
 function OnPluginConnect ()
-  -- clear cache, it may be out of date after a reboot
-  guid_cache = {}
-  requested_cache = {}
 end -- OnPluginConnect
 
 function OnPluginListChanged ()
   
-  ppi = load_ppi ("8a78c14d185c36109f479926", "Room_Info_Helper")
+  item_ppi = load_ppi ("928dc37b201539cd14239ff0", "Item_Cache_Helper")
+--  ppi = load_ppi ("8a78c14d185c36109f479926", "Room_Info_Helper")
   
 end -- OnPluginListChanged
 
