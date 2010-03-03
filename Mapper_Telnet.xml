@@ -126,16 +126,134 @@ local function check_item_cache (hash)
 end -- check_item_cache
 
 local rooms = {}
+room_not_in_database = {}
+room_in_database = {}
 
--- check if single item cached
-local function check_room_cache (uid, ask_server)
+function dbcheck (code)
+
+ if code ~= sqlite3.OK and    -- no error
+    code ~= sqlite3.ROW and   -- completed OK with another row of data
+    code ~= sqlite3.DONE then -- completed OK, no more rows
+    local err = db:errmsg ()  -- the rollback will change the error message
+    db:exec ("ROLLBACK")      -- rollback any transaction to unlock the database
+    error (err, 2)            -- show error in caller's context
+  end -- if
+
+end -- dbcheck 
+
+function fixsql (s)
+  if s then
+    return "'" .. (string.gsub (s, "'", "''")) .. "'" -- replace single quotes with two lots of single quotes
+  else
+    return "NULL"
+  end -- if
+end -- fixsql
+
+function fixbool (b)
+  if b then
+    return 1
+  else
+    return 0
+  end -- if
+end -- fixbool
+
+function load_room_from_database (uid)
+
+  local room
  
-  -- get room if we don't have it  
-  if not rooms [uid] then
-     rooms [uid] = room_ppi.get_room (uid, ask_server)
-  end -- if not cached
+  -- if not in database, don't look again
+  if room_not_in_database [uid] then
+    return nil
+  end -- no point looking
+  
+  for row in db:nrows(string.format ("SELECT * FROM rooms WHERE uid = %s", fixsql (uid))) do
+     room = {
+       name    = row.name,
+       terrain = row.terrain,
+       shop    = row.shop == 1,
+       train   = row.train == 1,
+       repair  = row.repair == 1,
+       healer  = row.healer == 1,
+  
+       exits = {} }
+      
+    for exitrow in db:nrows(string.format ("SELECT * FROM exits WHERE fromuid = %s", fixsql (uid))) do
+       room.exits [exitrow.dir] = { 
+            uid     = tostring (exitrow.touid), 
+            closed  = exitrow.closed == 1,
+            locked  = exitrow.locked == 1,
+            door    = exitrow.door == 1,
+            }
+            
+    end -- for each exit
+    
+  end   -- finding room
 
-end -- check_room_cache
+  if room then
+    rooms [uid] = room
+    return room
+  end -- if found
+  
+  room_not_in_database [uid] = true
+  return nil
+    
+end -- load_room_from_database
+
+function save_room_to_database (uid, room)
+
+  if room_in_database [uid] then
+    return
+  end -- already there
+
+  for row in db:nrows(string.format ("SELECT uid FROM rooms WHERE uid = %s", fixsql (uid))) do
+      room_in_database [uid] = true
+  end   -- finding room
+
+  if room_in_database [uid] then
+    return
+  end -- already there
+    
+  dbcheck (db:execute (string.format ([[
+      INSERT INTO rooms (uid, name, desc, terrain, shop, train, repair, healer, date_added) 
+          VALUES (%s, %s, %s, %s, %i, %i, %i, %i, DATETIME('NOW'));
+    ]], 
+      fixsql (uid), 
+      fixsql (room.name),
+      fixsql (room.desc),
+      fixsql (room.terrain),
+      fixbool (room.shop),
+      fixbool (room.train),
+      fixbool (room.repair),
+      fixbool (room.healer)
+         )))
+               
+  -- for full-text searching
+   dbcheck (db:execute (string.format ([[
+      INSERT INTO rooms_lookup (uid, name, desc) VALUES (%s, %s, %s);
+    ]], fixsql  (uid),       
+        fixsql  (room.name), 
+        fixsql  (room.desc)
+        )))
+          
+  for dir, exit in pairs (room.exits) do
+     dbcheck (db:execute (string.format ([[
+        INSERT INTO exits (dir, fromuid, touid, closed, locked, door, date_added) 
+            VALUES (%s, %s, %s, %i, %i, %i, DATETIME('NOW'));
+      ]], fixsql  (dir),  -- direction (eg. "n")
+          fixsql  (uid),         -- from current room
+          fixsql  (exit.uid),    -- destination room
+          fixbool (exit.closed), -- exit closed
+          fixbool (exit.locked), -- exit locked
+          fixbool (exit.door)    -- is a door
+         
+          )))
+  end -- for each exit
+  
+  room_not_in_database [uid] = false
+  room_in_database [uid] = true
+    
+end -- function save_room_to_database
+
 
 function OnPluginInstall ()
   
@@ -152,7 +270,57 @@ function OnPluginInstall ()
   -- find where window was last time
   windowinfo = movewindow.install (win, 7)
   
- 
+ -- open database on disk (uses world address, that is which MUD we are playing)
+  db = assert (sqlite3.open( GetInfo (66) .. Trim (WorldAddress ()) .. "_" .. WorldPort () .. ".db"))
+  
+  -- create rooms table
+  dbcheck (db:execute[[
+    PRAGMA foreign_keys = ON;
+  
+    CREATE TABLE IF NOT EXISTS 
+      rooms(
+      roomid        INTEGER PRIMARY KEY AUTOINCREMENT,
+      uid           STRING NOT NULL, -- vnum or how the MUD identifies the room
+      name          TEXT,            -- name of room
+      desc,         TEXT,            -- description
+      terrain       TEXT,
+      shop          INTEGER,
+      train         INTEGER,
+      repair        INTEGER,
+      healer        INTEGER,
+      notes         TEXT,
+      date_added    DATE,            -- date added to database
+      UNIQUE (uid)
+    );
+
+           
+    CREATE TABLE IF NOT EXISTS 
+      exits(
+      exitid      INTEGER PRIMARY KEY AUTOINCREMENT,
+      dir         TEXT    NOT NULL, -- direction, eg. "n", "s"
+      fromuid     STRING  NOT NULL, -- exit from which room (in rooms table)
+      touid       STRING  NOT NULL, -- exit to which room (in rooms table)
+      closed      INTEGER,          -- true if closed
+      locked      INTEGER,          -- true if locked
+      door        INTEGER,          -- true if a door
+      date_added  DATE,             -- date added to database
+      FOREIGN KEY(fromuid) REFERENCES rooms(uid)
+    );
+  CREATE INDEX IF NOT EXISTS fromuid_index ON exits (fromuid);
+  CREATE INDEX IF NOT EXISTS touid_index   ON exits (touid);
+  
+  ]])
+  
+  
+  -- check if rooms_lookup table exists
+  local table_exists
+  for a in db:nrows "SELECT * FROM sqlite_master WHERE name = 'rooms_lookup' AND type = 'table'" do
+    table_exists = true
+  end  -- for
+  
+  if not table_exists then
+    dbcheck (db:execute "CREATE VIRTUAL TABLE rooms_lookup USING FTS3(uid, name, desc, notes);")
+  end -- if
       
   build_room_info ()
   
@@ -169,6 +337,8 @@ end -- OnPluginDisable
 -- hide window on removal
 function OnPluginClose ()
   WindowShow (win,  false)  -- hide it
+  -- close database
+  db:close()
 end -- OnPluginClose
 
 function OnPluginSaveState ()
@@ -345,12 +515,13 @@ function draw_room (uid, hash, path, x, y)
   
   -- not cached - see if in database
   if not room then
-    check_room_cache (uid, false)
-    room = rooms [uid]
+    -- print (uid, "not in memory, checking database ...")
+    room = load_room_from_database (uid)
   end -- not in cache
 
   -- can't if we know nothing about it
   if not room then
+    -- print (uid, "not on database, cannot draw it")
     return
   end -- not in cache
   
@@ -543,11 +714,6 @@ end -- draw_room
 
 function draw_everything (move)
 
-  -- check Room_Info_Helper.xml was installed
-  if not room_ppi then
-    return
-  end -- can't get room information
-
   local start_time = GetInfo (232)
   local room_data = item_cache [move.hash]
   
@@ -623,29 +789,66 @@ function draw_everything (move)
 end -- draw_everything
 
 
+function save_room_info (which_room)
+  -- print ("in save_room_info for", which_room.uid, which_room.hash)
+  
+  if not room_in_database [which_room.uid] then
+    check_item_cache (which_room.hash)
+    local room = item_cache [which_room.hash]  -- name, description, etc.
+    room.exits = {}
+     
+    for exit, details in pairs (which_room.contents) do
+      if string.match (exit, "^r%.") then
+        room.exits [details.dir] = { uid = exit, closed = details.closed, locked = details.locked, door = details.door, }
+      end -- if an exit
+    end -- for each exit
+    
+    save_room_to_database (which_room.uid, room)
+  end   -- not already saved to disk
+end -- save_room_info
 
+function OnPluginBroadcast (msg, id, name, text)
+  if id == "928dc37b201539cd14239ff0" and msg == 1 then
+     -- print ("hash received:", text)
+     if wanted_hash [text] then
+       save_room_info (wanted_hash [text])
+       wanted_hash [text] = nil
+     end -- if
+  end -- if from Item_Cache_Helper.xml
+end
+
+wanted_hash = {}
 
 -- here when location changes
 
 function OnPluginTelnetOption (option)
 
-  --print ("Got option: '" .. option .. "'")
-  
   local t = {}  -- incoming server variables will go into table t
   setfenv (assert (loadstring (option)), t) () -- compile and load into t
-
-  --for k in pairs (t) do
-  --  print ("Received telnet item:", k, "in plugin", GetPluginName ())
-  --end -- for
   
-  -- check Room_Info_Helper.xml was installed
-  if not (room_ppi and item_ppi) then
+  for k, v in pairs (t) do
+    -- print ("received", k, "uid=", v.uid or "<none>", "hash=", v.hash or "<none>")
+  end -- for
+  
+  -- check Item_Cache_Helper.xml was installed
+  if not item_ppi then
     return
   end -- can't get room or item information
 
+  -- an "inroom" message also gives the location
   if t.inroom then
     t.location = {hash = t.inroom.hash, uid = t.inroom.uid}
-  end -- if
+    check_item_cache (t.inroom.hash)
+    
+    -- if we have the item cache for this room we know enough to save to database
+    
+    if item_cache [t.inroom.hash] then
+      save_room_info (t.inroom)
+    else
+      wanted_hash [t.inroom.hash] = t.inroom   -- will write it when hash arrives
+    end -- if 
+    
+  end -- if t.inroom
   
       
  if t.location then
@@ -657,9 +860,11 @@ function OnPluginTelnetOption (option)
       if item_cache [redisplay.hash] then
         t.location = redisplay
       else
+        -- print ("return 1, waiting on", redisplay.hash)
         return
       end -- if
     else
+      -- print ("return 2, no location, not waiting on hash")
       return
     end
   end
@@ -671,26 +876,11 @@ function OnPluginTelnetOption (option)
 
   if not item_cache [t.location.hash] then
     redisplay = t.location  -- need to redisplay when cache info arrives
+    -- print ("return 3, waiting on", t.location.hash)
     return
   end -- if
-    
-  --[[
-  -- and its contents
-  check_room_cache (t.location.uid, true)
-  
-  print ("rooms [t.location.uid]=", rooms [t.location.uid])
-  print ("item_cache [t.location.hash]=", item_cache [t.location.hash])
-  
 
-  -- load exits for current room
-  for _, exit in pairs (rooms [t.location.uid].exits) do
-    check_room_cache (exit.uid, true)
-    if not rooms [exit.uid] then
-      redisplay = t.location
-    end -- if
-  end -- for
-    --]]
-    
+  -- print ("Drawing", t.location.uid, t.location.hash)     
   draw_everything (t.location)
  
 end -- function OnPluginTelnetOption
@@ -737,7 +927,9 @@ function find_paths (start, destinations)
 		-- process each active particle
 		for i, part in ipairs (particles) do
 		
-		  check_room_cache (part.current_room, false)   -- grab from database if possible
+		  if not rooms [part.current_room] then
+        load_room_from_database (part.current_room)
+		  end -- if not in memory yet
 		
 			-- if room doesn't exist, forget it
       if rooms [part.current_room] then
@@ -823,7 +1015,7 @@ function map_find (name, line, wildcards)
 end -- map_find
 
 function OnPluginListChanged ()
-  room_ppi  = load_ppi ("8a78c14d185c36109f479926", "Room_Info_Helper")
+--  room_ppi  = load_ppi ("8a78c14d185c36109f479926", "Room_Info_Helper")
   item_ppi = load_ppi ("928dc37b201539cd14239ff0", "Item_Cache_Helper")
 end -- OnPluginListChanged
 
