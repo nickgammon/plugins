@@ -103,6 +103,7 @@ ROOM_COLOUR             = ColourNameToRGB "cyan"
 EXIT_COLOUR             = ColourNameToRGB "darkgreen"
 EXIT_COLOUR_UP_DOWN     = ColourNameToRGB "darkmagenta"
 OUR_ROOM_COLOUR         = ColourNameToRGB "black"
+UNKNOWN_ROOM_COLOUR     = ColourNameToRGB "#00CACA"
 SHOP_FILL_COLOUR        = ColourNameToRGB "darkolivegreen"
 TRAINER_FILL_COLOUR     = ColourNameToRGB "yellowgreen"
 BLACKSMITH_FILL_COLOUR  = ColourNameToRGB "darkgray"
@@ -518,17 +519,13 @@ function draw_room (uid, hash, path, x, y)
     -- print (uid, "not in memory, checking database ...")
     room = load_room_from_database (uid)
   end -- not in cache
-
-  -- can't if we know nothing about it
-  if not room then
-    -- print (uid, "not on database, cannot draw it")
-    return
-  end -- not in cache
-  
+ 
   if hash then
     check_item_cache (hash)
   end -- have hash
-  
+
+  room = room or { name = "<unknown>", exits = {}, unknown = true }
+    
   local room_data = item_cache [hash]
   if room_data then
      for k, v in pairs (room_data) do
@@ -537,8 +534,6 @@ function draw_room (uid, hash, path, x, y)
        end -- if not there already
      end -- for
   end -- if room_data not known
-  
-  room.name = room.name or "<unknown>"
   
   local left, top, right, bottom = x - HALF_ROOM, y - HALF_ROOM, x + HALF_ROOM, y + HALF_ROOM
   
@@ -673,6 +668,9 @@ function draw_room (uid, hash, path, x, y)
   if uid == current_room then
     bordercolour = OUR_ROOM_COLOUR
   end -- if current room
+  if room.unknown then
+    bordercolour = UNKNOWN_ROOM_COLOUR
+  end -- if 
     
   -- draw current room (last, so it goes on top)
   WindowRectOp (win, 1, left, top, right, bottom, bordercolour)

@@ -32,6 +32,14 @@ local PPI = require("ppi")
 item_not_in_database = {}
 requested_items = {}
 
+count_items_found_in_db = 0
+count_items_not_found_in_db = 0
+count_items_requested_from_server = 0
+count_items_received_from_server = 0
+time_to_receive_items = 0
+time_to_read_from_db = 0
+time_to_write_to_db = 0
+
 function dbcheck (code)
 
  if code ~= sqlite3.OK and    -- no error
@@ -63,14 +71,20 @@ function load_item_from_database (hash)
     return nil
   end -- no point looking
   
+  local start_time = GetInfo (232)
+  
   for row in db:nrows(string.format ("SELECT item FROM items WHERE hash = %s", fixsql (hash))) do
      item = row.item
   end   -- finding item
 
+  time_to_read_from_db = time_to_read_from_db + (GetInfo (232) - start_time)
+  
   if item then
+    count_items_found_in_db = count_items_found_in_db + 1
     return item
   end -- if found
   
+  count_items_not_found_in_db = count_items_not_found_in_db + 1
   item_not_in_database [hash] = true
   return nil
     
@@ -101,6 +115,7 @@ function get_item (hash)
   -- Note ("Requested cache ID: ", hash)
   
   requested_items [hash] = GetInfo (232)  -- don't request twice
+  count_items_requested_from_server = count_items_requested_from_server + 1
   return nil
 end -- get_item
 
@@ -155,12 +170,21 @@ function OnPluginTelnetOption (option)
     
     local received_hashes = {}
   
+    local start_time = GetInfo (232)
+    
     if next (t.hash_info) then
       dbcheck (db:execute "BEGIN TRANSACTION;")
     end -- if at least one item
     
     for k, v in pairs (t.hash_info) do
-      local time_elapsed = GetInfo (232) - (requested_items [k] or GetInfo (232))
+      local time_now = GetInfo (232)
+      local time_elapsed = 0
+      if requested_items [k] then
+        time_elapsed = GetInfo (232) - requested_items [k]
+        time_to_receive_items = time_to_receive_items + time_elapsed
+        count_items_received_from_server = count_items_received_from_server + 1
+      end -- if
+      
       -- Note (string.format ("RECEIVED item ID: %s in %.2f seconds.", k, time_elapsed))
       requested_items [k] = nil
       if v then
@@ -173,12 +197,27 @@ function OnPluginTelnetOption (option)
        dbcheck (db:execute "COMMIT;")
     end -- if at least one item
 
+    time_to_write_to_db = time_to_write_to_db + (GetInfo (232) - start_time)
+    
     for _, v in ipairs (received_hashes) do
       BroadcastPlugin (1, v)
     end -- for
     
   end -- if t.hash_info
-  
+ 
+  if (count_items_found_in_db + count_items_not_found_in_db) > 0 and
+      count_items_received_from_server > 0 then
+        
+    SetStatus (string.format ("Cache: %i db reads, %i db fails in %0.6f sec avg, %i requests sent, %i received in %0.6fs avg, written in %0.6f sec avg",
+                count_items_found_in_db,
+                count_items_not_found_in_db,
+                time_to_read_from_db / (count_items_found_in_db + count_items_not_found_in_db),
+                count_items_requested_from_server,
+                count_items_received_from_server,
+                time_to_receive_items / count_items_received_from_server,
+                time_to_write_to_db / count_items_received_from_server))
+  end -- if
+    
 end -- function OnPluginTelnetOption
 
 function OnPluginTelnetRequest (type, data)
