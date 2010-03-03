@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<muclient>
+<plugin
+   name="Telnet_Logger"
+   author="Nick Gammon"
+   id="00725e542eac735f5e095985"
+   language="Lua"
+   purpose="Tests OnPluginTelnetOption"
+   date_written="2010-03-03"
+   requires="4.50"
+   version="1.0"
+   >
+
+</plugin>
+
+<!--  Script  -->
+
+<script>
+<![CDATA[
+
+
+function OnPluginTelnetOption (option)
+  AppendToNotepad ("telnet", os.date ("%H:%M:%S ") .. option .. "\r\n")  
+end -- function OnPluginTelnetOption
+
+
+]]>
+</script>
+
+
+</muclient>
