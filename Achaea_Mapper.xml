@@ -89,6 +89,15 @@ stub will disappear and the rooms in question will be drawn.
   </alias>  
     
  <alias
+   match="map areas"
+   enabled="y"
+   sequence="100"
+   script="map_areas"
+  >
+  
+  </alias>  
+    
+ <alias
    match="cancel speedwalk"
    enabled="y"
    sequence="100"
@@ -108,6 +117,14 @@ stub will disappear and the rooms in question will be drawn.
   > 
   </trigger>
  
+ <trigger
+   enabled="y"
+   match="There's water ahead of you. You'll have to * to make it through."
+   sequence="100"
+  >
+  <send>%1</send>
+  </trigger>
+
 </triggers>
 
 
@@ -243,6 +260,9 @@ function save_exits_to_database (uid, exits)
 
   for dir in string.gmatch (exits, "[^,]+") do
 
+    -- fix up in and out
+    dir = ({ ['i'] = "in", o = "out", }) [dir] or dir
+    
     dbcheck (db:execute (string.format ([[
       INSERT INTO exits (dir, fromuid, touid, date_added) 
           VALUES (%s, %s, %s, DATETIME('NOW'));
@@ -374,7 +394,8 @@ end -- function create_tables
 
 function OnPluginInstall ()
   
-  -- UNCOMMENT! assert (loadstring (GetVariable ("config") or "")) ()
+  -- get saved configuration
+  assert (loadstring (GetVariable ("config") or "")) ()
 
   win = GetPluginID ()
 
@@ -629,8 +650,14 @@ function mouseup_room (flags, hotspot_id)
     
     return
   end -- if not RH click
-  
+
   -- here for RH click
+    
+   -- Control key down?
+  if bit.band (flags, 0x02) ~= 0 then
+    cancel_speedwalk ()
+    return
+  end -- if ctrl-RH click
   
   start_speedwalk (speedwalks [uid])
    
@@ -1160,14 +1187,14 @@ function got_room_number (s)
       if room_number ~= expected_room then
         local exp = rooms [expected_room]
         if not exp then
-          exp = load_room_from_database (expected_room)
+          exp = load_room_from_database (expected_room) or { name = expected_room }
         end -- if
         local here = rooms [room_number]
         if not here then
-          here = load_room_from_database (room_number)
+          here = load_room_from_database (room_number) or { name = room_number }
         end -- if
-        exp = exp.name or expected_room
-        here = here.name or room_number
+        exp = expected_room
+        here = room_number
         ColourNote ("red", "", 
             string.format ("Speedwalk failed! Expected to be in '%s' but ended up in '%s'.", exp, here))
         cancel_speedwalk ()
@@ -1268,12 +1295,12 @@ end -- function OnPluginTelnetSubnegotiation
 -- see: http://www.gammon.com.au/forum/?id=7306&page=2
 -- Thanks to Ked.
 
-function find_paths (start, destinations)
+function make_particle (curr_loc, prev_path)
+  local prev_path = prev_path or {}
+  return {current_room=curr_loc, path=prev_path}
+end
 
-  local function make_particle (curr_loc, prev_path)
-    local prev_path = prev_path or {}
-    return {current_room=curr_loc, path=prev_path}
-  end
+function find_paths (start, destinations)
 	
 	local dest_length = #destinations
 	local dest_lookup = {}
@@ -1354,8 +1381,6 @@ function find_paths (start, destinations)
 	return paths			
 end -- function find_paths
 
-
-
 function map_find (name, line, wildcards)
 
   if not current_room then
@@ -1415,10 +1440,123 @@ function map_find (name, line, wildcards)
     
 end -- map_find
 
+function find_areas (start)
+	
+  wanted_areas = {}
+  found_areas = {}
+  
+  for k in pairs (areas) do
+    wanted_areas [k] = true
+  end -- for
+  
+	local depth = 0
+
+	local explored_rooms, particles = {}, {}
+	
+	-- create particle for the initial room
+	table.insert (particles, make_particle (start) )
+	
+	while #particles > 0 and depth < config.SCAN.depth do
+	
+		-- create a new generation of particles
+		new_generation = {}
+		depth = depth + 1
+		
+		-- process each active particle
+		for i, part in ipairs (particles) do
+		
+		  local room = rooms [part.current_room]
+		  if not room then
+        room = load_room_from_database (part.current_room)
+		  end -- if not in memory yet
+		
+			-- if room doesn't exist, forget it
+      if room then
+
+				-- if this room is in the list of wanted areas then save its path
+				if wanted_areas[room.area] then
+					found_areas [room.area] = part.path
+					wanted_areas [room.area] = false
+				end -- found one!
+      			
+				-- get a list of exits from the current room
+				exits = room.exits
+				
+				-- create one new particle for each exit
+				for dir, dest in pairs(exits) do
+				
+					-- if we've been in this room before, drop it
+					if not explored_rooms[dest.uid] then
+						explored_rooms[dest.uid] = true
+						new_path = copytable.deep (part.path)
+						table.insert (new_path, { dir = dir, uid = dest.uid } )
+						
+						-- make a new particle in the new room
+	        	table.insert(new_generation, make_particle(dest.uid, new_path))
+	        	
+					end -- not explored this room
+					
+				end  -- for each exit
+			
+			end -- if room exists
+			
+		end  -- for each particle
+			
+		particles = new_generation
+	end	  -- while more particles
+	
+	return paths			
+end -- function find_areas
+
+function map_areas (name, line, wildcards)
+
+  if not current_room then
+    print ("We don't know where you are right now.")
+    return
+  end -- if
+  
+  local paths = find_areas(current_room)
+  
+   
+  hyperlink_paths = {}
+  not_found_paths = 0
+  local sorted_areas = {}
+  
+  for k in pairs (found_areas) do
+    table.insert (sorted_areas, k)
+  end -- for
+  
+  table.sort (sorted_areas, function (a, b)
+     return #found_areas [a] < #found_areas [b]
+     end)
+  
+  for _, area in ipairs (sorted_areas) do
+    local distance = #found_areas [area] .. " room"
+    if #found_areas [area] > 1 then
+      distance = distance .. "s"
+    end -- if
+    distance = distance .. " away"
+    
+    if  #found_areas [area] == 0 then
+      print (areas [area], "is the area you are currently in.")
+    else
+      Hyperlink ("!!" .. GetPluginID () .. ":do_hyperlink(" .. area .. ")", 
+                areas [area] .. " - " .. distance, "Click to speedwalk there (" .. distance .. ")", "", "", false)
+      print "" -- new line
+      hyperlink_paths [area] = found_areas [area]
+    end -- if
+  end -- for each room
+
+  if not_found_paths > 0 then
+    print ("There are", not_found_paths, "areas which I cannot find the path to.")
+  end -- if
+    
+end -- map_areas
+
 function start_speedwalk (path)
 
-  if current_speedwalk then
-    print ("You are already speedwalking!")
+  if current_speedwalk and #current_speedwalk > 0 then
+    print ("You are already speedwalking! (Ctrl + RH-click on a room to cancel)")
     return
   end -- if
 
