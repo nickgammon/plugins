@@ -69,8 +69,8 @@ convert_direction = {
   northwest = "nw",
   southeast = "se",
   southwest = "sw",
-  ['in'] = "i",
-  out = "o",
+  ['in'] = "in",
+  out = "out",
   }
   
 function  process_area (areaid, areaname)

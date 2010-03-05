@@ -71,6 +71,14 @@ The window can be dragged to a new location with the mouse.
   
   </alias>  
     
+ <alias
+   match="cancel speedwalk"
+   enabled="y"
+   sequence="100"
+   script="cancel_speedwalk"
+  >
+  </alias>  
+    
 </aliases>
 
 <triggers>
@@ -78,15 +86,9 @@ The window can be dragged to a new location with the mouse.
    enabled="y"
    match="Now now\, don\'t be so hasty\!$"
    regexp="y"
-   send_to="12"
+   script="cancel_speedwalk"
    sequence="100"
   > 
-  <send>
-  if current_speedwalk then
-    print "Speedwalk cancelled."
-  end -- if
-  current_speedwalk = nil
-  </send>
   </trigger>
  
 </triggers>
@@ -120,6 +122,7 @@ config = {
   ROOM_COLOUR             = { name = "Room",              colour =  ColourNameToRGB "cyan", },
   EXIT_COLOUR             = { name = "Exit",              colour =  ColourNameToRGB "darkgreen", },
   EXIT_COLOUR_UP_DOWN     = { name = "Exit up/down",      colour =  ColourNameToRGB "darkmagenta", },
+  EXIT_COLOUR_IN_OUT      = { name = "Exit in/out",       colour =  ColourNameToRGB "#3775E8", },
   OUR_ROOM_COLOUR         = { name = "Our room",          colour =  ColourNameToRGB "black", },
   UNKNOWN_ROOM_COLOUR     = { name = "Unknown room",      colour =  ColourNameToRGB "#00CACA", },
   DIFFERENT_AREA_COLOUR   = { name = "Another area",      colour =  ColourNameToRGB "#009393", },
@@ -604,10 +607,12 @@ function mouseup_room (flags, hotspot_id)
 
   if current_speedwalk then
     if #current_speedwalk > 0 then
+      SetStatus ("Speedwalks to go: " .. #current_speedwalk)
       local dir = table.remove (current_speedwalk, 1)
-      Send (dir)
+      Send (dir.dir)
+      expected_room = dir.uid
     else
-      current_speedwalk = nil
+      cancel_speedwalk ()
     end -- if any left    
   end -- if
    
@@ -793,6 +798,8 @@ inverse_direction = {
   sw = "ne",
   nw = "se",
   se = "nw",
+  ['in'] = "out",
+  out = "in",
   }  -- end of inverse_direction
  
 function add_another_room (uid, path, x, y)
@@ -802,8 +809,13 @@ end  -- add_another_room
   
 function draw_room (uid, path, x, y)
   
-  local coords = string.format ("%i,%i", x, y)
+  local coords = string.format ("%i,%i", math.floor (x), math.floor (y))
 
+  -- need this for the *current* room !!!
+  drawn_coords [coords] = true
+  
+  -- print ("drawing", uid, "at", coords)
+  
   if drawn [uid] then
     return
   end -- done this one
@@ -833,74 +845,80 @@ function draw_room (uid, path, x, y)
   
   local texits = {}
   
-  for name, exit in pairs (room.exits) do
-    local exit_guid = exit.uid
+  for dir, exit in pairs (room.exits) do
+    local exit_uid = exit.uid
     local exit_hash = exit.hash
-    table.insert (texits, name)
-    local exit_info = connectors [name]
-    local stub_exit_info = half_connectors [name]
+    table.insert (texits, dir)
+    local exit_info = connectors [dir]
+    local stub_exit_info = half_connectors [dir]
     local exit_line_colour = config.EXIT_COLOUR.colour
-    local arrow = arrows [name]
+    local arrow = arrows [dir]
     
     -- draw up in the ne/nw position if not already an exit there at this level
-    if name == "u" then
+    if dir == "u" then
       if not room.exits.nw then
         exit_info = connectors.nw
         stub_exit_info = half_connectors.nw
         arrow = arrows.nw
         exit_line_colour = config.EXIT_COLOUR_UP_DOWN.colour
-      elseif not room.exits.ne then
+      end -- if available
+    elseif dir == "in" then
+      if not room.exits.ne then
         exit_info = connectors.ne
         stub_exit_info = half_connectors.ne
         arrow = arrows.ne
-        exit_line_colour = config.EXIT_COLOUR_UP_DOWN.colour
+        exit_line_colour = config.EXIT_COLOUR_IN_OUT.colour
       end -- if
-    elseif name == "d" then
+    elseif dir == "d" then
       if not room.exits.se then
         exit_info = connectors.se
         stub_exit_info = half_connectors.se
         arrow = arrows.se
         exit_line_colour = config.EXIT_COLOUR_UP_DOWN.colour
-      elseif not room.exits.sw then
+      end -- if available
+    elseif dir == "out" then
+      if not room.exits.sw then
         exit_info = connectors.sw
         stub_exit_info = half_connectors.sw
         arrow = arrows.sw
-        exit_line_colour = config.EXIT_COLOUR_UP_DOWN.colour
+        exit_line_colour = config.EXIT_COLOUR_IN_OUT.colour
       end -- if
     end -- if down
         
     
     if exit_info then
       local linetype = 0 -- unbroken
-      if not rooms [exit_guid] then
+      if not rooms [exit_uid] then
         linetype = 2 -- dots
       end -- if
       
       local next_x = x + exit_info.at [1] * (ROOM_SIZE + DISTANCE_TO_NEXT_ROOM)
       local next_y = y + exit_info.at [2] * (ROOM_SIZE + DISTANCE_TO_NEXT_ROOM)
       
-      local next_coords = string.format ("%i,%i", next_x, next_y)
+      local next_coords = string.format ("%i,%i", math.floor (next_x), math.floor (next_y))
       
       -- if another room (not where this one leads to) is already there, only draw "stub" lines
       if drawn_coords [next_coords] and 
-        (not drawn [exit_guid] or drawn [exit_guid].coords ~= next_coords) then
+        (not drawn [exit_uid] or drawn [exit_uid].coords ~= next_coords) then
         exit_info = stub_exit_info
       else
-        -- remember to draw room next iteration
-        local new_path = copytable.deep (path)
-        table.insert (new_path, name)
-        table.insert (rooms_to_be_drawn, add_another_room (exit_guid, new_path, next_x, next_y))
-        drawn_coords [next_coords] = true
+        if not drawn_coords [next_coords] then
+          -- remember to draw room next iteration
+          local new_path = copytable.deep (path)
+          table.insert (new_path, { dir = dir, uid = exit_uid })
+          table.insert (rooms_to_be_drawn, add_another_room (exit_uid, new_path, next_x, next_y))
+          drawn_coords [next_coords] = true
+        end -- if not something there already
       end -- if drawn on this spot
 
       WindowLine (win, x + exit_info.x1, y + exit_info.y1, x + exit_info.x2, y + exit_info.y2, exit_line_colour, linetype, 1)
       
       -- one-way exit?
       
-      if rooms [exit_guid] then
-        local dest = rooms [exit_guid]
+      if rooms [exit_uid] then
+        local dest = rooms [exit_uid]
         -- if inverse direction doesn't point back to us, this is one-way
-        if dest.exits [inverse_direction [name]] == nil or dest.exits [inverse_direction [name]].uid ~= uid then
+        if dest.exits [inverse_direction [dir]] == nil or dest.exits [inverse_direction [dir]].uid ~= uid then
         
           -- turn points into string, relative to where the room is
           local points = string.format ("%i,%i,%i,%i,%i,%i", 
@@ -951,7 +969,7 @@ function draw_room (uid, path, x, y)
     
   -- draw current room (last, so it goes on top)
   WindowRectOp (win, 1, left, top, right, bottom, bordercolour)
-
+ 
   -- thicker border for our room
   if uid == current_room then
     WindowRectOp (win, 1, left + 1, top + 1, right - 1, bottom - 1, bordercolour)
@@ -959,12 +977,19 @@ function draw_room (uid, path, x, y)
   
   -- show up and down in case we can't get a line in
   
-  if room.exits.u then
+  if room.exits.u then  -- line at top
     WindowLine (win, left, top, left + ROOM_SIZE, top, config.EXIT_COLOUR_UP_DOWN.colour, 0, 1)
   end -- if
-  if room.exits.d then
+  if room.exits.d then  -- line at bottom
     WindowLine (win, left, bottom, left + ROOM_SIZE, bottom, config.EXIT_COLOUR_UP_DOWN.colour, 0, 1)
   end -- if
+  if room.exits ['in'] then  -- line at right
+    WindowLine (win, left + ROOM_SIZE, top, left + ROOM_SIZE, bottom, config.EXIT_COLOUR_IN_OUT.colour, 0, 1)
+  end -- if
+  if room.exits.out then  -- line at left
+    WindowLine (win, left, top, left, bottom, config.EXIT_COLOUR_IN_OUT.colour, 0, 1)
+  end -- if
+  
   
   speedwalks [uid] = path  -- so we know how to get here
   
@@ -1110,12 +1135,32 @@ function got_room_number (s)
   
   -- we changed rooms, and are speedwalking - hop to it
   if current_room ~= room_number and current_speedwalk then
-    if #current_speedwalk > 0 then
-      local dir = table.remove (current_speedwalk, 1)
-      DoAfter (0.5, dir)
+  
+    if room_number ~= expected_room then
+      local exp = rooms [expected_room]
+      if not exp then
+        exp = load_room_from_database (expected_room)
+      end -- if
+      local here = rooms [room_number]
+      if not here then
+        here = load_room_from_database (room_number)
+      end -- if
+      exp = exp.name or expected_room
+      here = here.name or room_number
+      ColourNote ("red", "", 
+          string.format ("Speedwalk failed! Expected to be in '%s' but ended up in '%s'.", exp, here))
+      cancel_speedwalk ()
     else
-      current_speedwalk = nil
-    end -- if any left    
+      if #current_speedwalk > 0 then
+        SetStatus ("Speedwalks to go: " .. #current_speedwalk)
+        local dir = table.remove (current_speedwalk, 1)
+        expected_room = dir.uid
+        DoAfter (0.3, dir.dir)
+      else
+        cancel_speedwalk ()
+      end -- if any left    
+    end -- if
+    
   end -- if
 
   current_room = room_number
@@ -1258,7 +1303,7 @@ function find_paths (start, destinations)
 					if not explored_rooms[dest.uid] then
 						explored_rooms[dest.uid] = true
 						new_path = copytable.deep (part.path)
-						table.insert(new_path, dir)
+						table.insert(new_path, { dir = dir, uid = dest.uid } )
 						
 						-- if this room is in the list of destinations then save its path
 						if dest_lookup[dest.uid] then
@@ -1356,8 +1401,6 @@ valid_direction = {
   sw = "sw",
   nw = "nw",
   se = "se",
-  i = "i",
-  o = "o",
   north = "n",
   south = "s",
   east = "e",
@@ -1368,8 +1411,8 @@ valid_direction = {
   northwest = "nw",
   southeast = "se",
   southwest = "sw",
-  ['in'] = "i",
-  out = "o",
+  ['in'] = "in",
+  out = "out",
   }  -- end of inverse_direction
   
 -- try to detect when we send a movement command
@@ -1391,8 +1434,18 @@ end -- function
 function OnPluginConnect ()
   current_room = nil
   current_speedwalk = nil
+  expected_room = nil
 end -- OnPluginConnect
 
+function cancel_speedwalk ()
+  if current_speedwalk and #current_speedwalk > 0 then
+    print "Speedwalk cancelled."
+  end -- if
+  current_speedwalk = nil
+  expected_room = nil
+  SetStatus ("Ready")
+
+end -- cancel_speedwalk
 ]]>
 </script>
 
