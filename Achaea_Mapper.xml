@@ -105,22 +105,14 @@ require "checkplugin"
 require "gauge"
 require "pairsbykeys"
 
-FONT_NAME = get_preferred_font {"Dina",  "Lucida Console",  "Fixedsys", "Courier", "Sylfaen",} 
-FONT_SIZE = 8
-FONT_ID = "fn"  -- internal font identifier
-  
--- size of map window
-WINDOW_WIDTH = 500
-WINDOW_HEIGHT = 500
+FONT_ID     = "fn"  -- internal font identifier
+FONT_ID_UL  = "fnu" -- internal font identifier - underlined
 
 -- size of room box
 ROOM_SIZE = 10
 
 -- how far away to draw rooms from each other
 DISTANCE_TO_NEXT_ROOM = 15
-
--- how far from where we are standing to draw (rooms)
-MAX_DEPTH = 50
 
 config = {
   -- assorted colours
@@ -143,7 +135,17 @@ config = {
   AREA_NAME_TEXT          = { name = "Area name text",    colour = ColourNameToRGB "#BEF3F1",},
   AREA_NAME_FILL          = { name = "Area name fill",    colour = ColourNameToRGB "#105653", },   
   AREA_NAME_BORDER        = { name = "Area name box",     colour = ColourNameToRGB "black", },
-                    
+               
+  FONT = { name =  get_preferred_font {"Dina",  "Lucida Console",  "Fixedsys", "Courier", "Sylfaen",} ,
+           size = 8
+         } ,
+         
+  -- size of map window
+  WINDOW = { width = 500, height = 500 },
+  
+  -- how far from where we are standing to draw (rooms)
+  SCAN = { depth = 50 },
+  
   }
   
 
@@ -346,8 +348,9 @@ function OnPluginInstall ()
 
   WindowCreate (win, 0, 0, 0, 0, 0, 0, 0)
                  
-  -- add the font
-  WindowFont (win, FONT_ID, FONT_NAME, FONT_SIZE)
+  -- add the fonts
+  WindowFont (win, FONT_ID, config.FONT.name, config.FONT.size)
+  WindowFont (win, FONT_ID_UL, config.FONT.name, config.FONT.size, false, false, true)
   
   -- see how high it is
   font_height = WindowFontInfo (win, FONT_ID, 1)  -- height
@@ -430,9 +433,10 @@ function build_speedwalk (path)
 end -- build_speedwalk
 
 function draw_configuration ()
-  local width = WindowTextWidth (win, FONT_ID, "Configuration", true)
-  local lines = 1  -- title
+  local width =  max_text_width (win, FONT_ID, {"Configuration", "Colours", "Font", "Width", "Height", "Depth"}, true)
+  local lines = 6  -- "Configuration", "colours", font, width, height, depth
   local GAP = 5
+  local suppress_colours = false
   
   for k, v in pairs (config) do
     if v.colour then
@@ -441,12 +445,25 @@ function draw_configuration ()
     end -- a colour item
   end -- for each config item
  
+  if (config.WINDOW.height - 13 - font_height * lines) < 10 then
+    suppress_colours = true
+    lines = 5  -- forget all the colours
+  end -- if
+  
   local x = 3
-  local y = WINDOW_HEIGHT - 13 - font_height * lines
+  local y = config.WINDOW.height - 13 - font_height * lines
   local box_size = font_height - 2
-  local frame_width = GAP + width + GAP + box_size + GAP  -- gap / text / gap / box / gap
+  local rh_size = math.max (box_size, max_text_width (win, FONT_ID, 
+    {config.FONT.name .. " " .. config.FONT.size, 
+     tostring (config.WINDOW.width), 
+     tostring (config.WINDOW.height), 
+     tostring (config.SCAN.depth)}, 
+    true))
+  local frame_width = GAP + width + GAP + rh_size + GAP  -- gap / text / gap / box / gap
 
+  -- fill entire box with grey
   WindowRectOp (win, 2, x, y, x + frame_width, y + font_height * lines + 10, 0xDCDCDC)
+  -- frame it
   draw_3d_box (win, x, y, frame_width, font_height * lines + 10)
   
   y = y + GAP
@@ -455,17 +472,17 @@ function draw_configuration ()
   -- title
   WindowText   (win, FONT_ID, "Configuration", x, y, 0, 0, 0x808080, true)
   -- close box
-  WindowRectOp (win, 1, x + width + GAP, y + 1, x + width + GAP + box_size, y + 1 + box_size, 0x808080)
+  WindowRectOp (win, 1, x + frame_width - box_size - GAP * 2, y + 1, x + frame_width - GAP * 2, y + 1 + box_size, 0x808080)
   WindowRectOp (win, 2, 
-                math.floor (x + width + GAP + box_size / 3), 
+                math.floor (x + frame_width - box_size - GAP * 2 + box_size / 3), 
                 math.floor (y + 1 + box_size / 3), 
-                math.ceil  (x + width + GAP + box_size - box_size / 3), 
+                math.ceil  (x + frame_width - GAP * 2 - box_size / 3), 
                 math.ceil  (y + 1 + box_size - box_size / 3), 
                 0x808080)
   
   -- close configuration hotspot               
-  WindowAddHotspot(win, "<close_configure>",  
-                   x + width + GAP, y + 1, x + width + GAP + box_size, y + 1 + box_size,   -- rectangle
+  WindowAddHotspot(win, "$<close_configure>",  
+                   x + frame_width - box_size - GAP * 2, y + 1, x + frame_width - GAP * 2, y + 1 + box_size,   -- rectangle
                    "",  -- mouseover
                    "",  -- cancelmouseover
                    "",  -- mousedown
@@ -473,30 +490,101 @@ function draw_configuration ()
                    "mouseup_close_configure",  -- mouseup
                    "Click to close",
                    1, 0)  -- hand cursor
-                                   
+    
   y = y + font_height
   
-  for k, v in pairsByKeys (config) do
-    if v.colour then
-      WindowText   (win, FONT_ID, v.name, x, y, 0, 0, 0x000000, true)
-      WindowRectOp (win, 2, x + width + GAP, y + 1, x + width + GAP + box_size, y + 1 + box_size, v.colour)
-      WindowRectOp (win, 1, x + width + GAP, y + 1, x + width + GAP + box_size, y + 1 + box_size, 0x000000)
-      
-      -- colour change hotspot               
-      WindowAddHotspot(win, "colour:" .. k,  
-                       x + width + GAP, y + 1, x + width + GAP + box_size, y + 1 + box_size,   -- rectangle
-                       "",  -- mouseover
-                       "",  -- cancelmouseover
-                       "",  -- mousedown
-                       "",  -- cancelmousedown
-                       "mouseup_change_colour",  -- mouseup
-                       "Click to change",
-                       1, 0)  -- hand cursor
-                         
-      y = y + font_height
-    end -- a colour item
-  end -- for each config item
+  if not suppress_colours then
+    WindowText   (win, FONT_ID, "Colours", x, y, 0, 0, 0x808080, true)
+    y = y + font_height
     
+    for k, v in pairsByKeys (config) do
+      if v.colour then
+        WindowText   (win, FONT_ID, v.name, x, y, 0, 0, 0x000000, true)
+        WindowRectOp (win, 2, x + width + rh_size / 2, y + 1, x + width + rh_size / 2 + box_size, y + 1 + box_size, v.colour)
+        WindowRectOp (win, 1, x + width + rh_size / 2, y + 1, x + width + rh_size / 2 + box_size, y + 1 + box_size, 0x000000)
+        
+        -- colour change hotspot               
+        WindowAddHotspot(win, "$colour:" .. k,  
+                         x + GAP, y + 1, x + width + rh_size / 2 + box_size, y + 1 + box_size,   -- rectangle
+                         "",  -- mouseover
+                         "",  -- cancelmouseover
+                         "",  -- mousedown
+                         "",  -- cancelmousedown
+                         "mouseup_change_colour",  -- mouseup
+                         "Click to change colour",
+                         1, 0)  -- hand cursor
+                           
+        y = y + font_height
+      end -- a colour item
+    end -- for each config item
+  end -- if
+  
+  -- depth
+  WindowText   (win, FONT_ID, "Depth", x, y, 0, 0, 0x000000, true)
+  WindowText   (win, FONT_ID_UL,   tostring (config.SCAN.depth), x + width + GAP, y, 0, 0, 0x808080, true)
+                                 
+  -- depth hotspot               
+  WindowAddHotspot(win, "$<depth>",  
+                   x + GAP, y, x + frame_width, y + font_height,   -- rectangle
+                   "",  -- mouseover
+                   "",  -- cancelmouseover
+                   "",  -- mousedown
+                   "",  -- cancelmousedown
+                   "mouseup_change_depth",  -- mouseup
+                   "Click to change scan depth",
+                   1, 0)  -- hand cursor
+  y = y + font_height
+    
+  -- font
+  WindowText   (win, FONT_ID, "Font", x, y, 0, 0, 0x000000, true)
+  WindowText   (win, FONT_ID_UL,  config.FONT.name .. " " .. config.FONT.size, x + width + GAP, y, 0, 0, 0x808080, true)
+                                 
+  -- colour font hotspot               
+  WindowAddHotspot(win, "$<font>",  
+                   x + GAP, y, x + frame_width, y + font_height,   -- rectangle
+                   "",  -- mouseover
+                   "",  -- cancelmouseover
+                   "",  -- mousedown
+                   "",  -- cancelmousedown
+                   "mouseup_change_font",  -- mouseup
+                   "Click to change font",
+                   1, 0)  -- hand cursor
+  y = y + font_height
+                   
+                     
+  -- width
+  WindowText   (win, FONT_ID, "Width", x, y, 0, 0, 0x000000, true)
+  WindowText   (win, FONT_ID_UL,   tostring (config.WINDOW.width), x + width + GAP, y, 0, 0, 0x808080, true)
+                                 
+  -- width hotspot               
+  WindowAddHotspot(win, "$<width>",  
+                   x + GAP, y, x + frame_width, y + font_height,   -- rectangle
+                   "",  -- mouseover
+                   "",  -- cancelmouseover
+                   "",  -- mousedown
+                   "",  -- cancelmousedown
+                   "mouseup_change_width",  -- mouseup
+                   "Click to change window width",
+                   1, 0)  -- hand cursor
+  y = y + font_height
+                      
+  -- height
+  WindowText   (win, FONT_ID, "Height", x, y, 0, 0, 0x000000, true)
+  WindowText   (win, FONT_ID_UL,   tostring (config.WINDOW.height), x + width + GAP, y, 0, 0, 0x808080, true)
+                                 
+  -- height hotspot               
+  WindowAddHotspot(win, "$<height>",  
+                   x + GAP, y, x + frame_width, y + font_height,   -- rectangle
+                   "",  -- mouseover
+                   "",  -- cancelmouseover
+                   "",  -- mousedown
+                   "",  -- cancelmousedown
+                   "mouseup_change_height",  -- mouseup
+                   "Click to change window height",
+                   1, 0)  -- hand cursor
+  y = y + font_height
+                                      
+                                      
 end -- draw_configuration
 
 function mouseup_room (flags, hotspot_id)
@@ -537,7 +625,7 @@ end -- mouseup_player
 
 function mouseup_change_colour (flags, hotspot_id)
  
-  local which = string.match (hotspot_id, "^colour:([%a%d_]+)$")
+  local which = string.match (hotspot_id, "^_colour:([%a%d_]+)$")
   if not which then
     return  -- strange ...
   end -- not found
@@ -552,6 +640,96 @@ function mouseup_change_colour (flags, hotspot_id)
   
   draw_everything (current_room)
 end -- mouseup_change_colour
+
+function mouseup_change_font (flags, hotspot_id)
+  
+  local newfont =  utils.fontpicker (config.FONT.name, config.FONT.size, config.ROOM_NAME_TEXT.colour)
+      
+  if not newfont then
+    return
+  end -- if dismissed
+  
+  config.FONT.name = newfont.name
+  
+  if newfont.size > 12 then
+    utils.msgbox ("Maximum allowed font size is 12 points.", "Font too large", "ok", "!", 1)
+  else
+    config.FONT.size = newfont.size
+  end -- if
+  
+  local version = tonumber (Version ())
+
+  -- colour ignored in MC version 4.50 and before
+  if version and version >= 4.51 then  
+    config.ROOM_NAME_TEXT.colour = newfont.colour
+  end -- version test
+
+  -- reload new font  
+  WindowFont (win, FONT_ID, config.FONT.name, config.FONT.size)
+  WindowFont (win, FONT_ID_UL, config.FONT.name, config.FONT.size, false, false, true)
+  
+  -- see how high it is
+  font_height = WindowFontInfo (win, FONT_ID, 1)  -- height
+  
+  draw_everything (current_room)
+end -- mouseup_change_font
+
+function get_number_from_user (msg, title, current, min, max)
+  local n =  utils.inputbox (msg, title, current)
+      
+  if not n then
+    return nil
+  end -- if dismissed
+  
+  n = tonumber (n)
+  if not n then
+    utils.msgbox ("You must enter a number", "Incorrect input", "ok", "!", 1)
+    return nil
+  end -- if
+  
+  if n < min or n > max then
+    utils.msgbox (title .. " must be in range " .. min .. " to " .. max, "Incorrect input", "ok", "!", 1)
+    return nil
+  end -- if
+
+  return n
+end -- get_number_from_user
+
+function mouseup_change_width (flags, hotspot_id)
+  
+  local width = get_number_from_user ("Choose window width (200 to 1000 pixels)", "Width", config.WINDOW.width, 200, 1000)
+      
+  if not width then
+    return
+  end -- if dismissed
+    
+  config.WINDOW.width = width
+  draw_everything (current_room)
+end -- mouseup_change_width
+
+function mouseup_change_height (flags, hotspot_id)
+  
+  local height = get_number_from_user ("Choose window height (200 to 1000 pixels)", "Width", config.WINDOW.height, 200, 1000)
+      
+  if not height then
+    return
+  end -- if dismissed
+    
+  config.WINDOW.height = height
+  draw_everything (current_room)
+end -- mouseup_change_height
+
+function mouseup_change_depth (flags, hotspot_id)
+  
+  local depth = get_number_from_user ("Choose scan depth (3 to 100 rooms)", "Depth", config.SCAN.depth, 3, 100)
+      
+  if not depth then
+    return
+  end -- if dismissed
+    
+  config.SCAN.depth = depth
+  draw_everything (current_room)
+end -- mouseup_change_depth
 
 function build_room_info ()
   
@@ -647,7 +825,7 @@ function draw_room (uid, path, x, y)
   
   -- forget it if off screen
   if x < HALF_ROOM or y < HALF_ROOM or 
-     x > WINDOW_WIDTH - HALF_ROOM or y > WINDOW_HEIGHT - HALF_ROOM then
+     x > config.WINDOW.width - HALF_ROOM or y > config.WINDOW.height - HALF_ROOM then
      return
   end -- if
   
@@ -828,7 +1006,7 @@ function draw_everything (uid)
   WindowCreate (win, 
                  windowinfo.window_left, 
                  windowinfo.window_top, 
-                 WINDOW_WIDTH, WINDOW_HEIGHT,  
+                 config.WINDOW.width, config.WINDOW.height,  
                  windowinfo.window_mode,   -- top right
                  windowinfo.window_flags,
                  config.BACKGROUND_COLOUR.colour) 
@@ -842,9 +1020,9 @@ function draw_everything (uid)
   current_area = room.area
   
   -- insert initial room
-  table.insert (rooms_to_be_drawn, add_another_room (uid, {}, WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2))
+  table.insert (rooms_to_be_drawn, add_another_room (uid, {}, config.WINDOW.width / 2, config.WINDOW.height / 2))
 
-  while #rooms_to_be_drawn > 0 and depth < MAX_DEPTH do
+  while #rooms_to_be_drawn > 0 and depth < config.SCAN.depth do
     local old_generation = rooms_to_be_drawn
     rooms_to_be_drawn = {}  -- new generation
     for i, part in ipairs (old_generation) do 
@@ -857,7 +1035,7 @@ function draw_everything (uid)
   -- room name
   
   draw_text_box (win, FONT_ID, 
-                 (WINDOW_WIDTH - WindowTextWidth (win, FONT_ID, room.name, true)) / 2,   -- left
+                 (config.WINDOW.width - WindowTextWidth (win, FONT_ID, room.name, true)) / 2,   -- left
                  3,    -- top
                  room.name, true,             -- what to draw, utf8
                  config.ROOM_NAME_TEXT.colour,   -- text colour
@@ -869,8 +1047,8 @@ function draw_everything (uid)
   if areas [room.area] then
     local areaname = areas [room.area] or string.format ("Area %s", room.area)
     draw_text_box (win, FONT_ID, 
-                   (WINDOW_WIDTH - WindowTextWidth (win, FONT_ID, areaname, true)) / 2,   -- left
-                   WINDOW_HEIGHT - 3 - font_height,    -- top
+                   (config.WINDOW.width - WindowTextWidth (win, FONT_ID, areaname, true)) / 2,   -- left
+                   config.WINDOW.height - 3 - font_height,    -- top
                    areaname, true,              -- what to draw, utf8
                    config.AREA_NAME_TEXT.colour,   -- text colour
                    config.AREA_NAME_FILL.colour,   -- fill colour   
@@ -886,10 +1064,10 @@ function draw_everything (uid)
   else
     
     local x = 5
-    local y = WINDOW_HEIGHT - 2 - font_height
+    local y = config.WINDOW.height - 2 - font_height
     local width = draw_text_box (win, FONT_ID, 
                    5,   -- left
-                   WINDOW_HEIGHT - 2 - font_height,    -- top (ie. at bottom)
+                   config.WINDOW.height - 2 - font_height,    -- top (ie. at bottom)
                    "?", true,                   -- what to draw, utf8
                    config.AREA_NAME_TEXT.colour,   -- text colour
                    config.AREA_NAME_FILL.colour,   -- fill colour   
@@ -908,7 +1086,7 @@ function draw_everything (uid)
                                                           
   -- 3D box around whole thing
   
-  draw_3d_box (win, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT)
+  draw_3d_box (win, 0, 0, config.WINDOW.width, config.WINDOW.height)
       
   -- make sure window visible
   WindowShow (win, true)
@@ -1054,7 +1232,7 @@ function find_paths (start, destinations)
 	-- create particle for the initial room
 	table.insert (particles, make_particle (start) )
 	
-	while #particles > 0 and depth < MAX_DEPTH do
+	while #particles > 0 and depth < config.SCAN.depth do
 	
 		-- create a new generation of particles
 		new_generation = {}
