@@ -103,6 +103,7 @@ require "serialize"
 require "copytable"
 require "checkplugin"
 require "gauge"
+require "pairsbykeys"
 
 FONT_NAME = get_preferred_font {"Dina",  "Lucida Console",  "Fixedsys", "Courier", "Sylfaen",} 
 FONT_SIZE = 8
@@ -121,19 +122,30 @@ DISTANCE_TO_NEXT_ROOM = 15
 -- how far from where we are standing to draw (rooms)
 MAX_DEPTH = 50
 
--- assorted colours
-BACKGROUND_COLOUR       = ColourNameToRGB "lightseagreen"
-ROOM_COLOUR             = ColourNameToRGB "cyan"
-EXIT_COLOUR             = ColourNameToRGB "darkgreen"
-EXIT_COLOUR_UP_DOWN     = ColourNameToRGB "darkmagenta"
-OUR_ROOM_COLOUR         = ColourNameToRGB "black"
-UNKNOWN_ROOM_COLOUR     = ColourNameToRGB "#00CACA"
-DIFFERENT_AREA_COLOUR   = ColourNameToRGB "#009393"
-SHOP_FILL_COLOUR        = ColourNameToRGB "darkolivegreen"
-TRAINER_FILL_COLOUR     = ColourNameToRGB "yellowgreen"
-BLACKSMITH_FILL_COLOUR  = ColourNameToRGB "darkgray"
-HEALER_FILL_COLOUR      = ColourNameToRGB "gold"
-
+config = {
+  -- assorted colours
+  BACKGROUND_COLOUR       = { name = "Background",        colour =  ColourNameToRGB "lightseagreen", },
+  ROOM_COLOUR             = { name = "Room",              colour =  ColourNameToRGB "cyan", },
+  EXIT_COLOUR             = { name = "Exit",              colour =  ColourNameToRGB "darkgreen", },
+  EXIT_COLOUR_UP_DOWN     = { name = "Exit up/down",      colour =  ColourNameToRGB "darkmagenta", },
+  OUR_ROOM_COLOUR         = { name = "Our room",          colour =  ColourNameToRGB "black", },
+  UNKNOWN_ROOM_COLOUR     = { name = "Unknown room",      colour =  ColourNameToRGB "#00CACA", },
+  DIFFERENT_AREA_COLOUR   = { name = "Another area",      colour =  ColourNameToRGB "#009393", },
+  SHOP_FILL_COLOUR        = { name = "Shop",              colour =  ColourNameToRGB "darkolivegreen", },
+  TRAINER_FILL_COLOUR     = { name = "Trainer",           colour =  ColourNameToRGB "yellowgreen", },
+  BLACKSMITH_FILL_COLOUR  = { name = "Blacksmith",        colour =  ColourNameToRGB "darkgray", },
+  HEALER_FILL_COLOUR      = { name = "Healer",            colour =  ColourNameToRGB "gold", },
+  
+  ROOM_NAME_TEXT          = { name = "Room name text",    colour = ColourNameToRGB "#BEF3F1", },
+  ROOM_NAME_FILL          = { name = "Room name fill",    colour = ColourNameToRGB "#105653", },
+  ROOM_NAME_BORDER        = { name = "Room name box",     colour = ColourNameToRGB "black", },
+  
+  AREA_NAME_TEXT          = { name = "Area name text",    colour = ColourNameToRGB "#BEF3F1",},
+  AREA_NAME_FILL          = { name = "Area name fill",    colour = ColourNameToRGB "#105653", },   
+  AREA_NAME_BORDER        = { name = "Area name box",     colour = ColourNameToRGB "black", },
+                    
+  }
+  
 
 local rooms = {}
 local areas = {}
@@ -328,6 +340,8 @@ end -- function create_tables
 
 function OnPluginInstall ()
   
+  -- UNCOMMENT! assert (loadstring (GetVariable ("config") or "")) ()
+
   win = GetPluginID ()
 
   WindowCreate (win, 0, 0, 0, 0, 0, 0, 0)
@@ -372,6 +386,7 @@ end -- OnPluginClose
 
 function OnPluginSaveState ()
   movewindow.save_state (win)
+  SetVariable ("config", "config = " .. serialize.save_simple (config))
 end -- OnPluginSaveState
 
 function build_speedwalk (path)
@@ -414,6 +429,76 @@ function build_speedwalk (path)
   
 end -- build_speedwalk
 
+function draw_configuration ()
+  local width = WindowTextWidth (win, FONT_ID, "Configuration", true)
+  local lines = 1  -- title
+  local GAP = 5
+  
+  for k, v in pairs (config) do
+    if v.colour then
+      width = math.max (width, WindowTextWidth (win, FONT_ID, v.name, true))
+      lines = lines + 1
+    end -- a colour item
+  end -- for each config item
+ 
+  local x = 3
+  local y = WINDOW_HEIGHT - 13 - font_height * lines
+  local box_size = font_height - 2
+  local frame_width = GAP + width + GAP + box_size + GAP  -- gap / text / gap / box / gap
+
+  WindowRectOp (win, 2, x, y, x + frame_width, y + font_height * lines + 10, 0xDCDCDC)
+  draw_3d_box (win, x, y, frame_width, font_height * lines + 10)
+  
+  y = y + GAP
+  x = x + GAP
+  
+  -- title
+  WindowText   (win, FONT_ID, "Configuration", x, y, 0, 0, 0x808080, true)
+  -- close box
+  WindowRectOp (win, 1, x + width + GAP, y + 1, x + width + GAP + box_size, y + 1 + box_size, 0x808080)
+  WindowRectOp (win, 2, 
+                math.floor (x + width + GAP + box_size / 3), 
+                math.floor (y + 1 + box_size / 3), 
+                math.ceil  (x + width + GAP + box_size - box_size / 3), 
+                math.ceil  (y + 1 + box_size - box_size / 3), 
+                0x808080)
+  
+  -- close configuration hotspot               
+  WindowAddHotspot(win, "<close_configure>",  
+                   x + width + GAP, y + 1, x + width + GAP + box_size, y + 1 + box_size,   -- rectangle
+                   "",  -- mouseover
+                   "",  -- cancelmouseover
+                   "",  -- mousedown
+                   "",  -- cancelmousedown
+                   "mouseup_close_configure",  -- mouseup
+                   "Click to close",
+                   1, 0)  -- hand cursor
+                                   
+  y = y + font_height
+  
+  for k, v in pairsByKeys (config) do
+    if v.colour then
+      WindowText   (win, FONT_ID, v.name, x, y, 0, 0, 0x000000, true)
+      WindowRectOp (win, 2, x + width + GAP, y + 1, x + width + GAP + box_size, y + 1 + box_size, v.colour)
+      WindowRectOp (win, 1, x + width + GAP, y + 1, x + width + GAP + box_size, y + 1 + box_size, 0x000000)
+      
+      -- colour change hotspot               
+      WindowAddHotspot(win, "colour:" .. k,  
+                       x + width + GAP, y + 1, x + width + GAP + box_size, y + 1 + box_size,   -- rectangle
+                       "",  -- mouseover
+                       "",  -- cancelmouseover
+                       "",  -- mousedown
+                       "",  -- cancelmousedown
+                       "mouseup_change_colour",  -- mouseup
+                       "Click to change",
+                       1, 0)  -- hand cursor
+                         
+      y = y + font_height
+    end -- a colour item
+  end -- for each config item
+    
+end -- draw_configuration
+
 function mouseup_room (flags, hotspot_id)
   local uid = hotspot_id
 
@@ -439,6 +524,34 @@ function mouseup_room (flags, hotspot_id)
   end -- if
    
 end -- mouseup_player
+
+function mouseup_configure (flags, hotspot_id)
+  draw_configure_box = true
+  draw_everything (current_room)
+end -- mouseup_configure
+
+function mouseup_close_configure (flags, hotspot_id)
+  draw_configure_box = false
+  draw_everything (current_room)
+end -- mouseup_player
+
+function mouseup_change_colour (flags, hotspot_id)
+ 
+  local which = string.match (hotspot_id, "^colour:([%a%d_]+)$")
+  if not which then
+    return  -- strange ...
+  end -- not found
+
+  local newcolour = PickColour (config [which].colour)
+      
+  if newcolour == -1 then
+    return
+  end -- if dismissed
+  
+  config [which].colour = newcolour
+  
+  draw_everything (current_room)
+end -- mouseup_change_colour
 
 function build_room_info ()
   
@@ -548,7 +661,7 @@ function draw_room (uid, path, x, y)
     table.insert (texits, name)
     local exit_info = connectors [name]
     local stub_exit_info = half_connectors [name]
-    local exit_line_colour = EXIT_COLOUR
+    local exit_line_colour = config.EXIT_COLOUR.colour
     local arrow = arrows [name]
     
     -- draw up in the ne/nw position if not already an exit there at this level
@@ -557,24 +670,24 @@ function draw_room (uid, path, x, y)
         exit_info = connectors.nw
         stub_exit_info = half_connectors.nw
         arrow = arrows.nw
-        exit_line_colour = EXIT_COLOUR_UP_DOWN
+        exit_line_colour = config.EXIT_COLOUR_UP_DOWN.colour
       elseif not room.exits.ne then
         exit_info = connectors.ne
         stub_exit_info = half_connectors.ne
         arrow = arrows.ne
-        exit_line_colour = EXIT_COLOUR_UP_DOWN
+        exit_line_colour = config.EXIT_COLOUR_UP_DOWN.colour
       end -- if
     elseif name == "d" then
       if not room.exits.se then
         exit_info = connectors.se
         stub_exit_info = half_connectors.se
         arrow = arrows.se
-        exit_line_colour = EXIT_COLOUR_UP_DOWN
+        exit_line_colour = config.EXIT_COLOUR_UP_DOWN.colour
       elseif not room.exits.sw then
         exit_info = connectors.sw
         stub_exit_info = half_connectors.sw
         arrow = arrows.sw
-        exit_line_colour = EXIT_COLOUR_UP_DOWN
+        exit_line_colour = config.EXIT_COLOUR_UP_DOWN.colour
       end -- if
     end -- if down
         
@@ -632,29 +745,30 @@ function draw_room (uid, path, x, y)
 
   -- special room colours
   if room.shop then
-    WindowRectOp (win, 2, left, top, right, bottom, SHOP_FILL_COLOUR)
+    WindowRectOp (win, 2, left, top, right, bottom, config.SHOP_FILL_COLOUR.colour)
   elseif room.train then
-    WindowRectOp (win, 2, left, top, right, bottom, TRAINER_FILL_COLOUR)
+    WindowRectOp (win, 2, left, top, right, bottom, config.TRAINER_FILL_COLOUR.colour)
   elseif room.repair then
-    WindowRectOp (win, 2, left, top, right, bottom, BLACKSMITH_FILL_COLOUR)
+    WindowRectOp (win, 2, left, top, right, bottom, config.BLACKSMITH_FILL_COLOUR.colour)
   elseif room.healer then
-    WindowRectOp (win, 2, left, top, right, bottom, HEALER_FILL_COLOUR)
+    WindowRectOp (win, 2, left, top, right, bottom, config.HEALER_FILL_COLOUR.colour)
   else
+  
     -- use terrain colour
-    if room.terrain and terrain_colours [room.terrain] then
-      WindowRectOp (win, 2, left, top, right, bottom, ColourNameToRGB (terrain_colours [room.terrain]))
-    end -- if
+  --  if room.terrain and terrain_colours [room.terrain] then
+  --    WindowRectOp (win, 2, left, top, right, bottom, ColourNameToRGB (terrain_colours [room.terrain]))
+  --  end -- if
   end -- if 
 
-  local bordercolour = ROOM_COLOUR
+  local bordercolour = config.ROOM_COLOUR.colour
   if uid == current_room then
-    bordercolour = OUR_ROOM_COLOUR
+    bordercolour = config.OUR_ROOM_COLOUR.colour
   end -- if current room
   if room.unknown then
-    bordercolour = UNKNOWN_ROOM_COLOUR
+    bordercolour = config.UNKNOWN_ROOM_COLOUR.colour
   end -- if 
   if room.area ~= current_area then
-    bordercolour = DIFFERENT_AREA_COLOUR
+    bordercolour = config.DIFFERENT_AREA_COLOUR.colour
   end -- not in this area
     
   -- draw current room (last, so it goes on top)
@@ -668,10 +782,10 @@ function draw_room (uid, path, x, y)
   -- show up and down in case we can't get a line in
   
   if room.exits.u then
-    WindowLine (win, left, top, left + ROOM_SIZE, top, EXIT_COLOUR_UP_DOWN, 0, 1)
+    WindowLine (win, left, top, left + ROOM_SIZE, top, config.EXIT_COLOUR_UP_DOWN.colour, 0, 1)
   end -- if
   if room.exits.d then
-    WindowLine (win, left, bottom, left + ROOM_SIZE, bottom, EXIT_COLOUR_UP_DOWN, 0, 1)
+    WindowLine (win, left, bottom, left + ROOM_SIZE, bottom, config.EXIT_COLOUR_UP_DOWN.colour, 0, 1)
   end -- if
   
   speedwalks [uid] = path  -- so we know how to get here
@@ -717,7 +831,7 @@ function draw_everything (uid)
                  WINDOW_WIDTH, WINDOW_HEIGHT,  
                  windowinfo.window_mode,   -- top right
                  windowinfo.window_flags,
-                 BACKGROUND_COLOUR) 
+                 config.BACKGROUND_COLOUR.colour) 
 
   -- let them move it around                 
   movewindow.add_drag_handler (win, 0, 0, 0, font_height)
@@ -741,31 +855,61 @@ function draw_everything (uid)
   
 
   -- room name
-   
-  local title_width =  WindowTextWidth (win, FONT_ID, room.name, true)
-  local x = (WINDOW_WIDTH - title_width) / 2
-  local y = 3
-  WindowRectOp (win, 2, x - 3, y, x + title_width + 3, y + font_height, ColourNameToRGB "#105653")  
-  WindowText (win, FONT_ID, room.name, x, y, 0, 0, ColourNameToRGB "#BEF3F1", true)
-  WindowRectOp (win, 1, x - 3, y, x + title_width + 3, y + font_height, ColourNameToRGB "black")  
+  
+  draw_text_box (win, FONT_ID, 
+                 (WINDOW_WIDTH - WindowTextWidth (win, FONT_ID, room.name, true)) / 2,   -- left
+                 3,    -- top
+                 room.name, true,             -- what to draw, utf8
+                 config.ROOM_NAME_TEXT.colour,   -- text colour
+                 config.ROOM_NAME_FILL.colour,   -- fill colour   
+                 config.ROOM_NAME_BORDER.colour)     -- border colour
   
   -- area name
 
-  local areaname = areas [room.area] or string.format ("Area %s", room.area)
-  local area_name_width =  WindowTextWidth (win, FONT_ID, areaname, true)
-  local x = (WINDOW_WIDTH - area_name_width) / 2
-  local y = WINDOW_HEIGHT - 3 - font_height
-  WindowRectOp (win, 2, x - 3, y, x + area_name_width + 3, y + font_height, ColourNameToRGB "#105653")  
-  WindowText (win, FONT_ID, areaname, x, y, 0, 0, ColourNameToRGB "#BEF3F1", true)
-  WindowRectOp (win, 1, x - 3, y, x + area_name_width + 3, y + font_height, ColourNameToRGB "black")  
+  if areas [room.area] then
+    local areaname = areas [room.area] or string.format ("Area %s", room.area)
+    draw_text_box (win, FONT_ID, 
+                   (WINDOW_WIDTH - WindowTextWidth (win, FONT_ID, areaname, true)) / 2,   -- left
+                   WINDOW_HEIGHT - 3 - font_height,    -- top
+                   areaname, true,              -- what to draw, utf8
+                   config.AREA_NAME_TEXT.colour,   -- text colour
+                   config.AREA_NAME_FILL.colour,   -- fill colour   
+                   config.AREA_NAME_BORDER.colour)     -- border colour
     
+  end -- if area known
+      
+  
+  -- configure?
+  
+  if draw_configure_box then
+    draw_configuration ()
+  else
+    
+    local x = 5
+    local y = WINDOW_HEIGHT - 2 - font_height
+    local width = draw_text_box (win, FONT_ID, 
+                   5,   -- left
+                   WINDOW_HEIGHT - 2 - font_height,    -- top (ie. at bottom)
+                   "?", true,                   -- what to draw, utf8
+                   config.AREA_NAME_TEXT.colour,   -- text colour
+                   config.AREA_NAME_FILL.colour,   -- fill colour   
+                   config.AREA_NAME_BORDER.colour)     -- border colour
+    
+    WindowAddHotspot(win, "<configure>",  
+                   x, y, x + width, y + font_height,   -- rectangle
+                   "",  -- mouseover
+                   "",  -- cancelmouseover
+                   "",  -- mousedown
+                   "",  -- cancelmousedown
+                   "mouseup_configure",  -- mouseup
+                   "Click to configure map",
+                   1, 0)  -- hand cursor
+  end -- if
+                                                          
   -- 3D box around whole thing
-  WindowCircleOp (win, 3, 0, 0, 0, 0, 0x505050, 0, 3, 0, 1)   -- dark grey border (3 pixels)
-  WindowCircleOp (win, 3, 1, 1, -1, -1, 0x7C7C7C, 0, 1, 0, 1)  -- lighter inner border
-  WindowCircleOp (win, 3, 2, 2, -2, -2, 0, 0, 1, 0, 1)  -- black inside that
-  WindowLine (win, 1, 1, WINDOW_WIDTH - 1, 1, 0xC2C2C2, 0, 1)  -- light top edge
-  WindowLine (win, 1, 1, 1, WINDOW_HEIGHT - 1, 0xC2C2C2, 0, 1)  -- light left edge (for 3D look)
-    
+  
+  draw_3d_box (win, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT)
+      
   -- make sure window visible
   WindowShow (win, true)
 
