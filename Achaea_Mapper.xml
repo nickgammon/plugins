@@ -486,8 +486,8 @@ function build_speedwalk (path)
 end -- build_speedwalk
 
 function draw_configuration ()
-  local width =  max_text_width (win, FONT_ID, {"Configuration", "Colours", "Font", "Width", "Height", "Depth"}, true)
-  local lines = 6  -- "Configuration", "colours", font, width, height, depth
+  local width =  max_text_width (win, FONT_ID, {"Configuration", "Font", "Width", "Height", "Depth"}, true)
+  local lines = 5  -- "Configuration", font, width, height, depth
   local GAP = 5
   local suppress_colours = false
   
@@ -547,9 +547,7 @@ function draw_configuration ()
   y = y + font_height
   
   if not suppress_colours then
-    WindowText   (win, FONT_ID, "Colours", x, y, 0, 0, 0x808080, true)
-    y = y + font_height
-    
+   
     for k, v in pairsByKeys (config) do
       if v.colour then
         WindowText   (win, FONT_ID, v.name, x, y, 0, 0, 0x000000, true)
@@ -675,7 +673,7 @@ end -- mouseup_player
 
 function mouseup_change_colour (flags, hotspot_id)
  
-  local which = string.match (hotspot_id, "^_colour:([%a%d_]+)$")
+  local which = string.match (hotspot_id, "^$colour:([%a%d_]+)$")
   if not which then
     return  -- strange ...
   end -- not found
@@ -947,13 +945,11 @@ function draw_room (uid, path, x, y)
         (not drawn [exit_uid] or drawn [exit_uid].coords ~= next_coords) then
         exit_info = stub_exit_info
       else
-        if not drawn_coords [next_coords] then
           -- remember to draw room next iteration
           local new_path = copytable.deep (path)
           table.insert (new_path, { dir = dir, uid = exit_uid })
           table.insert (rooms_to_be_drawn, add_another_room (exit_uid, new_path, next_x, next_y))
           drawn_coords [next_coords] = true
-        end -- if not something there already
       end -- if drawn on this spot
 
       WindowLine (win, x + exit_info.x1, y + exit_info.y1, x + exit_info.x2, y + exit_info.y2, exit_line_colour, linetype, 1)
