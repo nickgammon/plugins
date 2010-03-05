@@ -17,7 +17,24 @@
 <![CDATA[
 Automatic mapper.
 
-The window can be dragged to a new location with the mouse.
+The window can be dragged to a new location by dragging the room name on the top.
+
+Your current room is drawn in the center with a bolder border.
+
+RH-click on a room to speed-walk to it.
+
+LH-click on the "*" button on the bottom-left corner to configure it.
+
+* WHY DOES THE MAP CHANGE?
+
+The mapper draws from your room outwards - that is, it draws your room's exits
+first, then the rooms leading from those rooms, and so on.
+
+Eventually it finds an overlap, and draws a short "stub" line to indicate there is
+a room there which there isn't space to draw. If you get closer to that room the
+stub will disappear and the rooms in question will be drawn.
+
+
 ]]>
 </description>
 
@@ -93,6 +110,18 @@ The window can be dragged to a new location with the mouse.
  
 </triggers>
 
+
+
+<!--  Plugin help  -->
+
+<aliases>
+  <alias
+   script="OnHelp"
+   match="map help"
+   enabled="y"
+  >
+  </alias>
+</aliases>
 
 <!--  Script  -->
 
@@ -603,18 +632,7 @@ function mouseup_room (flags, hotspot_id)
   
   -- here for RH click
   
-  current_speedwalk = speedwalks [uid]
-
-  if current_speedwalk then
-    if #current_speedwalk > 0 then
-      SetStatus ("Speedwalks to go: " .. #current_speedwalk)
-      local dir = table.remove (current_speedwalk, 1)
-      Send (dir.dir)
-      expected_room = dir.uid
-    else
-      cancel_speedwalk ()
-    end -- if any left    
-  end -- if
+  start_speedwalk (speedwalks [uid])
    
 end -- mouseup_player
 
@@ -1093,7 +1111,7 @@ function draw_everything (uid)
     local width = draw_text_box (win, FONT_ID, 
                    5,   -- left
                    config.WINDOW.height - 2 - font_height,    -- top (ie. at bottom)
-                   "?", true,                   -- what to draw, utf8
+                   "*", true,                   -- what to draw, utf8
                    config.AREA_NAME_TEXT.colour,   -- text colour
                    config.AREA_NAME_FILL.colour,   -- fill colour   
                    config.AREA_NAME_BORDER.colour)     -- border colour
@@ -1134,33 +1152,36 @@ function got_room_number (s)
 
   
   -- we changed rooms, and are speedwalking - hop to it
-  if current_room ~= room_number and current_speedwalk then
-  
-    if room_number ~= expected_room then
-      local exp = rooms [expected_room]
-      if not exp then
-        exp = load_room_from_database (expected_room)
-      end -- if
-      local here = rooms [room_number]
-      if not here then
-        here = load_room_from_database (room_number)
-      end -- if
-      exp = exp.name or expected_room
-      here = here.name or room_number
-      ColourNote ("red", "", 
-          string.format ("Speedwalk failed! Expected to be in '%s' but ended up in '%s'.", exp, here))
-      cancel_speedwalk ()
-    else
-      if #current_speedwalk > 0 then
-        SetStatus ("Speedwalks to go: " .. #current_speedwalk)
-        local dir = table.remove (current_speedwalk, 1)
-        expected_room = dir.uid
-        DoAfter (0.3, dir.dir)
-      else
-        cancel_speedwalk ()
-      end -- if any left    
-    end -- if
+  if current_room ~= room_number then
+    hyperlink_paths = nil  -- those hyperlinks are meaningless now
+      
+    if current_speedwalk then
     
+      if room_number ~= expected_room then
+        local exp = rooms [expected_room]
+        if not exp then
+          exp = load_room_from_database (expected_room)
+        end -- if
+        local here = rooms [room_number]
+        if not here then
+          here = load_room_from_database (room_number)
+        end -- if
+        exp = exp.name or expected_room
+        here = here.name or room_number
+        ColourNote ("red", "", 
+            string.format ("Speedwalk failed! Expected to be in '%s' but ended up in '%s'.", exp, here))
+        cancel_speedwalk ()
+      else
+        if #current_speedwalk > 0 then
+          SetStatus ("Speedwalks to go: " .. #current_speedwalk)
+          local dir = table.remove (current_speedwalk, 1)
+          expected_room = dir.uid
+          DoAfter (0.3, dir.dir)
+        else
+          cancel_speedwalk ()
+        end -- if any left    
+      end -- if
+    end -- if
   end -- if
 
   current_room = room_number
@@ -1366,17 +1387,66 @@ function map_find (name, line, wildcards)
     return al < bl 
     end)
   
+  hyperlink_paths = {}
+  not_found_paths = 0
+  
   for _, room in ipairs (rooms) do
     if current_room == room.uid then
-      print (room.name, ": <current room>")
+      print (room.name, "is the room you are in")
     elseif not paths [room.uid] then
-      print (room.name, ": <path not found>")
+      not_found_paths = not_found_paths + 1
     else
-      print (room.name, ":", build_speedwalk (paths [room.uid]))
+      local distance = #paths [room.uid] .. " room"
+      if #paths [room.uid] > 1 then
+        distance = distance .. "s"
+      end -- if
+      distance = distance .. " away"
+      
+      Hyperlink ("!!" .. GetPluginID () .. ":do_hyperlink(" .. room.uid .. ")", 
+                room.name .. " - " .. distance, "Click to speedwalk there (" .. distance .. ")", "", "", false)
+      print "" -- new line
+      hyperlink_paths [room.uid] = paths [room.uid]
     end -- if
   end -- for each room
-  
+
+  if not_found_paths > 0 then
+    print ("There were", not_found_paths, "room(s) found which I cannot find the path to.")
+  end -- if
+    
 end -- map_find
+
+function start_speedwalk (path)
+
+  if current_speedwalk then
+    print ("You are already speedwalking!")
+    return
+  end -- if
+
+  current_speedwalk = path
+
+  if current_speedwalk then
+    if #current_speedwalk > 0 then
+      SetStatus ("Speedwalks to go: " .. #current_speedwalk)
+      local dir = table.remove (current_speedwalk, 1)
+      Send (dir.dir)
+      expected_room = dir.uid
+    else
+      cancel_speedwalk ()
+    end -- if any left    
+  end -- if
+    
+end -- start_speedwalk
+
+function do_hyperlink (uid)
+  
+  if not hyperlink_paths or not hyperlink_paths [uid] then
+    print ("Hyperlink is no longer valid, as you have moved.")
+    return
+  end -- if
+  
+  start_speedwalk (hyperlink_paths [uid])
+    
+end -- do_hyperlink
 
 function OnPluginListChanged ()
 --  room_ppi  = load_ppi ("8a78c14d185c36109f479926", "Room_Info_Helper")
@@ -1443,9 +1513,15 @@ function cancel_speedwalk ()
   end -- if
   current_speedwalk = nil
   expected_room = nil
+  hyperlink_paths = nil
   SetStatus ("Ready")
 
 end -- cancel_speedwalk
+
+function OnHelp ()
+  world.Note (world.GetPluginInfo (world.GetPluginID (), 3))
+end
+
 ]]>
 </script>
 
