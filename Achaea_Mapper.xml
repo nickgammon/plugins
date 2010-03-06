@@ -41,12 +41,14 @@ stub will disappear and the rooms in question will be drawn.
 </plugin>
 
 <aliases>
-  
+
  <alias
    match="map zoom out"
    enabled="y"
    send_to="12"
    sequence="100"
+   omit_from_command_history="y"
+   omit_from_output="y"
   >
   <send>
 
@@ -65,6 +67,8 @@ stub will disappear and the rooms in question will be drawn.
    enabled="y"
    send_to="12"
    sequence="100"
+   omit_from_command_history="y"
+   omit_from_output="y"
   >
   <send>
 
@@ -161,6 +165,9 @@ ROOM_SIZE = 10
 
 -- how far away to draw rooms from each other
 DISTANCE_TO_NEXT_ROOM = 15
+
+-- how many seconds to show "recent visit" lines
+LAST_VISIT_TIME = 60 * 5  -- 5 minutes
 
 config = {
   -- assorted colours
@@ -784,18 +791,19 @@ function build_room_info ()
   HALF_ROOM   = ROOM_SIZE / 2
   HALF_WAY    = DISTANCE_TO_NEXT_ROOM / 2
   THIRD_WAY   = DISTANCE_TO_NEXT_ROOM / 3
+  DISTANCE_LESS1 = DISTANCE_TO_NEXT_ROOM - 1
   
   -- how to draw a line from this room to the next one (relative to the center of the room)
   connectors = {
-    n =  { x1 = 0,            y1 = - HALF_ROOM, x2 = 0,                                    y2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM, at = { 0, -1 } }, 
-    s =  { x1 = 0,            y1 =   HALF_ROOM, x2 = 0,                                    y2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM, at = { 0,  1 } }, 
-    e =  { x1 =   HALF_ROOM,  y1 = 0,           x2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM,  y2 = 0,                                   at = {  1,  0 }}, 
-    w =  { x1 = - HALF_ROOM,  y1 = 0,           x2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM,  y2 = 0,                                   at = { -1,  0 }}, 
+    n =  { x1 = 0,            y1 = - HALF_ROOM, x2 = 0,                                    y2 = - HALF_ROOM - DISTANCE_LESS1, at = { 0, -1 } }, 
+    s =  { x1 = 0,            y1 =   HALF_ROOM, x2 = 0,                                    y2 =   HALF_ROOM + DISTANCE_LESS1, at = { 0,  1 } }, 
+    e =  { x1 =   HALF_ROOM,  y1 = 0,           x2 =   HALF_ROOM + DISTANCE_LESS1,  y2 = 0,                                   at = {  1,  0 }}, 
+    w =  { x1 = - HALF_ROOM,  y1 = 0,           x2 = - HALF_ROOM - DISTANCE_LESS1,  y2 = 0,                                   at = { -1,  0 }}, 
   
-    ne = { x1 =   HALF_ROOM,  y1 = - HALF_ROOM, x2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM , y2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM, at = { 1, -1 } }, 
-    se = { x1 =   HALF_ROOM,  y1 =   HALF_ROOM, x2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM , y2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM, at = { 1,  1 } }, 
-    nw = { x1 = - HALF_ROOM,  y1 = - HALF_ROOM, x2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM , y2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM, at = {-1, -1 } }, 
-    sw = { x1 = - HALF_ROOM,  y1 =   HALF_ROOM, x2 = - HALF_ROOM - DISTANCE_TO_NEXT_ROOM , y2 =   HALF_ROOM + DISTANCE_TO_NEXT_ROOM, at = {-1,  1 } }, 
+    ne = { x1 =   HALF_ROOM,  y1 = - HALF_ROOM, x2 =   HALF_ROOM + DISTANCE_LESS1 , y2 = - HALF_ROOM - DISTANCE_LESS1, at = { 1, -1 } }, 
+    se = { x1 =   HALF_ROOM,  y1 =   HALF_ROOM, x2 =   HALF_ROOM + DISTANCE_LESS1 , y2 =   HALF_ROOM + DISTANCE_LESS1, at = { 1,  1 } }, 
+    nw = { x1 = - HALF_ROOM,  y1 = - HALF_ROOM, x2 = - HALF_ROOM - DISTANCE_LESS1 , y2 = - HALF_ROOM - DISTANCE_LESS1, at = {-1, -1 } }, 
+    sw = { x1 = - HALF_ROOM,  y1 =   HALF_ROOM, x2 = - HALF_ROOM - DISTANCE_LESS1 , y2 =   HALF_ROOM + DISTANCE_LESS1, at = {-1,  1 } }, 
   
     } -- end connectors
     
@@ -931,6 +939,8 @@ function draw_room (uid, path, x, y)
     
     if exit_info then
       local linetype = 0 -- unbroken
+      local linewidth = 1 -- not recent
+      
       if not rooms [exit_uid] then
         linetype = 2 -- dots
       end -- if
@@ -950,9 +960,20 @@ function draw_room (uid, path, x, y)
           table.insert (new_path, { dir = dir, uid = exit_uid })
           table.insert (rooms_to_be_drawn, add_another_room (exit_uid, new_path, next_x, next_y))
           drawn_coords [next_coords] = true
+          
+          -- if exit room known
+          if rooms [exit_uid] then
+            local exit_time = rooms [exit_uid].last_visited or 0
+            local this_time = room.last_visited or 0
+            local now = os.time ()
+            if exit_time > (now - LAST_VISIT_TIME) and
+               this_time > (now - LAST_VISIT_TIME) then
+               linewidth = 2
+            end -- if
+          end -- if
       end -- if drawn on this spot
 
-      WindowLine (win, x + exit_info.x1, y + exit_info.y1, x + exit_info.x2, y + exit_info.y2, exit_line_colour, linetype, 1)
+      WindowLine (win, x + exit_info.x1, y + exit_info.y1, x + exit_info.x2, y + exit_info.y2, exit_line_colour, linetype, linewidth)
       
       -- one-way exit?
       
@@ -1066,6 +1087,7 @@ function draw_everything (uid)
   end -- not in cache
   
   room = room or { name = "<Unknown>", area = "0" }
+  room.last_visited = os.time ()
     
 --  tprint (room_data)
   
@@ -1203,9 +1225,9 @@ function got_room_number (s)
         else
           cancel_speedwalk ()
         end -- if any left    
-      end -- if
-    end -- if
-  end -- if
+      end -- if expected room or not
+    end -- if have a current speedwalk
+  end -- if changed rooms
 
   current_room = room_number
   draw_everything (room_number)
@@ -1384,6 +1406,11 @@ function map_find (name, line, wildcards)
     return
   end -- if
   
+  if current_speedwalk then
+    print ("No point doing this while you are speedwalking.")
+    return
+  end -- if
+  
   local rooms = {}
   
   for row in db:nrows(string.format ("SELECT uid, name FROM rooms_lookup WHERE rooms_lookup MATCH %s", fixsql (wildcards [1]))) do
@@ -1431,7 +1458,7 @@ function map_find (name, line, wildcards)
   end -- for each room
 
   if not_found_paths > 0 then
-    print ("There were", not_found_paths, "room(s) found which I cannot find the path to.")
+    print ("There were", not_found_paths, "room(s) found which I cannot find the path to within", config.SCAN.depth, "rooms from here.")
   end -- if
     
 end -- map_find
@@ -1511,11 +1538,15 @@ function map_areas (name, line, wildcards)
     return
   end -- if
   
+  if current_speedwalk then
+    print ("No point doing this while you are speedwalking.")
+    return
+  end -- if
+    
   local paths = find_areas(current_room)
   
    
   hyperlink_paths = {}
-  not_found_paths = 0
   local sorted_areas = {}
   
   for k in pairs (found_areas) do
@@ -1543,8 +1574,14 @@ function map_areas (name, line, wildcards)
     end -- if
   end -- for each room
 
+  not_found_paths = 0
+
+  for k in pairs (wanted_areas) do
+    not_found_paths = not_found_paths + 1
+  end -- for
+  
   if not_found_paths > 0 then
-    print ("There are", not_found_paths, "areas which I cannot find the path to.")
+    print ("There are", not_found_paths, "areas which I cannot find the path to within", config.SCAN.depth, "rooms from here.")
   end -- if
     
 end -- map_areas
@@ -1639,6 +1676,7 @@ function OnPluginConnect ()
   current_room = nil
   current_speedwalk = nil
   expected_room = nil
+  SetStatus ("Ready")  -- in case of outstanding speedwalks etc.
 end -- OnPluginConnect
 
 function cancel_speedwalk ()
