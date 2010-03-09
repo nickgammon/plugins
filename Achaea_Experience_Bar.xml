@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE muclient>
+
+<muclient>
+<plugin
+   name="Achaea_Experience_Bar"
+   author="Nick Gammon"
+   id="3304ff357fcc6eba09cf8378"
+   language="Lua"
+   purpose="Shows XP to level"
+   date_written="2010-03-09"
+   requires="4.50"
+   version="1.0"
+   >
+<description trim="y">
+<![CDATA[
+Install this plugin to show an how close you are to levelling.
+]]>
+</description>
+
+</plugin>
+
+<!--  Script  -->
+
+
+<script>
+<![CDATA[
+
+win = GetPluginID ()  -- get a unique name
+
+-- configuration
+
+GAUGE_HEIGHT = 11
+NUMBER_OF_TICKS = 19  -- (ie. 20 bars)
+
+BACKGROUND_COLOUR = 0x808080
+BOX_COLOUR = ColourNameToRGB "dodgerblue"
+
+require "checkplugin"
+require "gauge"
+
+-- draw the bar here, on getting the status info, or window resize
+function draw_bar ()
+
+  -- check numbers for validity
+  if not cur_xp or  
+     not max_xp or
+     cur_xp < 0 or
+     max_xp <= 0 then
+     return
+  end -- if
+
+  -- cannot have more than max xp
+  if cur_xp > max_xp then
+     cur_xp = max_xp
+  end -- if
+    
+  -- width is window width minus 2
+  local gauge_width = GetInfo (281) - 2  -- GetInfo (281) = Output window client width
+  
+  -- make room for the bar
+  local bottom_margin = GetInfo (275)  -- = Text rectangle - bottom
+  
+  -- adjust text rectangle, keeping existing settings where possible
+  if bottom_margin == 0 or 
+    (bottom_margin < 0 and math.abs (bottom_margin) < (GAUGE_HEIGHT + 2)) then
+   TextRectangle(GetInfo (272), GetInfo (273),   -- left, top
+                  GetInfo (274), -- right
+                  - (GAUGE_HEIGHT + 2),  -- bottom (gauge height plus 2 more)
+                  GetInfo (276), GetInfo (282) or 0, GetInfo (277),  --  BorderOffset, BorderColour, BorderWidth
+                  GetInfo (278), GetInfo (279)) -- OutsideFillColour, OutsideFillStyle
+  end -- if
+  
+  -- make the miniwindow
+  WindowCreate (win, 
+             0, 0,   -- left, top (auto-positions)
+             gauge_width,     -- width
+             GAUGE_HEIGHT,  -- height
+             10,       -- auto-position: bottom left
+             0,  -- flags
+             BACKGROUND_COLOUR) 
+             
+  local cur, max = cur_xp, max_xp
+ 
+  gauge (win, "XP", cur, max, 
+          0, 0, gauge_width, GAUGE_HEIGHT,
+          BOX_COLOUR, BACKGROUND_COLOUR,
+          NUMBER_OF_TICKS)
+
+  -- ensure window visible
+  WindowShow (win, true)
+  
+end -- draw_bar
+
+stats = {}
+
+function got_vitals (s)
+  stats.health, stats.maxhealth, 
+  stats.mana, stats.maxmana, 
+  stats.endurance, stats.maxendurance, 
+  stats.willpower, stats.maxwillpower, 
+  stats.exp, stats.maxexp = string.match (s, "^H:(%d+)/(%d+) M:(%d+)/(%d+) E:(%d+)/(%d+) W:(%d+)/(%d+) NL:(%d+)/(%d+)")
+  
+  if stats.exp then
+    cur_xp = tonumber (stats.exp)
+    max_xp = tonumber (stats.maxexp)
+    draw_bar ()
+  end -- if
+end -- function got_vitals
+
+function OnPluginBroadcast (msg, id, name, text)
+  if id == "85f72d0e263d75df7bde6f00" then
+  
+    if msg == 1 then
+      got_vitals (text)      -- eg. "H:496/496 M:412/412 E:1380/1380 W:960/960 NL:89/100 "
+    end -- if   
+ 
+  end -- if ATCP message
+end
+
+function OnPluginWorldOutputResized ()
+  draw_bar ()
+end -- function
+ 
+-- hide window on removal
+function OnPluginClose ()
+  WindowShow (win,  false)  -- hide it
+end -- OnPluginClose
+
+-- hide window on disable
+function OnPluginDisable ()
+  WindowShow (win,  false)  -- hide it
+end -- OnPluginDisable
+
+-- show window on enable
+function OnPluginEnable ()
+  if (cur_xp and max_xp) or pct_xp then
+    WindowShow (win,  true)  -- show it
+  end -- if
+end -- OnPluginEnable
+
+function OnPluginListChanged ()
+  do_plugin_check_now ("85f72d0e263d75df7bde6f00", "ATCP_NJG")    -- check we have ATCP plugin
+end -- OnPluginListChanged
+
+
+]]>
+</script>
+
+</muclient>
