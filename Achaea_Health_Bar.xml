@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE muclient>
+
+<muclient>
+<plugin
+   name="Achaea_Health_Bar"
+   author="Nick Gammon"
+   id="e149d30173eb8af91dae945f"
+   language="Lua"
+   purpose="Shows stats in a mini window"
+   date_written="2010-03-09"
+   requires="4.50"
+   version="1.0"
+   save_state="y"
+   >
+<description trim="y">
+<![CDATA[
+Install this plugin to show an info bar with HP, Mana, Endurance and Willpower.
+]]>
+</description>
+
+</plugin>
+
+<!--  Script  -->
+
+
+<script>
+<![CDATA[
+
+require "movewindow"
+require "gauge"
+require "serialize"
+require "checkplugin"
+
+GAUGE_HEIGHT = 15
+
+WINDOW_WIDTH = 300
+GAUGE_COUNT = 4
+GAP_BETWEEN_BARS = 4
+NUMBER_OF_TICKS = 5
+
+BACKGROUND_COLOUR = ColourNameToRGB "rosybrown"
+FONT_COLOUR = ColourNameToRGB "darkred"
+BORDER_COLOUR = ColourNameToRGB "#553333"
+
+FONT_NAME = get_preferred_font {"Sylfaen", "Dina", "Lucida Console", "Fixedsys", "Courier" } 
+FONT_SIZE = 10
+
+function DoGauge (sPrompt, win, current, max, Colour)
+  local width = WindowTextWidth (win, FONT_ID, sPrompt, true)  -- to right-justify it
+  WindowText (win, FONT_ID, sPrompt, gauge_left - width + 5, vertical, 0, 0, ColourNameToRGB "#444444", true)
+  
+  gauge (win, sPrompt, 
+          current, max, 
+          gauge_left + 10, vertical, WINDOW_WIDTH - gauge_left - 20, font_height,
+          ColourNameToRGB (Colour or "darkgreen"), ColourNameToRGB "gray",
+          5, ColourNameToRGB "silver", -- ticks
+          ColourNameToRGB "lightgrey",  -- frame
+          0x444444)   -- shadow
+
+  vertical = vertical + font_height + GAP_BETWEEN_BARS
+end --  DoGauge
+
+
+function OnPluginInstall ()
+  
+  win = GetPluginID ()
+  FONT_ID = "fn"
+
+  -- make initial window
+  WindowCreate (win, 0, 0, 0, 0, 0, 0, 0)
+  -- add the fonts
+  WindowFont (win, FONT_ID, FONT_NAME, FONT_SIZE)
+  font_height = WindowFontInfo (win, FONT_ID, 1)  -- height
+  
+  -- install the window movement handler, get back the window position
+  windowinfo = movewindow.install (win, 7)  -- default to 7 (on right, center top/bottom)
+    
+  window_height = (font_height * GAUGE_COUNT) + (GAUGE_COUNT * 2) * GAP_BETWEEN_BARS 
+  
+  -- make miniwindow so I can grab the font info
+  WindowCreate (win, 
+                windowinfo.window_left,
+                windowinfo.window_top,
+                WINDOW_WIDTH, 
+                window_height,  
+                windowinfo.window_mode,   
+                windowinfo.window_flags,    
+                BACKGROUND_COLOUR)
+
+  -- add the drag handler so they can move the window around
+  movewindow.add_drag_handler (win, 0, 0, 0, 0)
+  
+  -- work out how far in to start the gauge
+  
+  gauge_left =  max_text_width (win, FONT_ID, {"Health", "Mana", "Endurance", "Willpower" }) + 5
+  
+  if GetVariable ("enabled") == "false" then
+    ColourNote ("yellow", "", "Warning: Plugin " .. GetPluginName ().. " is currently disabled.")
+    check (EnablePlugin(GetPluginID (), false))
+  end -- they didn't enable us last time
+ 
+end -- OnPluginInstall
+
+function OnPluginDisable ()
+  WindowShow (win, false)
+end -- OnPluginDisable
+
+function OnPluginEnable ()
+  WindowShow (win, true)
+end -- OnPluginEnable
+
+function OnPluginSaveState ()
+   -- save window current location for next time  
+  movewindow.save_state (win)
+  SetVariable ("enabled", tostring (GetPluginInfo (GetPluginID (), 17)))
+end -- OnPluginSaveState
+
+stats = {}
+
+function got_vitals (s)
+  stats.health, stats.maxhealth, 
+  stats.mana, stats.maxmana, 
+  stats.endurance, stats.maxendurance, 
+  stats.willpower, stats.maxwillpower, 
+  stats.exp, stats.maxexp = string.match (s, "^H:(%d+)/(%d+) M:(%d+)/(%d+) E:(%d+)/(%d+) W:(%d+)/(%d+) NL:(%d+)/(%d+)")
+  
+  if stats.health then
+   
+    hp, max_hp = tonumber (stats.health), tonumber (stats.maxhealth)
+    mana, max_mana = tonumber (stats.mana), tonumber (stats.maxmana)
+    endurance, max_endurance = tonumber (stats.endurance), tonumber (stats.maxendurance)
+    willpower, max_willpower = tonumber (stats.willpower), tonumber (stats.maxwillpower)
+  
+    -- fill entire box to clear it
+    check (WindowRectOp (win, 2, 0, 0, 0, 0, BACKGROUND_COLOUR))  -- fill entire box
+    
+    -- Edge around box rectangle
+    check (WindowCircleOp (win, 3, 0, 0, 0, 0, BORDER_COLOUR, 0, 2, 0, 1))
+  
+    vertical = 6  -- pixel to start at
+  
+    DoGauge ("Heath: ",     win, hp ,       max_hp,         "darkgreen")
+    DoGauge ("Mana: ",      win, mana,      max_mana,       "mediumblue")
+    DoGauge ("Endurance: ", win, endurance, max_endurance,  "gold")
+    DoGauge ("Willpower: ", win, willpower, max_willpower,  "brown")
+  
+    WindowShow (win, true)
+  end -- if
+end -- function got_vitals
+
+function OnPluginBroadcast (msg, id, name, text)
+  if id == "85f72d0e263d75df7bde6f00" then
+  
+    if msg == 1 then
+      got_vitals (text)      -- eg. "H:496/496 M:412/412 E:1380/1380 W:960/960 NL:89/100 "
+    end -- if   
+ 
+  end -- if ATCP message
+end
+
+function OnPluginListChanged ()
+  do_plugin_check_now ("85f72d0e263d75df7bde6f00", "ATCP_NJG")    -- check we have ATCP plugin
+end -- OnPluginListChanged
+
+
+]]>
+</script>
+
+</muclient>
