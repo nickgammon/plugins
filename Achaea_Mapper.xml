@@ -211,10 +211,6 @@ local areas = {}
 room_not_in_database = {}
 room_in_database = {}
 
-CLIENT_ID = "MUSHclient " .. Version ()
-local IAC, SB, SE, DO = 0xFF, 0xFA, 0xF0, 0xFD
-local ATCP = 200
-
 function dbcheck (code)
 
  if code ~= sqlite3.OK and    -- no error
@@ -1193,6 +1189,7 @@ end -- draw_everything
 
 -- here when location changes, eg. : Room.Num 7476
 function got_room_number (s)
+  
   local room_number = s
     
   if not room_number then
@@ -1287,69 +1284,27 @@ function got_room_exit (s)
 
 end -- got_room_exit
 
-function atcp_auth (seed)
-   local a = 17
-   local len = #seed
-   
-   for i = 1, len do
-     local n = string.byte (seed:sub (i, i)) - 96
-     if bit.band (i, 1) == 0 then
-       a = a + n * bit.bor (i, 13)
-     else
-       a = a - n * bit.bor (i, 11)
-     end -- if
-   end -- for
-
-   return a
-   
-   
-end 
-
--- we got authorization request, eg. Auth.Request CH\n<identstr>
-function got_auth_request (s)
-   
-  local identstr = string.match (s, "^CH\n(.+)$")
-  
-  SendPkt (string.char (IAC, SB, ATCP) .. 
-           "auth " .. 
-           tostring (atcp_auth (identstr)) .. 
-           " " .. CLIENT_ID .. 
-           string.char (IAC, SE)) 
-  
-end -- got_auth_request
-
 function got_vitals (s)
-  print ("Vitals = ", s)
-end -- got_vitals
-
-handlers = {
-  ['Room.Num']      = got_room_number,
-  ['Room.Brief']    = got_room_name,
-  ['Room.Exits']    = got_room_exit,
-  ['Auth.Request']  = got_auth_request,
-  ['Char.Vitals']   = got_vitals,
-  
-  } -- end handlers
+  -- ignore
+end -- function got_vitals
 
 
-function OnPluginTelnetSubnegotiation (type, option)
-  if type ~= ATCP then
-    return
-  end -- not Achaea subnegotiation
-
-  local command, args = string.match (option, "^([%a.]+)%s+(.*)$")
+function OnPluginBroadcast (msg, id, name, text)
+  if id == "85f72d0e263d75df7bde6f00" then
   
-  if not command then
-    return
-  end -- don't seem to have a command
-  
-  local f = handlers [command]
-  
-  if f then
-    f (args)  -- call handler
-  end -- handler
-         
-end -- function OnPluginTelnetSubnegotiation
+    if msg == 1 then
+      got_vitals (text)      -- eg. "H:496/496 M:412/412 E:1380/1380 W:960/960 NL:89/100"
+                             --      health    mana      endurance   willpower experience
+    elseif msg == 2 then
+      got_room_name (text)  -- eg. "Continuing on the Parade of Zarathustra"
+    elseif msg == 3 then
+      got_room_exit (text)   -- eg. "n,s"
+    elseif msg == 4 then
+      got_room_number (text) -- eg. "401"
+    end -- if   
+ 
+  end -- if ATCP message
+end
 
 -- see: http://www.gammon.com.au/forum/?id=7306&page=2
 -- Thanks to Ked.
@@ -1659,29 +1614,6 @@ function do_hyperlink (uid)
   start_speedwalk (hyperlink_paths [uid])
     
 end -- do_hyperlink
-
-
--- agree to use ATCP
-function OnPluginTelnetRequest (type, data)
-  
-  if type == ATCP and data == "WILL" then
-    return true
-  end -- if
-  
-  if type == ATCP and data == "SENT_DO" then
-    SendPkt (string.char (IAC, SB, ATCP) .. 
-           "hello " .. CLIENT_ID .. "\n" ..
-           "auth 1\n" ..
-           "char_name 1\n" ..
-           "char_vitals 1\n" ..
-           "room_brief 1\n" ..
-           "room_exits 1" ..
-           string.char (IAC, SE)) 
-  end -- if ATCP login needed (just sent DO)
-  
-  return false
-  
-end -- function OnPluginTelnetRequest
 
 valid_direction = {
   n = "n",
