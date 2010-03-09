@@ -83,7 +83,7 @@ stub will disappear and the rooms in question will be drawn.
   </alias>  
     
  <alias
-   match="^map find ([\w* ]+)$"
+   match="^map find ([\w* %d/&quot;]+)$"
    enabled="y"
    sequence="100"
    script="map_find"
@@ -1403,7 +1403,7 @@ end -- function find_paths
 function map_find (name, line, wildcards)
 
   if not current_room then
-    print ("We don't know where you are right now.")
+    print ("We don't know where you are right now - try: LOOK")
     return
   end -- if
   
@@ -1541,7 +1541,7 @@ end -- function find_areas
 function map_areas (name, line, wildcards)
 
   if not current_room then
-    print ("We don't know where you are right now.")
+    print ("We don't know where you are right now - try: LOOK")
     return
   end -- if
   
