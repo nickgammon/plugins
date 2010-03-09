@@ -83,7 +83,7 @@ stub will disappear and the rooms in question will be drawn.
   </alias>  
     
  <alias
-   match="^map find ([\w*]+)$"
+   match="^map find ([\w* ]+)$"
    enabled="y"
    sequence="100"
    script="map_find"
@@ -1077,6 +1077,11 @@ end -- draw_room
 
 function draw_everything (uid)
 
+  if not uid then
+    Note "Cannot draw map right now, I don't know where you are - try: LOOK"
+    return
+  end -- if
+  
   -- timing
   local start_time = GetInfo (232)
 
