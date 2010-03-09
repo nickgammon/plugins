@@ -394,7 +394,7 @@ function create_tables ()
   end  -- for
   
   if not table_exists then
-    dbcheck (db:execute "CREATE VIRTUAL TABLE rooms_lookup USING FTS3(guid, name);")
+    dbcheck (db:execute "CREATE VIRTUAL TABLE rooms_lookup USING FTS3(uid, name);")
   end -- if
   
 end -- function create_tables
@@ -1464,6 +1464,12 @@ function find_areas (start)
   wanted_areas = {}
   found_areas = {}
   
+  if next (areas) == nil then
+    Note "No areas known."
+    return
+  end -- if
+  
+ 
   for k in pairs (areas) do
     wanted_areas [k] = true
   end -- for
