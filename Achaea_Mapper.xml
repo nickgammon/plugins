@@ -211,6 +211,10 @@ local areas = {}
 room_not_in_database = {}
 room_in_database = {}
 
+CLIENT_ID = "MUSHclient " .. Version ()
+local IAC, SB, SE, DO = 0xFF, 0xFA, 0xF0, 0xFD
+local ATCP = 200
+
 function dbcheck (code)
 
  if code ~= sqlite3.OK and    -- no error
@@ -1283,16 +1287,53 @@ function got_room_exit (s)
 
 end -- got_room_exit
 
+function atcp_auth (seed)
+   local a = 17
+   local len = #seed
+   
+   for i = 1, len do
+     local n = string.byte (seed:sub (i, i)) - 96
+     if bit.band (i, 1) == 0 then
+       a = a + n * bit.bor (i, 13)
+     else
+       a = a - n * bit.bor (i, 11)
+     end -- if
+   end -- for
+
+   return a
+   
+   
+end 
+
+-- we got authorization request, eg. Auth.Request CH\n<identstr>
+function got_auth_request (s)
+   
+  local identstr = string.match (s, "^CH\n(.+)$")
+  
+  SendPkt (string.char (IAC, SB, ATCP) .. 
+           "auth " .. 
+           tostring (atcp_auth (identstr)) .. 
+           " " .. CLIENT_ID .. 
+           string.char (IAC, SE)) 
+  
+end -- got_auth_request
+
+function got_vitals (s)
+  print ("Vitals = ", s)
+end -- got_vitals
+
 handlers = {
-  ['Room.Num'] = got_room_number,
-  ['Room.Brief'] = got_room_name,
-  ['Room.Exits'] = got_room_exit,
+  ['Room.Num']      = got_room_number,
+  ['Room.Brief']    = got_room_name,
+  ['Room.Exits']    = got_room_exit,
+  ['Auth.Request']  = got_auth_request,
+  ['Char.Vitals']   = got_vitals,
   
   } -- end handlers
 
 
 function OnPluginTelnetSubnegotiation (type, option)
-  if type ~= 200 then
+  if type ~= ATCP then
     return
   end -- not Achaea subnegotiation
 
@@ -1619,16 +1660,27 @@ function do_hyperlink (uid)
     
 end -- do_hyperlink
 
-function OnPluginListChanged ()
---  room_ppi  = load_ppi ("8a78c14d185c36109f479926", "Room_Info_Helper")
---  item_ppi = load_ppi ("928dc37b201539cd14239ff0", "Item_Cache_Helper")
-end -- OnPluginListChanged
 
 -- agree to use ATCP
 function OnPluginTelnetRequest (type, data)
-  if type == 200 and data == "WILL" then
+  
+  if type == ATCP and data == "WILL" then
     return true
   end -- if
+  
+  if type == ATCP and data == "SENT_DO" then
+    SendPkt (string.char (IAC, SB, ATCP) .. 
+           "hello " .. CLIENT_ID .. "\n" ..
+           "auth 1\n" ..
+           "char_name 1\n" ..
+           "char_vitals 1\n" ..
+           "room_brief 1\n" ..
+           "room_exits 1" ..
+           string.char (IAC, SE)) 
+  end -- if ATCP login needed (just sent DO)
+  
+  return false
+  
 end -- function OnPluginTelnetRequest
 
 valid_direction = {
@@ -1672,11 +1724,13 @@ function OnPluginSent (sText)
   end -- if 
 end -- function
 
+
 function OnPluginConnect ()
   current_room = nil
   current_speedwalk = nil
   expected_room = nil
   SetStatus ("Ready")  -- in case of outstanding speedwalks etc.
+    
 end -- OnPluginConnect
 
 function cancel_speedwalk ()
@@ -1693,6 +1747,10 @@ end -- cancel_speedwalk
 function OnHelp ()
   world.Note (world.GetPluginInfo (world.GetPluginID (), 3))
 end
+
+function OnPluginListChanged ()
+  do_plugin_check_now ("85f72d0e263d75df7bde6f00", "ATCP_NJG")    -- check we have ATCP plugin
+end -- OnPluginListChanged
 
 ]]>
 </script>
