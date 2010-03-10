@@ -30,6 +30,14 @@ function OnPluginBroadcast (msg, id, name, text)
       do_ATCP_room_exit (text)   -- eg. "n,s"
     elseif msg == 4 then
       do_ATCP_room_number (text) -- eg. "401"
+    elseif msg == 5 then
+      do_ATCP_room_full_exits (text) -- eg. "ne(8564),w(8428)"
+    elseif msg == 6 then
+      do_ATCP_room_environment (text) -- eg. "Urban"
+    elseif msg == 7 then
+      do_ATCP_room_coordinates (text) -- eg. "38,3,1,0"
+    elseif msg == 8 then
+      do_ATCP_room_info (text)        -- eg. "shop,postoffice"
     end -- if   
  
   end -- if ATCP message
@@ -135,13 +143,34 @@ function got_room_number (s)  -- eg. "441"
   BroadcastPlugin (4, s)
 end -- got_room_number
 
+function got_full_exits (s)  -- eg. "ne(8564),w(8428)"
+  BroadcastPlugin (5, s)
+end -- got_full_exits
+
+function got_environment (s)  -- eg. "Urban"
+  BroadcastPlugin (6, s)
+end -- got_environment
+
+function got_coordinates (s)  -- eg. "38,3,1,0"  (area,x,y,z)
+  BroadcastPlugin (7, s)
+end -- got_coordinates
+
+function got_info (s)  -- eg. "shop,postoffice"
+  BroadcastPlugin (8, s)
+end -- got_info
+
 handlers = {
   ['Auth.Request']  = got_auth_request,  -- handled here
 
-  ['Room.Num']      = got_room_number,
-  ['Room.Brief']    = got_room_brief,
-  ['Room.Exits']    = got_room_exits,
-  ['Char.Vitals']   = got_vitals,
+  ['Room.Num']          = got_room_number,
+  ['Room.Brief']        = got_room_brief,
+  ['Room.Exits']        = got_room_exits,
+  ['Char.Vitals']       = got_vitals,
+  ['Room.FullExits']    = got_full_exits,
+  ['Room.Environment']  = got_environment,
+  ['Room.Coordinates']  = got_coordinates,
+  ['Room.Info']         = got_info,
+  
   
   } -- end handlers
   

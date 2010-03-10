@@ -170,7 +170,7 @@ function create_map_database (name, line, wildcards)
 
 
   -- open database on disk 
-  db = assert (sqlite3.open(GetInfo (66) .. "achaea_map.db"))
+  db = assert (sqlite3.open(GetInfo (66) .. Trim (WorldAddress ()) .. "_" .. WorldPort () .. ".db"))
   
   -- create rooms table
   dbcheck (db:execute[[
@@ -195,14 +195,20 @@ function create_map_database (name, line, wildcards)
       name          TEXT,            -- name of room
       area          TEXT,            -- which area
       building      TEXT,            -- which building it is in
+      terrain       TEXT,            -- eg. road OR water
+      info          TEXT,            -- eg. shop,postoffice
+      notes         TEXT,            -- player notes
       x             INTEGER,
       y             INTEGER,
       z             INTEGER,
       date_added    DATE,            -- date added to database
       UNIQUE (uid)
---      FOREIGN KEY(area) REFERENCES areas(uid)
     );
 
+  CREATE INDEX IF NOT EXISTS info_index ON rooms (info);
+  CREATE INDEX IF NOT EXISTS terrain_index ON rooms (terrain);
+  CREATE INDEX IF NOT EXISTS area_index ON rooms (area);
+   
   DROP TABLE IF EXISTS exits;
            
   CREATE TABLE exits (

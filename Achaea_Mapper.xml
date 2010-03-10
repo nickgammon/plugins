@@ -43,7 +43,7 @@ stub will disappear and the rooms in question will be drawn.
 <aliases>
 
  <alias
-   match="map zoom out"
+   match="mapper zoom out"
    enabled="y"
    send_to="12"
    sequence="100"
@@ -63,7 +63,7 @@ stub will disappear and the rooms in question will be drawn.
   </alias>
   
 <alias
-   match="map zoom in"
+   match="mapper zoom in"
    enabled="y"
    send_to="12"
    sequence="100"
@@ -83,7 +83,7 @@ stub will disappear and the rooms in question will be drawn.
   </alias>  
     
  <alias
-   match="^map find ([\w* %d/&quot;]+)$"
+   match="^mapper find ([\w* %d/&quot;]+)$"
    enabled="y"
    sequence="100"
    script="map_find"
@@ -93,10 +93,19 @@ stub will disappear and the rooms in question will be drawn.
   </alias>  
     
  <alias
-   match="map areas"
+   match="mapper areas"
    enabled="y"
    sequence="100"
    script="map_areas"
+  >
+  
+  </alias>  
+    
+ <alias
+   match="mapper shops"
+   enabled="y"
+   sequence="100"
+   script="map_shops"
   >
   
   </alias>  
@@ -169,7 +178,7 @@ DISTANCE_TO_NEXT_ROOM = 15
 -- how many seconds to show "recent visit" lines
 LAST_VISIT_TIME = 60 * 5  -- 5 minutes
 
-config = {
+default_config = {
   -- assorted colours
   BACKGROUND_COLOUR       = { name = "Background",        colour =  ColourNameToRGB "lightseagreen", },
   ROOM_COLOUR             = { name = "Room",              colour =  ColourNameToRGB "cyan", },
@@ -180,9 +189,9 @@ config = {
   UNKNOWN_ROOM_COLOUR     = { name = "Unknown room",      colour =  ColourNameToRGB "#00CACA", },
   DIFFERENT_AREA_COLOUR   = { name = "Another area",      colour =  ColourNameToRGB "#009393", },
   SHOP_FILL_COLOUR        = { name = "Shop",              colour =  ColourNameToRGB "darkolivegreen", },
-  TRAINER_FILL_COLOUR     = { name = "Trainer",           colour =  ColourNameToRGB "yellowgreen", },
-  BLACKSMITH_FILL_COLOUR  = { name = "Blacksmith",        colour =  ColourNameToRGB "darkgray", },
-  HEALER_FILL_COLOUR      = { name = "Healer",            colour =  ColourNameToRGB "gold", },
+  POSTOFFICE_FILL_COLOUR  = { name = "Post Office",       colour =  ColourNameToRGB "yellowgreen", },
+  BANK_FILL_COLOUR        = { name = "Bank",              colour =  ColourNameToRGB "gold", },
+  NEWSROOM_FILL_COLOUR    = { name = "Newsroom",          colour =  ColourNameToRGB "lightblue", },
   
   ROOM_NAME_TEXT          = { name = "Room name text",    colour = ColourNameToRGB "#BEF3F1", },
   ROOM_NAME_FILL          = { name = "Room name fill",    colour = ColourNameToRGB "#105653", },
@@ -197,13 +206,14 @@ config = {
          } ,
          
   -- size of map window
-  WINDOW = { width = 500, height = 500 },
+  WINDOW = { width = 400, height = 400 },
   
   -- how far from where we are standing to draw (rooms)
   SCAN = { depth = 50 },
   
   }
   
+config = copytable.deep (default_config)
 
 local rooms = {}
 local areas = {}
@@ -287,6 +297,40 @@ function save_exits_to_database (uid, exits)
   
 end -- function save_room_to_database
 
+function save_full_exits_to_database (uid, exits)
+  
+  local room = rooms [uid]
+  
+  db:exec ("BEGIN TRANSACTION;") 
+
+  for exit in string.gmatch (exits, "[^,]+") do
+
+    dir, touid = string.match (exit, "^(%a+)%((%d+)%)$")
+    
+    if dir then
+      -- fix up in and out
+      dir = ({ ['i'] = "in", o = "out", }) [dir] or dir
+      
+      dbcheck (db:execute (string.format ([[
+        INSERT INTO exits (dir, fromuid, touid, date_added) 
+            VALUES (%s, %s, %s, DATETIME('NOW'));
+      ]], fixsql  (dir),  -- direction (eg. "n")
+          fixsql  (uid),  -- from current room
+          fixsql  (touid) -- destination room 
+          )))
+      print ("Added exit", dir, "from room", uid, "to room", touid, "to database.")
+      
+      room.exits [dir] = { uid = touid }
+    else
+      print ("Cannot make sense of:", exit)
+    end -- if can decode
+    
+  end -- for each exit
+  
+  db:exec ("COMMIT;") 
+  
+end -- function save_full_exits_to_database
+
 function fix_up_exit ()
 
   local room = rooms [from_room]
@@ -308,6 +352,58 @@ function fix_up_exit ()
   
 end -- fix_up_exit
 
+function save_environment_to_database (uid, s)
+  local room = rooms [uid]
+
+  dbcheck (db:execute (string.format ([[
+      UPDATE rooms SET terrain = %s WHERE uid = %s;
+    ]], 
+        fixsql  (s),     -- environment
+        fixsql  (uid)    -- room
+        )))
+     
+  room.terrain = s   
+  print ("Fixed room", uid, "to have environment:", s)
+end -- save_environment_to_database
+
+function save_info_to_database (uid, s)
+  local room = rooms [uid]
+
+  dbcheck (db:execute (string.format ([[
+      UPDATE rooms SET info = %s WHERE uid = %s;
+    ]], 
+        fixsql  (s),     -- info
+        fixsql  (uid)    -- room
+        )))
+     
+  room.info = s   
+  print ("Fixed room", uid, "to have info:", s)
+end -- save_info_to_database
+
+function save_coordinates_to_database (uid, s)
+  local room = rooms [uid]
+
+  local area, x, y, z = string.match (s, "^(%d+),([%d-]+),([%d-]+),([%d-]+)$")
+  
+  if x then
+    dbcheck (db:execute (string.format ([[
+        UPDATE rooms SET x = %i, y = %i, z = %i, area = %i WHERE uid = %s;
+      ]], 
+          x, y, z, area,   -- coordinates, area
+          fixsql  (uid)    -- room
+          )))
+       
+    room.x = x
+    room.y = y
+    room.z = z
+    room.area = area
+      
+    print ("Fixed room", uid, "to have coordinates:", x, y, z, "and area", area)
+ else
+   print ("Cannot make sense of coordinates:", s)
+ end -- if
+end -- save_coordinates_to_database
+
 function load_room_from_database (uid)
 
   local room
@@ -322,6 +418,9 @@ function load_room_from_database (uid)
        name = row.name,
        area = row.area,
        building = row.building,
+       terrain = row.terrain,
+       info = row.info,
+       notes = row.notes,
        x = row.x,
        y = row.y,
        z = row.z,
@@ -367,12 +466,18 @@ function create_tables ()
       name          TEXT,            -- name of room
       area          TEXT,            -- which area
       building      TEXT,            -- which building it is in
+      terrain       TEXT,            -- eg. road OR water
+      info          TEXT,            -- eg. shop,postoffice
+      notes         TEXT,            -- player notes
       x             INTEGER,
       y             INTEGER,
       z             INTEGER,
       date_added    DATE,            -- date added to database
       UNIQUE (uid)
     );
+  CREATE INDEX IF NOT EXISTS info_index ON rooms (info);
+  CREATE INDEX IF NOT EXISTS terrain_index ON rooms (terrain);
+  CREATE INDEX IF NOT EXISTS area_index ON rooms (area);
 
   CREATE TABLE IF NOT EXISTS exits (
       exitid      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -404,6 +509,13 @@ function OnPluginInstall ()
   -- get saved configuration
   assert (loadstring (GetVariable ("config") or "")) ()
 
+  -- allow for additions to config
+  for k, v in pairs (default_config) do
+    if not config [k] then
+      config [k] = v
+    end -- if
+  end -- for
+  
   win = GetPluginID ()
 
   WindowCreate (win, 0, 0, 0, 0, 0, 0, 0)
@@ -419,7 +531,7 @@ function OnPluginInstall ()
   windowinfo = movewindow.install (win, 7)
   
   -- open database on disk 
-  db = assert (sqlite3.open(GetInfo (66) .. "achaea_map.db"))
+  db = assert (sqlite3.open(GetInfo (66) .. Trim (WorldAddress ()) .. "_" .. WorldPort () .. ".db"))
   
   create_tables ()
   
@@ -649,12 +761,11 @@ function mouseup_room (flags, hotspot_id)
   local uid = hotspot_id
 
   if bit.band (flags, 0x20) == 0 then
-    if rooms [uid].shop then
-      Execute "list"  -- this is kinda silly, we have to be *in* the room
-    end -- if
+    
+    -- LH click
     
     return
-  end -- if not RH click
+  end -- if LH click
 
   -- here for RH click
     
@@ -853,6 +964,104 @@ inverse_direction = {
   out = "in",
   }  -- end of inverse_direction
  
+terrain_colours = {
+  ["Dark Forest"] = 2,
+  ["Constructed underground"] = 3,
+  ["Natural underground"] = 3,
+  ["Forest"] = 2,
+  ["Beach"] = 11,
+  ["Desert"] = 11,
+  ["Grasslands"] = 10,
+  ["Urban"] = 7,
+  ["Hills"] = 5,
+  ["River"] = 12,
+  ["Path"] = 6,
+  ["Road"] = 14,
+  ["Valley"] = 10,
+  ["Mountains"] = 3,
+  ["Swamp"] = 5,
+  ["Tundra"] = 15,
+  ["Jungle"] = 2,
+  ["Dwarven city"] = 7,
+  ["Sylayan city"] = 7,
+  ["Ocean"] = 4,
+  ["Garden"] = 10,
+  ["Freshwater"] = 4,
+  ["Sewer"] = 1,
+  ["Deep Ocean"] = 4,
+  ["Vast Ocean"] = 4,
+  ["Polar"] = 15,
+  ["Underworld"] = 8,
+  ["Docks"] = 7,
+  ["Warrens"] = 1,
+  ["Crags"] = 3,
+  ["Acropolis"] = 9,
+  ["Tainted Underground"] = 1,
+  ["Underground Lake"] = 8,
+  ["Ruins"] = 1,
+  ["Desert Ruins"] = 11,
+  ["Tainted Water"] = 1,
+  ["Farmland"] = 7,
+  ["Academia"] = 7,
+  ["Forestal Council"] = 10,
+  ["Graveyard"] = 8,
+  ["Village"] = 7,
+  ["Pond"] = 4,
+  ["Nobility"] = 7,
+  ["Noble Chambers"] = 7,
+  ["Noble Bar"] = 7,
+  ["Church"] = 7,
+  ["Village"] = 7,
+  ["Lake of Fire"] = 9,
+  ["Temple"] = 7,
+  ["Blackened Lands"] = 8,
+  ["Volcano"] = 9,
+  ["Blackstone Keep"] = 7,
+  ["Catacombs"] = 8,
+  ["Wetlands Village"] = 7,
+  ["Blackstone Dungeon"] = 7,
+  ["Arcane Temple"] = 7,
+  ["Cliffs"] = 3,
+  ["a sheltered dell"] = 7,
+  ["within a tent"] = 7,
+  ["quarry"] = 3,
+  ["garrison"] = 7,
+  ["pyramid"] = 3,
+  ["bog"] = 5,
+  ["Blighted"] = 5,
+  ["Villa"] = 7,
+  ["Frozen Bog"] = 5,
+  ["Rocky Shore"] = 3,
+  ["Scrublands"] = 2,
+  ["Tower"] = 7,
+} -- end terrain_colours
+
+-- ANSI colours lookup (for above table)
+
+colour_lookup = {
+    [0] =   ColourNameToRGB  "black",  
+    [1] =   ColourNameToRGB  "maroon", 
+    [2] =   ColourNameToRGB  "green",  
+    [3] =   ColourNameToRGB  "olive",  
+    [4] =   ColourNameToRGB  "navy",   
+    [5] =   ColourNameToRGB  "purple", 
+    [6] =   ColourNameToRGB  "teal",   
+    [7] =   ColourNameToRGB  "silver", 
+    [8] =   ColourNameToRGB  "gray",   
+    [9] =   ColourNameToRGB  "red",    
+    [10] =  ColourNameToRGB  "lime",   
+    [11] =  ColourNameToRGB  "yellow", 
+    [12] =  ColourNameToRGB  "blue",   
+    [13] =  ColourNameToRGB  "magenta",
+    [14] =  ColourNameToRGB  "cyan",   
+    [15] =  ColourNameToRGB  "white",  
+  } -- end of colour_lookup
+
+for k, v in ipairs (colour_lookup) do
+  colour_lookup [k] = AdjustColour (AdjustColour (v, 4), 3) -- make a bit darker
+ 
+end -- for
+
 function add_another_room (uid, path, x, y)
   local path = path or {}
   return {uid=uid, path=path, x = x, y = y}
@@ -1002,39 +1211,54 @@ function draw_room (uid, path, x, y)
   end -- for each exit
 
   -- special room colours
-  if room.shop then
-    WindowRectOp (win, 2, left, top, right, bottom, config.SHOP_FILL_COLOUR.colour)
-  elseif room.train then
-    WindowRectOp (win, 2, left, top, right, bottom, config.TRAINER_FILL_COLOUR.colour)
-  elseif room.repair then
-    WindowRectOp (win, 2, left, top, right, bottom, config.BLACKSMITH_FILL_COLOUR.colour)
-  elseif room.healer then
-    WindowRectOp (win, 2, left, top, right, bottom, config.HEALER_FILL_COLOUR.colour)
-  else
   
+  if room.info then
+    if string.match (room.info, "shop") then
+      WindowCircleOp (win, 2, left, top, right, bottom, 
+                      0, 5, 0,  -- no pen
+                      config.SHOP_FILL_COLOUR.colour, 8)  -- brush
+    elseif string.match (room.info, "postoffice") then
+      WindowCircleOp (win, 2, left, top, right, bottom, 
+                      0, 5, 0,  -- no pen
+                      config.POSTOFFICE_FILL_COLOUR.colour, 8)  -- brush
+    elseif string.match (room.info, "bank") then
+      WindowCircleOp (win, 2, left, top, right, bottom, 
+                      0, 5, 0,  -- no pen
+                      config.BANK_FILL_COLOUR.colour, 8)  -- brush
+    elseif string.match (room.info, "newsroom") then
+      WindowCircleOp (win, 2, left, top, right, bottom, 
+                      0, 5, 0,  -- no pen
+                      config.NEWSROOM_FILL_COLOUR.colour, 8)  -- brush
+    end -- if
+  else  
     -- use terrain colour
-  --  if room.terrain and terrain_colours [room.terrain] then
-  --    WindowRectOp (win, 2, left, top, right, bottom, ColourNameToRGB (terrain_colours [room.terrain]))
-  --  end -- if
+    if room.terrain and terrain_colours [room.terrain] then
+      WindowRectOp (win, 2, left, top, right, bottom, colour_lookup [terrain_colours [room.terrain]])
+    end -- if
   end -- if 
 
   local bordercolour = config.ROOM_COLOUR.colour
+  
   if uid == current_room then
     bordercolour = config.OUR_ROOM_COLOUR.colour
   end -- if current room
-  if room.unknown then
-    bordercolour = config.UNKNOWN_ROOM_COLOUR.colour
-  end -- if 
+
   if room.area ~= current_area then
     bordercolour = config.DIFFERENT_AREA_COLOUR.colour
   end -- not in this area
     
   -- draw current room (last, so it goes on top)
-  WindowRectOp (win, 1, left, top, right, bottom, bordercolour)
- 
+  if room.unknown then
+    WindowCircleOp (win, 2, left, top, right, bottom, 
+                    config.UNKNOWN_ROOM_COLOUR.colour, 2, 1,  --  pen
+                    -1, 1)  -- no brush
+  else
+    WindowRectOp (win, 1, left, top, right, bottom, bordercolour)
+  end -- if
+   
   -- thicker border for our room
   if uid == current_room then
-    WindowRectOp (win, 1, left + 1, top + 1, right - 1, bottom - 1, bordercolour)
+     WindowRectOp (win, 1, left + 1, top + 1, right - 1, bottom - 1, bordercolour)
   end -- if current room
   
   -- show up and down in case we can't get a line in
@@ -1055,6 +1279,16 @@ function draw_room (uid, path, x, y)
   
   speedwalks [uid] = path  -- so we know how to get here
   
+  local terrain = ""
+  if room.terrain then
+    terrain = "\nTerrain: " .. room.terrain
+  end -- if terrain known
+  
+  local info = ""
+  if room.info then
+    info = "\nInfo: " .. capitalize (room.info)
+  end -- if info known
+
   WindowAddHotspot(win, uid,  
                  left, top, right, bottom,   -- rectangle
                  "",  -- mouseover
@@ -1062,11 +1296,13 @@ function draw_room (uid, path, x, y)
                  "",  -- mousedown
                  "",  -- cancelmousedown
                  "mouseup_room",  -- mouseup
-                 string.format ("%s\tExits: %s\nRoom: %s\nArea: %s",    -- \nSteps=%i\nPath to=%s
+                 string.format ("%s\tExits: %s\nRoom: %s\nArea: %s%s%s",    -- \nSteps=%i\nPath to=%s
                         room.name, 
                         table.concat (texits, ", "),
                         uid,
-                        areas [room.area] or string.format ("Area %s", room.area or "<unknown>") 
+                        areas [room.area] or string.format ("Area %s", room.area or "<unknown>"),
+                        terrain,
+                        info
                         -- depth,
                         -- table.concat (path, ",")
                         ),  -- tooltip text
@@ -1124,13 +1360,31 @@ function draw_everything (uid)
     depth = depth + 1
   end -- while all rooms_to_be_drawn
   
+  local room_name = room.name
+  local name_width = WindowTextWidth (win, FONT_ID, room_name, true)
+  local add_dots = false
 
+  -- truncate name if too long
+  while name_width > (config.WINDOW.width - 10) do
+    -- get rid of last word
+    local s = string.match (" " .. room_name .. "...", "(%s%S*)$")
+    if not s or #s == 0 then break end
+    room_name = room_name:sub (1, - (#s - 2))  -- except the last 3 dots but add the space
+    name_width = WindowTextWidth (win, FONT_ID, room_name .. " ...", true)
+    add_dots = true
+  end -- while
+  
+  if add_dots then
+    room_name = room_name .. " ..."
+  end -- if
+
+  
   -- room name
   
   draw_text_box (win, FONT_ID, 
-                 (config.WINDOW.width - WindowTextWidth (win, FONT_ID, room.name, true)) / 2,   -- left
+                 (config.WINDOW.width - WindowTextWidth (win, FONT_ID, room_name, true)) / 2,   -- left
                  3,    -- top
-                 room.name, true,             -- what to draw, utf8
+                 room_name, true,             -- what to draw, utf8
                  config.ROOM_NAME_TEXT.colour,   -- text colour
                  config.ROOM_NAME_FILL.colour,   -- fill colour   
                  config.ROOM_NAME_BORDER.colour)     -- border colour
@@ -1269,6 +1523,11 @@ end -- got_room_name
 -- we got room exits, eg. : Room.Exits ne,sw,nw
 function got_room_exit (s)
    
+  -- don't do if we are expecting full exits at some stage
+  if full_exits_found then
+    return
+  end -- if
+
   local exits = string.match (s, "^([%a,]+)$")
    
   if not (current_room and exits) then
@@ -1287,26 +1546,121 @@ function got_room_exit (s)
     draw_everything (current_room)    -- redraw room with exits
   end -- need to save exits
 
+
 end -- got_room_exit
 
 function got_vitals (s)
   -- ignore
 end -- function got_vitals
 
+-- we got room exits, eg. : Room.FullExits ne(8564),w(8428)
+function got_room_full_exits (s)
+   
+  full_exits_found = true
+  
+  local exits = string.match (s, "^([%a,(%d)]+)$")
+   
+  if not (current_room and exits) then
+    return
+  end -- if
+  
+  local room = rooms [current_room]
+  
+  -- not cached - see if in database
+  if not room then
+    room = load_room_from_database (current_room)
+  end -- not in cache
+  
+  if room and next (room.exits) == nil then
+    save_full_exits_to_database (current_room, exits)
+    draw_everything (current_room)    -- redraw room with exits
+  end -- need to save exits
 
+end -- got_room_exit
+
+-- we got room environment, eg. : Urban
+function got_environment (s)
+  
+  if not current_room then
+    return
+  end -- if
+  
+  local room = rooms [current_room]
+  
+  -- not cached - see if in database
+  if not room then
+    room = load_room_from_database (current_room)
+  end -- not in cache
+  
+  if room and room.terrain == nil then
+    save_environment_to_database (current_room, s)
+    draw_everything (current_room)    -- redraw room with environment
+  end -- need to save environment
+
+end -- got_environment
+
+-- we got room coordinates, eg. : "38,3,1,0"
+function got_coordinates (s)
+  
+  if not current_room then
+    return
+  end -- if
+  
+  local room = rooms [current_room]
+  
+  -- not cached - see if in database
+  if not room then
+    room = load_room_from_database (current_room)
+  end -- not in cache
+  
+  if room and room.x == nil then
+    save_coordinates_to_database (current_room, s)
+    draw_everything (current_room)    -- redraw room with area
+  end -- need to save environment
+
+end -- got_coordinates
+
+-- we got room info, eg. : shops,postoffice
+function got_info (s)
+  
+  if not current_room then
+    return
+  end -- if
+  
+  local room = rooms [current_room]
+  
+  -- not cached - see if in database
+  if not room then
+    room = load_room_from_database (current_room)
+  end -- not in cache
+  
+  if room and room.info == nil then
+    save_info_to_database (current_room, s)
+    draw_everything (current_room)    -- redraw room with info
+  end -- need to save environment
+
+end -- got_info
+
+handlers = {
+  [1] = got_vitals,             -- eg. "H:496/496 M:412/412 E:1380/1380 W:960/960 NL:89/100"
+                                --      health    mana      endurance   willpower experience
+  [2] = got_room_name,          -- eg. "Continuing on the Parade of Zarathustra"
+  [3] = got_room_exit,          -- eg. "n,s"
+  [4] = got_room_number,        -- eg. "401"
+  [5] = got_room_full_exits,    -- eg. "ne(8564),w(8428)"
+  [6] = got_environment,        -- eg. "Urban"
+  [7] = got_coordinates,        -- eg. "38,3,1,0"
+  [8] = got_info,               -- eg. "shops,postoffice"
+  }
+  
 function OnPluginBroadcast (msg, id, name, text)
   if id == "85f72d0e263d75df7bde6f00" then
   
-    if msg == 1 then
-      got_vitals (text)      -- eg. "H:496/496 M:412/412 E:1380/1380 W:960/960 NL:89/100"
-                             --      health    mana      endurance   willpower experience
-    elseif msg == 2 then
-      got_room_name (text)  -- eg. "Continuing on the Parade of Zarathustra"
-    elseif msg == 3 then
-      got_room_exit (text)   -- eg. "n,s"
-    elseif msg == 4 then
-      got_room_number (text) -- eg. "401"
-    end -- if   
+    local f = handlers [msg]
+    
+    if f then
+      f (text)
+    end -- have handler
  
   end -- if ATCP message
 end
@@ -1400,24 +1754,22 @@ function find_paths (start, destinations)
 	return paths			
 end -- function find_paths
 
-function map_find (name, line, wildcards)
-
-  if not current_room then
+function check_we_can_find ()
+ if not current_room then
     print ("We don't know where you are right now - try: LOOK")
-    return
+    return false
   end -- if
   
   if current_speedwalk then
     print ("No point doing this while you are speedwalking.")
-    return
+    return false
   end -- if
   
-  local rooms = {}
-  
-  for row in db:nrows(string.format ("SELECT uid, name FROM rooms_lookup WHERE rooms_lookup MATCH %s", fixsql (wildcards [1]))) do
-     table.insert (rooms, { uid = row.uid, name = row.name } )
-  end   -- finding room
-  
+  return true
+end -- check_we_can_find
+
+function map_find_things (rooms)
+
   if #rooms == 0 then
     Note ("No rooms matched.")
   end
@@ -1452,8 +1804,12 @@ function map_find (name, line, wildcards)
       distance = distance .. " away"
       
       Hyperlink ("!!" .. GetPluginID () .. ":do_hyperlink(" .. room.uid .. ")", 
-                room.name .. " - " .. distance, "Click to speedwalk there (" .. distance .. ")", "", "", false)
-      print "" -- new line
+                room.name .. " (" .. room.uid .. ")", "Click to speedwalk there (" .. distance .. ")", "", "", false)
+      local info = ""
+      if room.info then
+        info = " [" .. capitalize (room.info) .. "]"
+      end -- if
+      print (" - " .. distance .. info) -- new line
       hyperlink_paths [room.uid] = paths [room.uid]
     end -- if
   end -- for each room
@@ -1461,8 +1817,39 @@ function map_find (name, line, wildcards)
   if not_found_paths > 0 then
     print ("There were", not_found_paths, "room(s) found which I cannot find the path to within", config.SCAN.depth, "rooms from here.")
   end -- if
+end -- map_find_things
+
+function map_find (name, line, wildcards)
+
+  if not check_we_can_find () then
+    return
+  end -- if
+  
+  local rooms = {}
+  
+  for row in db:nrows(string.format ("SELECT uid, name FROM rooms_lookup WHERE rooms_lookup MATCH %s", fixsql (wildcards [1]))) do
+     table.insert (rooms, { uid = row.uid, name = row.name } )
+  end   -- finding room
+  
+  map_find_things (rooms)
     
 end -- map_find
+
+function map_shops (name, line, wildcards)
+
+  if not check_we_can_find () then
+    return
+  end -- if
+  
+  local rooms = {}
+  
+  for row in db:nrows(string.format ("SELECT uid, name, info FROM rooms WHERE info IS NOT NULL")) do
+     table.insert (rooms, { uid = row.uid, name = row.name, info = row.info } )
+  end   -- finding room
+  
+  map_find_things (rooms)
+    
+end -- map_shops
 
 function find_areas (start)
 	
@@ -1540,13 +1927,7 @@ end -- function find_areas
 
 function map_areas (name, line, wildcards)
 
-  if not current_room then
-    print ("We don't know where you are right now - try: LOOK")
-    return
-  end -- if
-  
-  if current_speedwalk then
-    print ("No point doing this while you are speedwalking.")
+  if not check_we_can_find () then
     return
   end -- if
     

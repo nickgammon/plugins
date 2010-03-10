@@ -74,7 +74,7 @@ active = true
 -- ONE TABLE PER GROUP ITEM ---------------------------------------
 
 spells = {
---  { name = "Skills",          desc = "List of skills." },
+   { name = "Skills",          desc = "List of skills." },
 --   { name = "Spells",          desc = "List of spells." },
 --   { name = "Spells spellup",  desc = "List of spellups (buffs)." },
 --   { name = "Spells combat",   desc = "List of combat abilities." },
@@ -124,6 +124,7 @@ mystuff = {
   { name = "Stat",        desc = "More info about you." },
   { name = "Probe pack",        desc = "Look in your pack." },
   { name = "Info here",   desc = "Shows what is here with you." },
+  { name = "Info inv",   desc = "Your inventory in detail." },
   { name = "Who here",   desc = "Shows who is here with you." },
   
   
@@ -198,7 +199,7 @@ groups = {
           },  -- end Movement
 
   { name = "To do / improvements", list = todo, 
-     extrahelp = { "Newbie quests", "Sleep", "Stand", "Med", "Sip", "Learning",
+     extrahelp = { "Newbie quests", "Sleep", "Stand", "Med", "Sip", "Learning", "Basecommands",
        },
 --            extrahelp = { "Eat", "Drink", "Gulp", "Run", "Find", "aq", "Listen", "www", "rules" },
             },  -- end To do 
