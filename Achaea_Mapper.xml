@@ -178,6 +178,7 @@ DISTANCE_TO_NEXT_ROOM = 15
 -- how many seconds to show "recent visit" lines
 LAST_VISIT_TIME = 60 * 5  -- 5 minutes
 
+
 default_config = {
   -- assorted colours
   BACKGROUND_COLOUR       = { name = "Background",        colour =  ColourNameToRGB "lightseagreen", },
@@ -192,6 +193,7 @@ default_config = {
   POSTOFFICE_FILL_COLOUR  = { name = "Post Office",       colour =  ColourNameToRGB "yellowgreen", },
   BANK_FILL_COLOUR        = { name = "Bank",              colour =  ColourNameToRGB "gold", },
   NEWSROOM_FILL_COLOUR    = { name = "Newsroom",          colour =  ColourNameToRGB "lightblue", },
+  MAPPER_NOTE_COLOUR      = { name = "Messages",          colour =  ColourNameToRGB "lightgreen" },
   
   ROOM_NAME_TEXT          = { name = "Room name text",    colour = ColourNameToRGB "#BEF3F1", },
   ROOM_NAME_FILL          = { name = "Room name fill",    colour = ColourNameToRGB "#105653", },
@@ -220,6 +222,20 @@ local areas = {}
 
 room_not_in_database = {}
 room_in_database = {}
+
+function mapprint (...)
+  local old_note_colour = GetNoteColourFore ()
+  SetNoteColourFore(config.MAPPER_NOTE_COLOUR.colour)
+  print (...)
+  SetNoteColourFore (old_note_colour)
+end -- mapprint
+
+function maperror (...)
+  local old_note_colour = GetNoteColourFore ()
+  SetNoteColourFore(ColourNameToRGB "red")
+  print (...)
+  SetNoteColourFore (old_note_colour)
+end -- maperror
 
 function dbcheck (code)
 
@@ -265,7 +281,7 @@ function save_room_to_database (uid, title)
         
   room_not_in_database [uid] = false
   
-  print ("Added room", uid, "to database. Name:", title)
+  mapprint ("Added room", uid, "to database. Name:", title)
   
 end -- function save_room_to_database
       
@@ -287,7 +303,7 @@ function save_exits_to_database (uid, exits)
         fixsql  (uid),         -- from current room
         fixsql  (0)     -- destination room (not known)
         )))
-    print ("Added exit", dir, "from room", uid, "to database.")
+    mapprint ("Added exit", dir, "from room", uid, "to database.")
     
     room.exits [dir] = { uid = tostring (0) }
     
@@ -318,11 +334,11 @@ function save_full_exits_to_database (uid, exits)
           fixsql  (uid),  -- from current room
           fixsql  (touid) -- destination room 
           )))
-      print ("Added exit", dir, "from room", uid, "to room", touid, "to database.")
+      mapprint ("Added exit", dir, "from room", uid, "to room", touid, "to database.")
       
       room.exits [dir] = { uid = touid }
     else
-      print ("Cannot make sense of:", exit)
+      maperror ("Cannot make sense of:", exit)
     end -- if can decode
     
   end -- for each exit
@@ -343,7 +359,7 @@ function fix_up_exit ()
         fixsql  (last_direction_moved)  -- direction (eg. "n")
         )))
         
-  print ("Fixed exit", last_direction_moved, "from room", from_room, "to be to", current_room)
+  mapprint ("Fixed exit", last_direction_moved, "from room", from_room, "to be to", current_room)
   
   room.exits [last_direction_moved] = { uid = tostring (current_room) }
     
@@ -363,7 +379,7 @@ function save_environment_to_database (uid, s)
         )))
      
   room.terrain = s   
-  print ("Fixed room", uid, "to have environment:", s)
+  mapprint ("Fixed room", uid, "to have environment:", s)
 end -- save_environment_to_database
 
 function save_info_to_database (uid, s)
@@ -377,7 +393,7 @@ function save_info_to_database (uid, s)
         )))
      
   room.info = s   
-  print ("Fixed room", uid, "to have info:", s)
+  mapprint ("Fixed room", uid, "to have info:", s)
 end -- save_info_to_database
 
 function save_coordinates_to_database (uid, s)
@@ -398,9 +414,9 @@ function save_coordinates_to_database (uid, s)
     room.z = z
     room.area = area
       
-    print ("Fixed room", uid, "to have coordinates:", x, y, z, "and area", area)
+    mapprint ("Fixed room", uid, "to have coordinates:", x, y, z, "and area", area)
  else
-   print ("Cannot make sense of coordinates:", s)
+   maperror ("Cannot make sense of coordinates:", s)
  end -- if
 end -- save_coordinates_to_database
 
@@ -906,10 +922,10 @@ function build_room_info ()
   
   -- how to draw a line from this room to the next one (relative to the center of the room)
   connectors = {
-    n =  { x1 = 0,            y1 = - HALF_ROOM, x2 = 0,                                    y2 = - HALF_ROOM - DISTANCE_LESS1, at = { 0, -1 } }, 
-    s =  { x1 = 0,            y1 =   HALF_ROOM, x2 = 0,                                    y2 =   HALF_ROOM + DISTANCE_LESS1, at = { 0,  1 } }, 
-    e =  { x1 =   HALF_ROOM,  y1 = 0,           x2 =   HALF_ROOM + DISTANCE_LESS1,  y2 = 0,                                   at = {  1,  0 }}, 
-    w =  { x1 = - HALF_ROOM,  y1 = 0,           x2 = - HALF_ROOM - DISTANCE_LESS1,  y2 = 0,                                   at = { -1,  0 }}, 
+    n =  { x1 = 0,            y1 = - HALF_ROOM, x2 = 0,                             y2 = - HALF_ROOM - DISTANCE_LESS1, at = { 0, -1 } }, 
+    s =  { x1 = 0,            y1 =   HALF_ROOM, x2 = 0,                             y2 =   HALF_ROOM + DISTANCE_LESS1, at = { 0,  1 } }, 
+    e =  { x1 =   HALF_ROOM,  y1 = 0,           x2 =   HALF_ROOM + DISTANCE_LESS1,  y2 = 0,                            at = {  1,  0 }}, 
+    w =  { x1 = - HALF_ROOM,  y1 = 0,           x2 = - HALF_ROOM - DISTANCE_LESS1,  y2 = 0,                            at = { -1,  0 }}, 
   
     ne = { x1 =   HALF_ROOM,  y1 = - HALF_ROOM, x2 =   HALF_ROOM + DISTANCE_LESS1 , y2 = - HALF_ROOM - DISTANCE_LESS1, at = { 1, -1 } }, 
     se = { x1 =   HALF_ROOM,  y1 =   HALF_ROOM, x2 =   HALF_ROOM + DISTANCE_LESS1 , y2 =   HALF_ROOM + DISTANCE_LESS1, at = { 1,  1 } }, 
@@ -928,7 +944,7 @@ function build_room_info ()
     ne = { x1 =   HALF_ROOM,  y1 = - HALF_ROOM, x2 =   HALF_ROOM + THIRD_WAY , y2 = - HALF_ROOM - THIRD_WAY, at = { 1, -1 } }, 
     se = { x1 =   HALF_ROOM,  y1 =   HALF_ROOM, x2 =   HALF_ROOM + THIRD_WAY , y2 =   HALF_ROOM + THIRD_WAY, at = { 1,  1 } }, 
     nw = { x1 = - HALF_ROOM,  y1 = - HALF_ROOM, x2 = - HALF_ROOM - THIRD_WAY , y2 = - HALF_ROOM - THIRD_WAY, at = {-1, -1 } }, 
-    sw = { x1 =   HALF_ROOM,  y1 = - HALF_ROOM, x2 =   HALF_ROOM + THIRD_WAY , y2 = - HALF_ROOM - THIRD_WAY, at = {-1,  1 } }, 
+    sw = { x1 = - HALF_ROOM,  y1 =   HALF_ROOM, x2 = - HALF_ROOM - THIRD_WAY , y2 =   HALF_ROOM + THIRD_WAY, at = {-1,  1 } }, 
   
     } -- end half_connectors
   
@@ -1145,7 +1161,6 @@ function draw_room (uid, path, x, y)
       end -- if
     end -- if down
         
-    
     if exit_info then
       local linetype = 0 -- unbroken
       local linewidth = 1 -- not recent
@@ -1158,17 +1173,30 @@ function draw_room (uid, path, x, y)
       local next_y = y + exit_info.at [2] * (ROOM_SIZE + DISTANCE_TO_NEXT_ROOM)
       
       local next_coords = string.format ("%i,%i", math.floor (next_x), math.floor (next_y))
-      
+     
       -- if another room (not where this one leads to) is already there, only draw "stub" lines
       if drawn_coords [next_coords] and 
         (not drawn [exit_uid] or drawn [exit_uid].coords ~= next_coords) then
         exit_info = stub_exit_info
+      elseif exit_uid == uid then 
+      
+        -- here if room leads back to itself
+        exit_info = stub_exit_info
+        linetype = 1 -- dash
+      
       else
+        -- if we are scheduled to draw the room already, only draw a stub this time
+        if plan_to_draw [exit_uid] then
+          -- here if room already going to be drawn
+          exit_info = stub_exit_info
+          linetype = 1 -- dash
+        else            
           -- remember to draw room next iteration
           local new_path = copytable.deep (path)
           table.insert (new_path, { dir = dir, uid = exit_uid })
           table.insert (rooms_to_be_drawn, add_another_room (exit_uid, new_path, next_x, next_y))
           drawn_coords [next_coords] = true
+          plan_to_draw [exit_uid] = true
           
           -- if exit room known
           if rooms [exit_uid] then
@@ -1180,6 +1208,7 @@ function draw_room (uid, path, x, y)
                linewidth = 2
             end -- if
           end -- if
+        end -- if
       end -- if drawn on this spot
 
       WindowLine (win, x + exit_info.x1, y + exit_info.y1, x + exit_info.x2, y + exit_info.y2, exit_line_colour, linetype, linewidth)
@@ -1344,7 +1373,7 @@ function draw_everything (uid)
   movewindow.add_drag_handler (win, 0, 0, 0, font_height)
    
   -- set up for initial room, in middle
-  drawn, drawn_coords, rooms_to_be_drawn, speedwalks = {}, {}, {}, {}
+  drawn, drawn_coords, rooms_to_be_drawn, speedwalks, plan_to_draw = {}, {}, {}, {},{}
   depth = 0
   current_area = room.area
   
@@ -1473,8 +1502,7 @@ function got_room_number (s)
         end -- if
         exp = expected_room
         here = room_number
-        ColourNote ("red", "", 
-            string.format ("Speedwalk failed! Expected to be in '%s' but ended up in '%s'.", exp, here))
+        maperror (string.format ("Speedwalk failed! Expected to be in '%s' but ended up in '%s'.", exp, here))
         cancel_speedwalk ()
       else
         if #current_speedwalk > 0 then
@@ -1756,12 +1784,12 @@ end -- function find_paths
 
 function check_we_can_find ()
  if not current_room then
-    print ("We don't know where you are right now - try: LOOK")
+    mapprint ("We don't know where you are right now - try: LOOK")
     return false
   end -- if
   
   if current_speedwalk then
-    print ("No point doing this while you are speedwalking.")
+    mapprint ("No point doing this while you are speedwalking.")
     return false
   end -- if
   
@@ -1793,7 +1821,7 @@ function map_find_things (rooms)
   
   for _, room in ipairs (rooms) do
     if current_room == room.uid then
-      print (room.name, "is the room you are in")
+      mapprint (room.name, "is the room you are in")
     elseif not paths [room.uid] then
       not_found_paths = not_found_paths + 1
     else
@@ -1809,13 +1837,13 @@ function map_find_things (rooms)
       if room.info then
         info = " [" .. capitalize (room.info) .. "]"
       end -- if
-      print (" - " .. distance .. info) -- new line
+      mapprint (" - " .. distance .. info) -- new line
       hyperlink_paths [room.uid] = paths [room.uid]
     end -- if
   end -- for each room
 
   if not_found_paths > 0 then
-    print ("There were", not_found_paths, "room(s) found which I cannot find the path to within", config.SCAN.depth, "rooms from here.")
+    mapprint ("There were", not_found_paths, "room(s) found which I cannot find the path to within", config.SCAN.depth, "rooms from here.")
   end -- if
 end -- map_find_things
 
@@ -1953,11 +1981,11 @@ function map_areas (name, line, wildcards)
     distance = distance .. " away"
     
     if  #found_areas [area] == 0 then
-      print (areas [area], "is the area you are currently in.")
+      mapprint (areas [area], "is the area you are currently in.")
     else
       Hyperlink ("!!" .. GetPluginID () .. ":do_hyperlink(" .. area .. ")", 
-                areas [area] .. " - " .. distance, "Click to speedwalk there (" .. distance .. ")", "", "", false)
-      print "" -- new line
+                areas [area], "Click to speedwalk there (" .. distance .. ")", "", "", false)
+      mapprint (" - " .. distance) -- new line
       hyperlink_paths [area] = found_areas [area]
     end -- if
   end -- for each room
@@ -1969,7 +1997,7 @@ function map_areas (name, line, wildcards)
   end -- for
   
   if not_found_paths > 0 then
-    print ("There are", not_found_paths, "areas which I cannot find the path to within", config.SCAN.depth, "rooms from here.")
+    mapprint ("There are", not_found_paths, "areas which I cannot find the path to within", config.SCAN.depth, "rooms from here.")
   end -- if
     
 end -- map_areas
@@ -1977,7 +2005,7 @@ end -- map_areas
 function start_speedwalk (path)
 
   if current_speedwalk and #current_speedwalk > 0 then
-    print ("You are already speedwalking! (Ctrl + RH-click on a room to cancel)")
+    mapprint ("You are already speedwalking! (Ctrl + RH-click on a room to cancel)")
     return
   end -- if
 
@@ -1999,7 +2027,7 @@ end -- start_speedwalk
 function do_hyperlink (uid)
   
   if not hyperlink_paths or not hyperlink_paths [uid] then
-    print ("Hyperlink is no longer valid, as you have moved.")
+    mapprint ("Hyperlink is no longer valid, as you have moved.")
     return
   end -- if
   
@@ -2059,7 +2087,7 @@ end -- OnPluginConnect
 
 function cancel_speedwalk ()
   if current_speedwalk and #current_speedwalk > 0 then
-    print "Speedwalk cancelled."
+    mapprint "Speedwalk cancelled."
   end -- if
   current_speedwalk = nil
   expected_room = nil
