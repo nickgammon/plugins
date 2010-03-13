@@ -15,7 +15,7 @@
    purpose="Draws Achaea room map"
    date_written="2010-03-04"
    requires="4.51"
-   version="1.0"
+   version="1.1"
    save_state="y"
    >
 <description trim="y">
@@ -1327,6 +1327,7 @@ end -- function
 
 function OnPluginConnect ()
   mapper.cancel_speedwalk ()
+  DoAfter (3, "look")  -- force mapper update
 end -- OnPluginConnect
 
 function OnPluginDisconnect ()
