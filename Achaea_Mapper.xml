@@ -1,39 +1,58 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE muclient>
+<!DOCTYPE muclient [
+  <!ENTITY show_vnums "false" > 
+  <!ENTITY show_timing "false" > 
+  <!ENTITY show_completed "false" > 
+  <!ENTITY show_database_mods "true" > 
+]>
 
 <muclient>
 <plugin
-   name="Achaea_Mapper"
+   name="Achaea_Mapper2"
    author="Nick Gammon"
-   id="4bdb2cc60866cfd17e8f91f5"
+   id="a80b38e2f618fbda79a6440c"
    language="Lua"
    purpose="Draws Achaea room map"
    date_written="2010-03-04"
-   requires="4.50"
+   requires="4.51"
    version="1.0"
    save_state="y"
    >
 <description trim="y">
 <![CDATA[
-Automatic mapper.
+AUTOMATIC MAPPER ...  by Nick Gammon
 
-The window can be dragged to a new location by dragging the room name on the top.
+The window can be dragged to a new location by dragging the room name.
 
-Your current room is drawn in the center with a bolder border.
+Your current room is always in the center with a bolder border.
 
-RH-click on a room to speed-walk to it.
+LH-click on a room to speed-walk to it. RH-click on a room to bookmark it. 
 
 LH-click on the "*" button on the bottom-left corner to configure it.
 
-* WHY DOES THE MAP CHANGE?
+** WHY DOES THE MAP CHANGE? **
 
 The mapper draws from your room outwards - that is, it draws your room's exits
 first, then the rooms leading from those rooms, and so on.
 
-Eventually it finds an overlap, and draws a short "stub" line to indicate there is
-a room there which there isn't space to draw. If you get closer to that room the
-stub will disappear and the rooms in question will be drawn.
+Eventually it finds an overlap, and draws a short "stub" line to indicate there
+is a room there which there isn't space to draw. If you get closer to that 
+room the stub will disappear and the room(s) in question will be drawn.
 
+ACTIONS
+
+mapper help        --> this help  (or click the "?" button on the bottom right)
+mapper zoom out    --> zoom out
+mapper zoom in     --> zoom in
+mapper hide        --> hide map
+mapper show        --> show map
+mapper find <text> --> full-text search  (eg. shop OR baker)
+mapper areas       --> show path to nearby areas
+mapper shops       --> show nearby special shops/banks etc.
+mapper bookmarks   --> show nearby rooms with your comments attached
+mapper goto <room> --> walk to a room by its room number
+mapper stop        --> cancel any current speedwalk
+mapper resume      --> resume last speedwalk or hyperlinked speedwalk
 
 ]]>
 </description>
@@ -41,47 +60,31 @@ stub will disappear and the rooms in question will be drawn.
 </plugin>
 
 <aliases>
+ 
+  <!--  zooming aliases -->
 
  <alias
    match="mapper zoom out"
    enabled="y"
-   send_to="12"
    sequence="100"
    omit_from_command_history="y"
    omit_from_output="y"
+   script="mapper.zoom_out"
   >
-  <send>
-
-  if last_drawn and ROOM_SIZE &gt; 4 then
-    ROOM_SIZE = ROOM_SIZE - 2
-    DISTANCE_TO_NEXT_ROOM = DISTANCE_TO_NEXT_ROOM - 2
-    build_room_info ()
-    draw_everything (last_drawn)
-  end -- if
-  
-  </send>
   </alias>
   
 <alias
    match="mapper zoom in"
    enabled="y"
-   send_to="12"
    sequence="100"
    omit_from_command_history="y"
    omit_from_output="y"
+   script="mapper.zoom_in"
   >
-  <send>
-
-  if last_drawn and ROOM_SIZE &lt; 40 then
-    ROOM_SIZE = ROOM_SIZE + 2
-    DISTANCE_TO_NEXT_ROOM = DISTANCE_TO_NEXT_ROOM + 2
-    build_room_info ()
-    draw_everything (last_drawn)
-  end -- if
-  
-  </send>
   </alias>  
     
+  <!--  finding aliases -->
+  
  <alias
    match="^mapper find ([\w* %d/&quot;]+)$"
    enabled="y"
@@ -111,24 +114,65 @@ stub will disappear and the rooms in question will be drawn.
   </alias>  
     
  <alias
-   match="cancel speedwalk"
+   match="mapper goto *"
    enabled="y"
    sequence="100"
-   script="cancel_speedwalk"
+   script="map_goto"
   >
+  
   </alias>  
     
+  <alias
+   match="mapper bookmarks"
+   enabled="y"
+   sequence="100"
+   script="map_bookmarks"
+  >
+  
+  </alias>  
+    
+ <alias
+   match="mapper resume"
+   enabled="y"
+   sequence="100"
+   script="map_resume"
+  >
+  
+  </alias>  
+    
+  <!--  cancel speedwalking -->
+  
+ <alias
+   match="mapper stop"
+   enabled="y"
+   sequence="100"
+   script="mapper.cancel_speedwalk"
+  >
+  </alias>  
+
+  <!--  show/hide mapper -->
+      
+  <alias
+   match="mapper hide"
+   enabled="y"
+   sequence="100"
+   script="mapper.hide"
+  >
+  </alias>  
+  
+   <alias
+   match="mapper show"
+   enabled="y"
+   sequence="100"
+   script="mapper.show"
+  >
+  </alias>  
+  
 </aliases>
 
 <triggers>
-  <trigger
-   enabled="y"
-   match="Now now\, don\'t be so hasty\!$"
-   regexp="y"
-   script="cancel_speedwalk"
-   sequence="100"
-  > 
-  </trigger>
+
+  <!--  auto-swim -->
  
  <trigger
    enabled="y"
@@ -138,6 +182,79 @@ stub will disappear and the rooms in question will be drawn.
   <send>%1</send>
   </trigger>
 
+  <!--  various messages that cancel speedwalks -->
+  
+  <trigger
+   enabled="y"
+   match="Now now\, don\'t be so hasty\!$"
+   regexp="y"
+   script="mapper.cancel_speedwalk"
+   sequence="100"
+  > 
+  </trigger>
+  
+  <trigger
+   enabled="y"
+   match="^You cannot walk through"
+   regexp="y"
+   script="mapper.cancel_speedwalk"
+   sequence="100"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   match="As you stroll in, you feel your feet slipping on something slimy."
+   script="mapper.cancel_speedwalk"
+   sequence="100"
+  >
+  <send>stand</send>
+  </trigger>
+  <trigger
+   enabled="y"
+   regexp="y"
+   match="^There is a door in the way"
+   script="mapper.cancel_speedwalk"
+   sequence="100"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   match="You are regaining balance and are unable to move."
+   script="mapper.cancel_speedwalk"
+   sequence="100"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   match="You are surrounded by a pocket of air and so must move normally through water."
+   script="mapper.cancel_speedwalk"
+   sequence="100"
+  >
+  </trigger>
+  <trigger
+   enabled="y"
+   match="You fumble about drunkenly."
+   script="mapper.cancel_speedwalk"
+   sequence="100"
+  >
+  </trigger>
+  
+  <trigger
+   enabled="y"
+   match="You are asleep and can do nothing. WAKE will attempt to wake you."
+   script="mapper.cancel_speedwalk"
+   sequence="100"
+  >
+  </trigger>
+  
+   <trigger
+   enabled="y"
+   match="You must be standing first."
+   script="mapper.cancel_speedwalk"
+   sequence="100"
+  >
+  </trigger>
+  
 </triggers>
 
 
@@ -147,7 +264,7 @@ stub will disappear and the rooms in question will be drawn.
 <aliases>
   <alias
    script="OnHelp"
-   match="map help"
+   match="mapper help"
    enabled="y"
   >
   </alias>
@@ -157,26 +274,17 @@ stub will disappear and the rooms in question will be drawn.
 
 
 <script>
+
+local show_vnums = &show_vnums;
+local show_timing = &show_timing;
+local show_completed = &show_completed;
+local show_database_mods = &show_database_mods;
+
 <![CDATA[
 
-require "movewindow"
 require "serialize"
-require "copytable"
 require "checkplugin"
-require "gauge"
-require "pairsbykeys"
-
-FONT_ID     = "fn"  -- internal font identifier
-FONT_ID_UL  = "fnu" -- internal font identifier - underlined
-
--- size of room box
-ROOM_SIZE = 10
-
--- how far away to draw rooms from each other
-DISTANCE_TO_NEXT_ROOM = 15
-
--- how many seconds to show "recent visit" lines
-LAST_VISIT_TIME = 60 * 5  -- 5 minutes
+require "mapper"
 
 
 default_config = {
@@ -211,31 +319,22 @@ default_config = {
   WINDOW = { width = 400, height = 400 },
   
   -- how far from where we are standing to draw (rooms)
-  SCAN = { depth = 50 },
+  SCAN = { depth = 30 },
+  
+  -- speedwalk delay
+  DELAY = { time = 0.3 },
+  
+  -- how many seconds to show "recent visit" lines (default 3 minutes)
+  LAST_VISIT_TIME = { time = 60 * 3 },  
   
   }
-  
-config = copytable.deep (default_config)
 
 local rooms = {}
 local areas = {}
+local environments = {}
 
 room_not_in_database = {}
 room_in_database = {}
-
-function mapprint (...)
-  local old_note_colour = GetNoteColourFore ()
-  SetNoteColourFore(config.MAPPER_NOTE_COLOUR.colour)
-  print (...)
-  SetNoteColourFore (old_note_colour)
-end -- mapprint
-
-function maperror (...)
-  local old_note_colour = GetNoteColourFore ()
-  SetNoteColourFore(ColourNameToRGB "red")
-  print (...)
-  SetNoteColourFore (old_note_colour)
-end -- maperror
 
 function dbcheck (code)
 
@@ -250,6 +349,7 @@ function dbcheck (code)
 end -- dbcheck 
 
 function fixsql (s)
+  
   if s then
     return "'" .. (string.gsub (s, "'", "''")) .. "'" -- replace single quotes with two lots of single quotes
   else
@@ -267,6 +367,8 @@ end -- fixbool
 
 function save_room_to_database (uid, title)
   
+  assert (uid, "No UID supplied to save_room_to_database")
+  
   dbcheck (db:execute (string.format (
         "INSERT INTO rooms (uid, name, area, date_added) VALUES (%s, %s, '0', DATETIME('NOW'));",
           fixsql (uid), 
@@ -281,7 +383,9 @@ function save_room_to_database (uid, title)
         
   room_not_in_database [uid] = false
   
-  mapprint ("Added room", uid, "to database. Name:", title)
+  if show_database_mods then
+    mapper.mapprint ("Added room", uid, "to database. Name:", title)
+  end -- if
   
 end -- function save_room_to_database
       
@@ -303,9 +407,11 @@ function save_exits_to_database (uid, exits)
         fixsql  (uid),         -- from current room
         fixsql  (0)     -- destination room (not known)
         )))
-    mapprint ("Added exit", dir, "from room", uid, "to database.")
+    if show_database_mods then
+      mapper.mapprint ("Added exit", dir, "from room", uid, "to database.")
+    end -- if
     
-    room.exits [dir] = { uid = tostring (0) }
+    room.exits [dir] = "0"
     
   end -- for each exit
   
@@ -334,11 +440,13 @@ function save_full_exits_to_database (uid, exits)
           fixsql  (uid),  -- from current room
           fixsql  (touid) -- destination room 
           )))
-      mapprint ("Added exit", dir, "from room", uid, "to room", touid, "to database.")
+      if show_database_mods then
+        mapper.mapprint ("Added exit", dir, "from room", uid, "to room", touid, "to database.")
+      end -- if
       
-      room.exits [dir] = { uid = touid }
+      room.exits [dir] = touid
     else
-      maperror ("Cannot make sense of:", exit)
+      mapper.maperror ("Cannot make sense of:", exit)
     end -- if can decode
     
   end -- for each exit
@@ -359,9 +467,11 @@ function fix_up_exit ()
         fixsql  (last_direction_moved)  -- direction (eg. "n")
         )))
         
-  mapprint ("Fixed exit", last_direction_moved, "from room", from_room, "to be to", current_room)
+  if show_database_mods then
+    mapper.mapprint ("Fixed exit", last_direction_moved, "from room", from_room, "to be to", current_room)
+  end -- if
   
-  room.exits [last_direction_moved] = { uid = tostring (current_room) }
+  room.exits [last_direction_moved] = current_room
     
   last_direction_moved = nil
   from_room = nil
@@ -379,7 +489,10 @@ function save_environment_to_database (uid, s)
         )))
      
   room.terrain = s   
-  mapprint ("Fixed room", uid, "to have environment:", s)
+  
+  if show_database_mods then
+    mapper.mapprint ("Fixed room", uid, "to have environment:", s)
+  end -- if
 end -- save_environment_to_database
 
 function save_info_to_database (uid, s)
@@ -393,7 +506,10 @@ function save_info_to_database (uid, s)
         )))
      
   room.info = s   
-  mapprint ("Fixed room", uid, "to have info:", s)
+  
+  if show_database_mods then
+    mapper.mapprint ("Fixed room", uid, "to have info:", s)
+  end -- if
 end -- save_info_to_database
 
 function save_coordinates_to_database (uid, s)
@@ -414,9 +530,11 @@ function save_coordinates_to_database (uid, s)
     room.z = z
     room.area = area
       
-    mapprint ("Fixed room", uid, "to have coordinates:", x, y, z, "and area", area)
+    if show_database_mods then
+      mapper.mapprint ("Fixed room", uid, "to have coordinates:", x, y, z, "and area", area)
+    end -- if
  else
-   maperror ("Cannot make sense of coordinates:", s)
+   mapper.maperror ("Cannot make sense of coordinates:", s)
  end -- if
 end -- save_coordinates_to_database
 
@@ -424,6 +542,8 @@ function load_room_from_database (uid)
 
   local room
  
+  assert (uid, "No UID supplied to load_room_from_database")
+  
   -- if not in database, don't look again
   if room_not_in_database [uid] then
     return nil
@@ -444,16 +564,17 @@ function load_room_from_database (uid)
        exits = {} }
       
     for exitrow in db:nrows(string.format ("SELECT * FROM exits WHERE fromuid = %s", fixsql (uid))) do
-       room.exits [exitrow.dir] = { 
-            uid     = tostring (exitrow.touid)
-            }
-            
+       room.exits [exitrow.dir] = tostring (exitrow.touid)
     end -- for each exit
     
   end   -- finding room
 
   if room then
     rooms [uid] = room
+    for row in db_bm:nrows(string.format ("SELECT * FROM bookmarks WHERE uid = %s", fixsql (uid))) do
+      rooms [uid].notes = row.notes
+    end   -- finding room
+        
     return room
   end -- if found
   
@@ -476,6 +597,15 @@ function create_tables ()
       UNIQUE (uid)
     );
 
+  CREATE TABLE IF NOT EXISTS environments (
+      environmentid INTEGER PRIMARY KEY AUTOINCREMENT,
+      uid           TEXT    NOT NULL,   -- code for the environment
+      name          TEXT,               -- name of environment
+      color         INTEGER,            -- ANSI colour code
+      date_added    DATE,               -- date added to database
+      UNIQUE (uid)
+    );
+   
   CREATE TABLE IF NOT EXISTS rooms (
       roomid        INTEGER PRIMARY KEY AUTOINCREMENT,
       uid           TEXT NOT NULL,   -- vnum or how the MUD identifies the room
@@ -518,541 +648,281 @@ function create_tables ()
     dbcheck (db:execute "CREATE VIRTUAL TABLE rooms_lookup USING FTS3(uid, name);")
   end -- if
   
+  -- create rooms table
+  dbcheck (db_bm:execute[[
+  
+  PRAGMA foreign_keys = ON;
+  
+  CREATE TABLE IF NOT EXISTS bookmarks (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      uid         TEXT    NOT NULL,   -- vnum of room
+      notes       TEXT,               -- user notes
+      date_added  DATE,               -- date added to database
+      UNIQUE (uid)
+    );
+  ]])
+      
 end -- function create_tables
+
+function get_room (uid)
+
+  -- check we got room at all
+  if not uid then
+   -- return nil
+  end -- if
+  
+  -- look it up
+  local ourroom = rooms [uid]
+  
+  -- not cached - see if in database
+  if not ourroom then
+    ourroom = load_room_from_database (uid)
+    rooms [uid] = ourroom -- cache for later
+  end -- not in cache
+  
+  if not ourroom then
+     return nil
+  end -- if
+
+  local room = copytable.deep (ourroom)
+  
+  room.area = areas [tonumber (room.area)] or string.format ("Area %s", room.area or "<unknown>")
+  
+  if uid == current_room then
+    current_area = room.area
+  end -- if
+  
+  -- build hover message
+  
+  local environmentname = room.terrain
+  if tonumber (environmentname) then
+    environmentname = environments [tonumber (environmentname)]
+  end -- convert to name
+  
+  local terrain = ""
+  if environmentname then
+    terrain = "\nTerrain: " .. environmentname
+  end -- if terrain known
+  
+  local info = ""
+  if room.info then
+    info = "\nInfo: " .. capitalize (room.info)
+  end -- if info known
+  
+  local notes = ""
+  if room.notes then
+    notes = "\nBookmark: " .. room.notes
+  end -- if notes
+  
+  local texits = {}
+  for dir in pairs (room.exits) do
+    table.insert (texits, dir)
+  end -- for
+  table.sort (texits)
+   
+  local areaname = room.area
+  if tonumber (areaname) then
+    areaname = areas [tonumber (areaname)]
+  end -- convert to name
+    
+  room.hovermessage = string.format (
+      "%s\tExits: %s\nRoom: %s\nArea: %s%s%s%s",
+      room.name, 
+      table.concat (texits, ", "),
+      uid,
+      areaname,
+      terrain,
+      info,
+      notes
+      -- depth,
+      -- table.concat (path, ",")
+      )
+      
+  room.bordercolour = config.ROOM_COLOUR.colour
+  room.borderpen = 0 -- solid
+  room.borderpenwidth = 1
+  room.fillcolour = 0xff0000
+  room.fillbrush = 1 -- no fill
+              
+  -- special room fill colours
+  
+  if room.info then
+    if string.match (room.info, "shop") then
+      room.fillcolour = config.SHOP_FILL_COLOUR.colour
+      room.fillbrush = 8
+    elseif string.match (room.info, "postoffice") then
+      room.fillcolour = config.POSTOFFICE_FILL_COLOUR.colour
+      room.fillbrush = 8
+    elseif string.match (room.info, "bank") then
+      room.fillcolour = config.BANK_FILL_COLOUR.colour
+      room.fillbrush = 8
+    elseif string.match (room.info, "newsroom") then
+      room.fillcolour = config.NEWSROOM_FILL_COLOUR.colour
+      room.fillbrush = 8
+    end -- if
+  else  
+    -- use terrain colour
+    if room.terrain and terrain_colours [environmentname] then
+      room.fillcolour = colour_lookup [terrain_colours [environmentname]]
+      room.fillbrush = 0  -- solid
+    end -- if
+  end -- if 
+       
+  if uid == current_room then
+    room.bordercolour = config.OUR_ROOM_COLOUR.colour
+    room.borderpenwidth = 2
+  elseif room.area ~= current_area then
+    room.bordercolour = config.DIFFERENT_AREA_COLOUR.colour
+  end -- not in this area
+  
+  return room      
+      
+end -- get_room
+
+function room_click (uid)
+
+  -- check we got room at all
+  if not uid then
+    return nil
+  end -- if
+  
+  -- look it up
+  local room = rooms [uid]
+  
+  -- not cached - see if in database
+  if not room then
+    room = load_room_from_database (uid)
+    rooms [uid] = room -- cache for later
+  end -- not in cache
+  
+  if not room then
+    return
+  end -- if still not there
+  
+  local notes, found
+  
+  for row in db_bm:nrows(string.format ("SELECT * FROM bookmarks WHERE uid = %s", fixsql (uid))) do
+    notes = row.notes
+    found = true
+  end   -- finding room
+  
+  if found then  
+    newnotes = utils.inputbox ("Modify room comment (clear it to delete from database)", room.name, notes)
+  else
+    newnotes = utils.inputbox ("Enter room comment", room.name, notes)
+  end -- if
+  
+  if not newnotes then
+    return
+  end -- if cancelled 
+  
+  if newnotes == "" then
+    if not found then
+      mapper.mapprint ("No comment entered, bookmark not saved.")
+      return
+    else
+      dbcheck (db_bm:execute (string.format (
+        "DELETE FROM bookmarks WHERE uid = %s;",
+          fixsql (uid)
+        )))
+      mapper.mapprint ("Bookmark for room", uid, "deleted. Was previously:", notes)
+      rooms [uid].notes = nil
+      return
+    end -- if
+  end -- if
+  
+  if notes == newnotes then
+    return -- no change made
+  end -- if
+  
+  if found then
+    dbcheck (db_bm:execute (string.format (
+        "UPDATE bookmarks SET notes = %s, date_added = DATETIME('NOW') WHERE uid = %s;",
+          fixsql (newnotes),
+          fixsql (uid)
+        )))
+     mapper.mapprint ("Bookmark for room", uid, "changed to:", newnotes)
+   else
+    dbcheck (db_bm:execute (string.format (
+        "INSERT INTO bookmarks (uid, notes, date_added) VALUES (%s, %s, DATETIME('NOW'));",
+          fixsql (uid), 
+          fixsql (newnotes)
+        )))
+     mapper.mapprint ("Bookmark added to room", uid, ":", newnotes)
+   end -- if    
+   
+   rooms [uid].notes = newnotes
+   
+end -- room_click
 
 function OnPluginInstall ()
   
+  config = {}  -- in case not found
+
   -- get saved configuration
   assert (loadstring (GetVariable ("config") or "")) ()
 
   -- allow for additions to config
   for k, v in pairs (default_config) do
-    if not config [k] then
-      config [k] = v
-    end -- if
+    config [k] = config [k] or v
   end -- for
   
-  win = GetPluginID ()
-
-  WindowCreate (win, 0, 0, 0, 0, 0, 0, 0)
-                 
-  -- add the fonts
-  WindowFont (win, FONT_ID, config.FONT.name, config.FONT.size)
-  WindowFont (win, FONT_ID_UL, config.FONT.name, config.FONT.size, false, false, true)
+  -- initialize mapper engine
+  mapper.init { config = config,            -- colours, timing etc.
+                get_room = get_room,        -- get_room (uid) called to get room info
+                show_help = OnHelp,         -- to show help
+                room_click = room_click,    -- called on RH click on room square
+                timing = show_timing,       -- want to see timing
+                show_completed = show_completed,  -- want to see "Speedwalk completed." message
+                } 
   
-  -- see how high it is
-  font_height = WindowFontInfo (win, FONT_ID, 1)  -- height
-
-  -- find where window was last time
-  windowinfo = movewindow.install (win, 7)
+  mapper.mapprint (string.format ("MUSHclient mapper installed, version %0.1f", mapper.VERSION))
   
-  -- open database on disk 
-  db = assert (sqlite3.open(GetInfo (66) .. Trim (WorldAddress ()) .. "_" .. WorldPort () .. ".db"))
+  -- open databases on disk 
+  db    = assert (sqlite3.open(GetInfo (66) .. Trim (WorldAddress ()) .. "_" .. WorldPort () .. ".db"))
+  db_bm = assert (sqlite3.open(GetInfo (66) .. Trim (WorldAddress ()) .. "_" .. WorldPort () .. "_bookmarks.db"))
   
-  create_tables ()
-  
-  build_room_info ()
+  create_tables ()    -- create database structure if necessary
   
   -- grab all area names
   for row in db:nrows("SELECT * FROM areas") do
-    areas [row.uid] = row.name
+    areas [tonumber (row.uid)] = row.name
   end   -- finding area
+  
+
+  -- grab all environment names
+  for row in db:nrows("SELECT * FROM environments") do
+    environments [tonumber (row.uid)] = row.name
+    terrain_colours [row.name] = tonumber (row.color)
+  end   -- finding environments
   
 end -- OnPluginInstall
 
 function OnPluginEnable ()
-  WindowShow (win, true)
+  mapper.show ()
 end -- OnPluginDisable
 
 function OnPluginDisable ()
-  WindowShow (win, false)
+  mapper.hide ()
 end -- OnPluginDisable
 
 -- hide window on removal
 function OnPluginClose ()
-  WindowShow (win,  false)  -- hide it
-  -- close database
+  mapper.hide ()
+  -- close databases
   db:close()
+  db_bm:close()
 end -- OnPluginClose
 
 function OnPluginSaveState ()
-  movewindow.save_state (win)
+  mapper.save_state ()
   SetVariable ("config", "config = " .. serialize.save_simple (config))
 end -- OnPluginSaveState
-
-function build_speedwalk (path)
-
- -- build speedwalk string (collect identical directions)
-  local tspeed = {}
-  for _, dir in ipairs (path) do
-    local n = #tspeed
-    if n == 0 then
-      table.insert (tspeed, { dir = dir, count = 1 })
-    else
-      if tspeed [n].dir == dir then
-        tspeed [n].count = tspeed [n].count + 1
-      else
-        table.insert (tspeed, { dir = dir, count = 1 })
-      end -- if different direction
-    end -- if
-  end -- for
  
-  if #tspeed == 0 then
-    return
-  end -- nowhere to go (current room?)
-  
-  -- now build string like: 2n3e4(sw)
-  local s = "#"  -- speedwalk prefix
-  
-  for _, dir in ipairs (tspeed) do
-    if dir.count > 1 then
-      s = s .. dir.count
-    end -- if
-    if #dir.dir == 1 then
-      s = s .. dir.dir
-    else
-      s = s .. "(" .. dir.dir .. ")"
-    end -- if
-    s = s .. " "
-  end -- if
-  
-  return s
-  
-end -- build_speedwalk
+terrain_colours = {}
 
-function draw_configuration ()
-  local width =  max_text_width (win, FONT_ID, {"Configuration", "Font", "Width", "Height", "Depth"}, true)
-  local lines = 5  -- "Configuration", font, width, height, depth
-  local GAP = 5
-  local suppress_colours = false
-  
-  for k, v in pairs (config) do
-    if v.colour then
-      width = math.max (width, WindowTextWidth (win, FONT_ID, v.name, true))
-      lines = lines + 1
-    end -- a colour item
-  end -- for each config item
- 
-  if (config.WINDOW.height - 13 - font_height * lines) < 10 then
-    suppress_colours = true
-    lines = 5  -- forget all the colours
-  end -- if
-  
-  local x = 3
-  local y = config.WINDOW.height - 13 - font_height * lines
-  local box_size = font_height - 2
-  local rh_size = math.max (box_size, max_text_width (win, FONT_ID, 
-    {config.FONT.name .. " " .. config.FONT.size, 
-     tostring (config.WINDOW.width), 
-     tostring (config.WINDOW.height), 
-     tostring (config.SCAN.depth)}, 
-    true))
-  local frame_width = GAP + width + GAP + rh_size + GAP  -- gap / text / gap / box / gap
 
-  -- fill entire box with grey
-  WindowRectOp (win, 2, x, y, x + frame_width, y + font_height * lines + 10, 0xDCDCDC)
-  -- frame it
-  draw_3d_box (win, x, y, frame_width, font_height * lines + 10)
-  
-  y = y + GAP
-  x = x + GAP
-  
-  -- title
-  WindowText   (win, FONT_ID, "Configuration", x, y, 0, 0, 0x808080, true)
-  -- close box
-  WindowRectOp (win, 1, x + frame_width - box_size - GAP * 2, y + 1, x + frame_width - GAP * 2, y + 1 + box_size, 0x808080)
-  WindowRectOp (win, 2, 
-                math.floor (x + frame_width - box_size - GAP * 2 + box_size / 3), 
-                math.floor (y + 1 + box_size / 3), 
-                math.ceil  (x + frame_width - GAP * 2 - box_size / 3), 
-                math.ceil  (y + 1 + box_size - box_size / 3), 
-                0x808080)
-  
-  -- close configuration hotspot               
-  WindowAddHotspot(win, "$<close_configure>",  
-                   x + frame_width - box_size - GAP * 2, y + 1, x + frame_width - GAP * 2, y + 1 + box_size,   -- rectangle
-                   "",  -- mouseover
-                   "",  -- cancelmouseover
-                   "",  -- mousedown
-                   "",  -- cancelmousedown
-                   "mouseup_close_configure",  -- mouseup
-                   "Click to close",
-                   1, 0)  -- hand cursor
-    
-  y = y + font_height
-  
-  if not suppress_colours then
-   
-    for k, v in pairsByKeys (config) do
-      if v.colour then
-        WindowText   (win, FONT_ID, v.name, x, y, 0, 0, 0x000000, true)
-        WindowRectOp (win, 2, x + width + rh_size / 2, y + 1, x + width + rh_size / 2 + box_size, y + 1 + box_size, v.colour)
-        WindowRectOp (win, 1, x + width + rh_size / 2, y + 1, x + width + rh_size / 2 + box_size, y + 1 + box_size, 0x000000)
-        
-        -- colour change hotspot               
-        WindowAddHotspot(win, "$colour:" .. k,  
-                         x + GAP, y + 1, x + width + rh_size / 2 + box_size, y + 1 + box_size,   -- rectangle
-                         "",  -- mouseover
-                         "",  -- cancelmouseover
-                         "",  -- mousedown
-                         "",  -- cancelmousedown
-                         "mouseup_change_colour",  -- mouseup
-                         "Click to change colour",
-                         1, 0)  -- hand cursor
-                           
-        y = y + font_height
-      end -- a colour item
-    end -- for each config item
-  end -- if
-  
-  -- depth
-  WindowText   (win, FONT_ID, "Depth", x, y, 0, 0, 0x000000, true)
-  WindowText   (win, FONT_ID_UL,   tostring (config.SCAN.depth), x + width + GAP, y, 0, 0, 0x808080, true)
-                                 
-  -- depth hotspot               
-  WindowAddHotspot(win, "$<depth>",  
-                   x + GAP, y, x + frame_width, y + font_height,   -- rectangle
-                   "",  -- mouseover
-                   "",  -- cancelmouseover
-                   "",  -- mousedown
-                   "",  -- cancelmousedown
-                   "mouseup_change_depth",  -- mouseup
-                   "Click to change scan depth",
-                   1, 0)  -- hand cursor
-  y = y + font_height
-    
-  -- font
-  WindowText   (win, FONT_ID, "Font", x, y, 0, 0, 0x000000, true)
-  WindowText   (win, FONT_ID_UL,  config.FONT.name .. " " .. config.FONT.size, x + width + GAP, y, 0, 0, 0x808080, true)
-                                 
-  -- colour font hotspot               
-  WindowAddHotspot(win, "$<font>",  
-                   x + GAP, y, x + frame_width, y + font_height,   -- rectangle
-                   "",  -- mouseover
-                   "",  -- cancelmouseover
-                   "",  -- mousedown
-                   "",  -- cancelmousedown
-                   "mouseup_change_font",  -- mouseup
-                   "Click to change font",
-                   1, 0)  -- hand cursor
-  y = y + font_height
-                   
-                     
-  -- width
-  WindowText   (win, FONT_ID, "Width", x, y, 0, 0, 0x000000, true)
-  WindowText   (win, FONT_ID_UL,   tostring (config.WINDOW.width), x + width + GAP, y, 0, 0, 0x808080, true)
-                                 
-  -- width hotspot               
-  WindowAddHotspot(win, "$<width>",  
-                   x + GAP, y, x + frame_width, y + font_height,   -- rectangle
-                   "",  -- mouseover
-                   "",  -- cancelmouseover
-                   "",  -- mousedown
-                   "",  -- cancelmousedown
-                   "mouseup_change_width",  -- mouseup
-                   "Click to change window width",
-                   1, 0)  -- hand cursor
-  y = y + font_height
-                      
-  -- height
-  WindowText   (win, FONT_ID, "Height", x, y, 0, 0, 0x000000, true)
-  WindowText   (win, FONT_ID_UL,   tostring (config.WINDOW.height), x + width + GAP, y, 0, 0, 0x808080, true)
-                                 
-  -- height hotspot               
-  WindowAddHotspot(win, "$<height>",  
-                   x + GAP, y, x + frame_width, y + font_height,   -- rectangle
-                   "",  -- mouseover
-                   "",  -- cancelmouseover
-                   "",  -- mousedown
-                   "",  -- cancelmousedown
-                   "mouseup_change_height",  -- mouseup
-                   "Click to change window height",
-                   1, 0)  -- hand cursor
-  y = y + font_height
-                                      
-                                      
-end -- draw_configuration
-
-function mouseup_room (flags, hotspot_id)
-  local uid = hotspot_id
-
-  if bit.band (flags, 0x20) == 0 then
-    
-    -- LH click
-    
-    return
-  end -- if LH click
-
-  -- here for RH click
-    
-   -- Control key down?
-  if bit.band (flags, 0x02) ~= 0 then
-    cancel_speedwalk ()
-    return
-  end -- if ctrl-RH click
-  
-  start_speedwalk (speedwalks [uid])
-   
-end -- mouseup_player
-
-function mouseup_configure (flags, hotspot_id)
-  draw_configure_box = true
-  draw_everything (current_room)
-end -- mouseup_configure
-
-function mouseup_close_configure (flags, hotspot_id)
-  draw_configure_box = false
-  draw_everything (current_room)
-end -- mouseup_player
-
-function mouseup_change_colour (flags, hotspot_id)
- 
-  local which = string.match (hotspot_id, "^$colour:([%a%d_]+)$")
-  if not which then
-    return  -- strange ...
-  end -- not found
-
-  local newcolour = PickColour (config [which].colour)
-      
-  if newcolour == -1 then
-    return
-  end -- if dismissed
-  
-  config [which].colour = newcolour
-  
-  draw_everything (current_room)
-end -- mouseup_change_colour
-
-function mouseup_change_font (flags, hotspot_id)
-  
-  local newfont =  utils.fontpicker (config.FONT.name, config.FONT.size, config.ROOM_NAME_TEXT.colour)
-      
-  if not newfont then
-    return
-  end -- if dismissed
-  
-  config.FONT.name = newfont.name
-  
-  if newfont.size > 12 then
-    utils.msgbox ("Maximum allowed font size is 12 points.", "Font too large", "ok", "!", 1)
-  else
-    config.FONT.size = newfont.size
-  end -- if
-  
-  local version = tonumber (Version ())
-
-  -- colour ignored in MC version 4.50 and before
-  if version and version >= 4.51 then  
-    config.ROOM_NAME_TEXT.colour = newfont.colour
-  end -- version test
-
-  -- reload new font  
-  WindowFont (win, FONT_ID, config.FONT.name, config.FONT.size)
-  WindowFont (win, FONT_ID_UL, config.FONT.name, config.FONT.size, false, false, true)
-  
-  -- see how high it is
-  font_height = WindowFontInfo (win, FONT_ID, 1)  -- height
-  
-  draw_everything (current_room)
-end -- mouseup_change_font
-
-function get_number_from_user (msg, title, current, min, max)
-  local n =  utils.inputbox (msg, title, current)
-      
-  if not n then
-    return nil
-  end -- if dismissed
-  
-  n = tonumber (n)
-  if not n then
-    utils.msgbox ("You must enter a number", "Incorrect input", "ok", "!", 1)
-    return nil
-  end -- if
-  
-  if n < min or n > max then
-    utils.msgbox (title .. " must be in range " .. min .. " to " .. max, "Incorrect input", "ok", "!", 1)
-    return nil
-  end -- if
-
-  return n
-end -- get_number_from_user
-
-function mouseup_change_width (flags, hotspot_id)
-  
-  local width = get_number_from_user ("Choose window width (200 to 1000 pixels)", "Width", config.WINDOW.width, 200, 1000)
-      
-  if not width then
-    return
-  end -- if dismissed
-    
-  config.WINDOW.width = width
-  draw_everything (current_room)
-end -- mouseup_change_width
-
-function mouseup_change_height (flags, hotspot_id)
-  
-  local height = get_number_from_user ("Choose window height (200 to 1000 pixels)", "Width", config.WINDOW.height, 200, 1000)
-      
-  if not height then
-    return
-  end -- if dismissed
-    
-  config.WINDOW.height = height
-  draw_everything (current_room)
-end -- mouseup_change_height
-
-function mouseup_change_depth (flags, hotspot_id)
-  
-  local depth = get_number_from_user ("Choose scan depth (3 to 100 rooms)", "Depth", config.SCAN.depth, 3, 100)
-      
-  if not depth then
-    return
-  end -- if dismissed
-    
-  config.SCAN.depth = depth
-  draw_everything (current_room)
-end -- mouseup_change_depth
-
-function build_room_info ()
-  
-  HALF_ROOM   = ROOM_SIZE / 2
-  HALF_WAY    = DISTANCE_TO_NEXT_ROOM / 2
-  THIRD_WAY   = DISTANCE_TO_NEXT_ROOM / 3
-  DISTANCE_LESS1 = DISTANCE_TO_NEXT_ROOM - 1
-  
-  -- how to draw a line from this room to the next one (relative to the center of the room)
-  connectors = {
-    n =  { x1 = 0,            y1 = - HALF_ROOM, x2 = 0,                             y2 = - HALF_ROOM - DISTANCE_LESS1, at = { 0, -1 } }, 
-    s =  { x1 = 0,            y1 =   HALF_ROOM, x2 = 0,                             y2 =   HALF_ROOM + DISTANCE_LESS1, at = { 0,  1 } }, 
-    e =  { x1 =   HALF_ROOM,  y1 = 0,           x2 =   HALF_ROOM + DISTANCE_LESS1,  y2 = 0,                            at = {  1,  0 }}, 
-    w =  { x1 = - HALF_ROOM,  y1 = 0,           x2 = - HALF_ROOM - DISTANCE_LESS1,  y2 = 0,                            at = { -1,  0 }}, 
-  
-    ne = { x1 =   HALF_ROOM,  y1 = - HALF_ROOM, x2 =   HALF_ROOM + DISTANCE_LESS1 , y2 = - HALF_ROOM - DISTANCE_LESS1, at = { 1, -1 } }, 
-    se = { x1 =   HALF_ROOM,  y1 =   HALF_ROOM, x2 =   HALF_ROOM + DISTANCE_LESS1 , y2 =   HALF_ROOM + DISTANCE_LESS1, at = { 1,  1 } }, 
-    nw = { x1 = - HALF_ROOM,  y1 = - HALF_ROOM, x2 = - HALF_ROOM - DISTANCE_LESS1 , y2 = - HALF_ROOM - DISTANCE_LESS1, at = {-1, -1 } }, 
-    sw = { x1 = - HALF_ROOM,  y1 =   HALF_ROOM, x2 = - HALF_ROOM - DISTANCE_LESS1 , y2 =   HALF_ROOM + DISTANCE_LESS1, at = {-1,  1 } }, 
-  
-    } -- end connectors
-    
-  -- how to draw a stub line
-  half_connectors = {
-    n =  { x1 = 0,            y1 = - HALF_ROOM, x2 = 0,                        y2 = - HALF_ROOM - THIRD_WAY, at = { 0, -1 } }, 
-    s =  { x1 = 0,            y1 =   HALF_ROOM, x2 = 0,                        y2 =   HALF_ROOM + THIRD_WAY, at = { 0,  1 } }, 
-    e =  { x1 =   HALF_ROOM,  y1 = 0,           x2 =   HALF_ROOM + THIRD_WAY,  y2 = 0,                       at = {  1,  0 }}, 
-    w =  { x1 = - HALF_ROOM,  y1 = 0,           x2 = - HALF_ROOM - THIRD_WAY,  y2 = 0,                       at = { -1,  0 }}, 
-  
-    ne = { x1 =   HALF_ROOM,  y1 = - HALF_ROOM, x2 =   HALF_ROOM + THIRD_WAY , y2 = - HALF_ROOM - THIRD_WAY, at = { 1, -1 } }, 
-    se = { x1 =   HALF_ROOM,  y1 =   HALF_ROOM, x2 =   HALF_ROOM + THIRD_WAY , y2 =   HALF_ROOM + THIRD_WAY, at = { 1,  1 } }, 
-    nw = { x1 = - HALF_ROOM,  y1 = - HALF_ROOM, x2 = - HALF_ROOM - THIRD_WAY , y2 = - HALF_ROOM - THIRD_WAY, at = {-1, -1 } }, 
-    sw = { x1 = - HALF_ROOM,  y1 =   HALF_ROOM, x2 = - HALF_ROOM - THIRD_WAY , y2 =   HALF_ROOM + THIRD_WAY, at = {-1,  1 } }, 
-  
-    } -- end half_connectors
-  
-  -- how to draw one-way arrows (relative to the center of the room)
-  arrows = {
-     n =  { - 2, - HALF_ROOM - 2,  2, - HALF_ROOM - 2,  0, - HALF_ROOM - 6 },
-     s =  { - 2,   HALF_ROOM + 2,  2,   HALF_ROOM + 2,  0,   HALF_ROOM + 6  },
-     e =  {   HALF_ROOM + 2, -2,   HALF_ROOM + 2, 2,   HALF_ROOM + 6, 0 },
-     w =  { - HALF_ROOM - 2, -2, - HALF_ROOM - 2, 2, - HALF_ROOM - 6, 0 },
-    
-     ne = {   HALF_ROOM + 3,  - HALF_ROOM,  HALF_ROOM + 3, - HALF_ROOM - 3,  HALF_ROOM, - HALF_ROOM - 3 },
-     se = {   HALF_ROOM + 3,    HALF_ROOM,  HALF_ROOM + 3,   HALF_ROOM + 3,  HALF_ROOM,   HALF_ROOM + 3 },
-     nw = { - HALF_ROOM - 3,  - HALF_ROOM,  - HALF_ROOM - 3, - HALF_ROOM - 3,  - HALF_ROOM, - HALF_ROOM - 3 },
-     sw = { - HALF_ROOM - 3,    HALF_ROOM,  - HALF_ROOM - 3,   HALF_ROOM + 3,  - HALF_ROOM,   HALF_ROOM + 3},
-  
-    } -- end of arrows
-
-end -- build_room_info
-
--- for calculating one-way paths
-inverse_direction = {
-  n = "s",
-  s = "n",
-  e = "w",
-  w = "e",
-  u = "d",
-  d = "u",
-  ne = "sw",
-  sw = "ne",
-  nw = "se",
-  se = "nw",
-  ['in'] = "out",
-  out = "in",
-  }  -- end of inverse_direction
- 
-terrain_colours = {
-  ["Dark Forest"] = 2,
-  ["Constructed underground"] = 3,
-  ["Natural underground"] = 3,
-  ["Forest"] = 2,
-  ["Beach"] = 11,
-  ["Desert"] = 11,
-  ["Grasslands"] = 10,
-  ["Urban"] = 7,
-  ["Hills"] = 5,
-  ["River"] = 12,
-  ["Path"] = 6,
-  ["Road"] = 14,
-  ["Valley"] = 10,
-  ["Mountains"] = 3,
-  ["Swamp"] = 5,
-  ["Tundra"] = 15,
-  ["Jungle"] = 2,
-  ["Dwarven city"] = 7,
-  ["Sylayan city"] = 7,
-  ["Ocean"] = 4,
-  ["Garden"] = 10,
-  ["Freshwater"] = 4,
-  ["Sewer"] = 1,
-  ["Deep Ocean"] = 4,
-  ["Vast Ocean"] = 4,
-  ["Polar"] = 15,
-  ["Underworld"] = 8,
-  ["Docks"] = 7,
-  ["Warrens"] = 1,
-  ["Crags"] = 3,
-  ["Acropolis"] = 9,
-  ["Tainted Underground"] = 1,
-  ["Underground Lake"] = 8,
-  ["Ruins"] = 1,
-  ["Desert Ruins"] = 11,
-  ["Tainted Water"] = 1,
-  ["Farmland"] = 7,
-  ["Academia"] = 7,
-  ["Forestal Council"] = 10,
-  ["Graveyard"] = 8,
-  ["Village"] = 7,
-  ["Pond"] = 4,
-  ["Nobility"] = 7,
-  ["Noble Chambers"] = 7,
-  ["Noble Bar"] = 7,
-  ["Church"] = 7,
-  ["Village"] = 7,
-  ["Lake of Fire"] = 9,
-  ["Temple"] = 7,
-  ["Blackened Lands"] = 8,
-  ["Volcano"] = 9,
-  ["Blackstone Keep"] = 7,
-  ["Catacombs"] = 8,
-  ["Wetlands Village"] = 7,
-  ["Blackstone Dungeon"] = 7,
-  ["Arcane Temple"] = 7,
-  ["Cliffs"] = 3,
-  ["a sheltered dell"] = 7,
-  ["within a tent"] = 7,
-  ["quarry"] = 3,
-  ["garrison"] = 7,
-  ["pyramid"] = 3,
-  ["bog"] = 5,
-  ["Blighted"] = 5,
-  ["Villa"] = 7,
-  ["Frozen Bog"] = 5,
-  ["Rocky Shore"] = 3,
-  ["Scrublands"] = 2,
-  ["Tower"] = 7,
-} -- end terrain_colours
-
--- ANSI colours lookup (for above table)
+-- ANSI colours lookup (for terrain_colours)
 
 colour_lookup = {
     [0] =   ColourNameToRGB  "black",  
@@ -1073,407 +943,6 @@ colour_lookup = {
     [15] =  ColourNameToRGB  "white",  
   } -- end of colour_lookup
 
-for k, v in ipairs (colour_lookup) do
-  colour_lookup [k] = AdjustColour (AdjustColour (v, 4), 3) -- make a bit darker
- 
-end -- for
-
-function add_another_room (uid, path, x, y)
-  local path = path or {}
-  return {uid=uid, path=path, x = x, y = y}
-end  -- add_another_room
-  
-function draw_room (uid, path, x, y)
-  
-  local coords = string.format ("%i,%i", math.floor (x), math.floor (y))
-
-  -- need this for the *current* room !!!
-  drawn_coords [coords] = true
-  
-  -- print ("drawing", uid, "at", coords)
-  
-  if drawn [uid] then
-    return
-  end -- done this one
-  
-  -- don't draw the same room more than once
-  drawn [uid] = { coords = coords, path = path }
-  
-  local room = rooms [uid]
-  
-  -- not cached - see if in database
-  if not room then
-    -- print (uid, "not in memory, checking database ...")
-    room = load_room_from_database (uid)
-  end -- not in cache
- 
-  room = room or { name = "<Unexplored room>", exits = {}, unknown = true, area = "0" }
-  
-  local left, top, right, bottom = x - HALF_ROOM, y - HALF_ROOM, x + HALF_ROOM, y + HALF_ROOM
-  
-  -- forget it if off screen
-  if x < HALF_ROOM or y < HALF_ROOM or 
-     x > config.WINDOW.width - HALF_ROOM or y > config.WINDOW.height - HALF_ROOM then
-     return
-  end -- if
-  
-  -- exits
-  
-  local texits = {}
-  
-  for dir, exit in pairs (room.exits) do
-    local exit_uid = exit.uid
-    local exit_hash = exit.hash
-    table.insert (texits, dir)
-    local exit_info = connectors [dir]
-    local stub_exit_info = half_connectors [dir]
-    local exit_line_colour = config.EXIT_COLOUR.colour
-    local arrow = arrows [dir]
-    
-    -- draw up in the ne/nw position if not already an exit there at this level
-    if dir == "u" then
-      if not room.exits.nw then
-        exit_info = connectors.nw
-        stub_exit_info = half_connectors.nw
-        arrow = arrows.nw
-        exit_line_colour = config.EXIT_COLOUR_UP_DOWN.colour
-      end -- if available
-    elseif dir == "in" then
-      if not room.exits.ne then
-        exit_info = connectors.ne
-        stub_exit_info = half_connectors.ne
-        arrow = arrows.ne
-        exit_line_colour = config.EXIT_COLOUR_IN_OUT.colour
-      end -- if
-    elseif dir == "d" then
-      if not room.exits.se then
-        exit_info = connectors.se
-        stub_exit_info = half_connectors.se
-        arrow = arrows.se
-        exit_line_colour = config.EXIT_COLOUR_UP_DOWN.colour
-      end -- if available
-    elseif dir == "out" then
-      if not room.exits.sw then
-        exit_info = connectors.sw
-        stub_exit_info = half_connectors.sw
-        arrow = arrows.sw
-        exit_line_colour = config.EXIT_COLOUR_IN_OUT.colour
-      end -- if
-    end -- if down
-        
-    if exit_info then
-      local linetype = 0 -- unbroken
-      local linewidth = 1 -- not recent
-      
-      if not rooms [exit_uid] then
-        linetype = 2 -- dots
-      end -- if
-      
-      local next_x = x + exit_info.at [1] * (ROOM_SIZE + DISTANCE_TO_NEXT_ROOM)
-      local next_y = y + exit_info.at [2] * (ROOM_SIZE + DISTANCE_TO_NEXT_ROOM)
-      
-      local next_coords = string.format ("%i,%i", math.floor (next_x), math.floor (next_y))
-     
-      -- if another room (not where this one leads to) is already there, only draw "stub" lines
-      if drawn_coords [next_coords] and 
-        (not drawn [exit_uid] or drawn [exit_uid].coords ~= next_coords) then
-        exit_info = stub_exit_info
-      elseif exit_uid == uid then 
-      
-        -- here if room leads back to itself
-        exit_info = stub_exit_info
-        linetype = 1 -- dash
-      
-      else
-        -- if we are scheduled to draw the room already, only draw a stub this time
-        if plan_to_draw [exit_uid] then
-          -- here if room already going to be drawn
-          exit_info = stub_exit_info
-          linetype = 1 -- dash
-        else            
-          -- remember to draw room next iteration
-          local new_path = copytable.deep (path)
-          table.insert (new_path, { dir = dir, uid = exit_uid })
-          table.insert (rooms_to_be_drawn, add_another_room (exit_uid, new_path, next_x, next_y))
-          drawn_coords [next_coords] = true
-          plan_to_draw [exit_uid] = true
-          
-          -- if exit room known
-          if rooms [exit_uid] then
-            local exit_time = rooms [exit_uid].last_visited or 0
-            local this_time = room.last_visited or 0
-            local now = os.time ()
-            if exit_time > (now - LAST_VISIT_TIME) and
-               this_time > (now - LAST_VISIT_TIME) then
-               linewidth = 2
-            end -- if
-          end -- if
-        end -- if
-      end -- if drawn on this spot
-
-      WindowLine (win, x + exit_info.x1, y + exit_info.y1, x + exit_info.x2, y + exit_info.y2, exit_line_colour, linetype, linewidth)
-      
-      -- one-way exit?
-      
-      if rooms [exit_uid] then
-        local dest = rooms [exit_uid]
-        -- if inverse direction doesn't point back to us, this is one-way
-        if dest.exits [inverse_direction [dir]] == nil or dest.exits [inverse_direction [dir]].uid ~= uid then
-        
-          -- turn points into string, relative to where the room is
-          local points = string.format ("%i,%i,%i,%i,%i,%i", 
-              x + arrow [1],
-              y + arrow [2],
-              x + arrow [3],
-              y + arrow [4],
-              x + arrow [5],
-              y + arrow [6])
-              
-          -- draw arrow
-          WindowPolygon(win, points, exit_line_colour, 0, 1, exit_line_colour, 0, true, true)
-        
-        end -- one way
-      
-      end -- if we know of the room where it does
-      
-    end -- if we know what to do with this direction
-  end -- for each exit
-
-  -- special room colours
-  
-  if room.info then
-    if string.match (room.info, "shop") then
-      WindowCircleOp (win, 2, left, top, right, bottom, 
-                      0, 5, 0,  -- no pen
-                      config.SHOP_FILL_COLOUR.colour, 8)  -- brush
-    elseif string.match (room.info, "postoffice") then
-      WindowCircleOp (win, 2, left, top, right, bottom, 
-                      0, 5, 0,  -- no pen
-                      config.POSTOFFICE_FILL_COLOUR.colour, 8)  -- brush
-    elseif string.match (room.info, "bank") then
-      WindowCircleOp (win, 2, left, top, right, bottom, 
-                      0, 5, 0,  -- no pen
-                      config.BANK_FILL_COLOUR.colour, 8)  -- brush
-    elseif string.match (room.info, "newsroom") then
-      WindowCircleOp (win, 2, left, top, right, bottom, 
-                      0, 5, 0,  -- no pen
-                      config.NEWSROOM_FILL_COLOUR.colour, 8)  -- brush
-    end -- if
-  else  
-    -- use terrain colour
-    if room.terrain and terrain_colours [room.terrain] then
-      WindowRectOp (win, 2, left, top, right, bottom, colour_lookup [terrain_colours [room.terrain]])
-    end -- if
-  end -- if 
-
-  local bordercolour = config.ROOM_COLOUR.colour
-  
-  if uid == current_room then
-    bordercolour = config.OUR_ROOM_COLOUR.colour
-  end -- if current room
-
-  if room.area ~= current_area then
-    bordercolour = config.DIFFERENT_AREA_COLOUR.colour
-  end -- not in this area
-    
-  -- draw current room (last, so it goes on top)
-  if room.unknown then
-    WindowCircleOp (win, 2, left, top, right, bottom, 
-                    config.UNKNOWN_ROOM_COLOUR.colour, 2, 1,  --  pen
-                    -1, 1)  -- no brush
-  else
-    WindowRectOp (win, 1, left, top, right, bottom, bordercolour)
-  end -- if
-   
-  -- thicker border for our room
-  if uid == current_room then
-     WindowRectOp (win, 1, left + 1, top + 1, right - 1, bottom - 1, bordercolour)
-  end -- if current room
-  
-  -- show up and down in case we can't get a line in
-  
-  if room.exits.u then  -- line at top
-    WindowLine (win, left, top, left + ROOM_SIZE, top, config.EXIT_COLOUR_UP_DOWN.colour, 0, 1)
-  end -- if
-  if room.exits.d then  -- line at bottom
-    WindowLine (win, left, bottom, left + ROOM_SIZE, bottom, config.EXIT_COLOUR_UP_DOWN.colour, 0, 1)
-  end -- if
-  if room.exits ['in'] then  -- line at right
-    WindowLine (win, left + ROOM_SIZE, top, left + ROOM_SIZE, bottom, config.EXIT_COLOUR_IN_OUT.colour, 0, 1)
-  end -- if
-  if room.exits.out then  -- line at left
-    WindowLine (win, left, top, left, bottom, config.EXIT_COLOUR_IN_OUT.colour, 0, 1)
-  end -- if
-  
-  
-  speedwalks [uid] = path  -- so we know how to get here
-  
-  local terrain = ""
-  if room.terrain then
-    terrain = "\nTerrain: " .. room.terrain
-  end -- if terrain known
-  
-  local info = ""
-  if room.info then
-    info = "\nInfo: " .. capitalize (room.info)
-  end -- if info known
-
-  WindowAddHotspot(win, uid,  
-                 left, top, right, bottom,   -- rectangle
-                 "",  -- mouseover
-                 "",  -- cancelmouseover
-                 "",  -- mousedown
-                 "",  -- cancelmousedown
-                 "mouseup_room",  -- mouseup
-                 string.format ("%s\tExits: %s\nRoom: %s\nArea: %s%s%s",    -- \nSteps=%i\nPath to=%s
-                        room.name, 
-                        table.concat (texits, ", "),
-                        uid,
-                        areas [room.area] or string.format ("Area %s", room.area or "<unknown>"),
-                        terrain,
-                        info
-                        -- depth,
-                        -- table.concat (path, ",")
-                        ),  -- tooltip text
-                 1, 0)  -- hand cursor
-                   
-end -- draw_room
-
-
-function draw_everything (uid)
-
-  if not uid then
-    Note "Cannot draw map right now, I don't know where you are - try: LOOK"
-    return
-  end -- if
-  
-  -- timing
-  local start_time = GetInfo (232)
-
-  -- lookup current room
-  local room = rooms [uid]
-  if not room then
-    room = load_room_from_database (uid)
-  end -- not in cache
-  
-  room = room or { name = "<Unknown>", area = "0" }
-  room.last_visited = os.time ()
-    
---  tprint (room_data)
-  
-  WindowCreate (win, 
-                 windowinfo.window_left, 
-                 windowinfo.window_top, 
-                 config.WINDOW.width, config.WINDOW.height,  
-                 windowinfo.window_mode,   -- top right
-                 windowinfo.window_flags,
-                 config.BACKGROUND_COLOUR.colour) 
-
-  -- let them move it around                 
-  movewindow.add_drag_handler (win, 0, 0, 0, font_height)
-   
-  -- set up for initial room, in middle
-  drawn, drawn_coords, rooms_to_be_drawn, speedwalks, plan_to_draw = {}, {}, {}, {},{}
-  depth = 0
-  current_area = room.area
-  
-  -- insert initial room
-  table.insert (rooms_to_be_drawn, add_another_room (uid, {}, config.WINDOW.width / 2, config.WINDOW.height / 2))
-
-  while #rooms_to_be_drawn > 0 and depth < config.SCAN.depth do
-    local old_generation = rooms_to_be_drawn
-    rooms_to_be_drawn = {}  -- new generation
-    for i, part in ipairs (old_generation) do 
-      draw_room (part.uid, part.path, part.x, part.y)
-    end -- for each existing room
-    depth = depth + 1
-  end -- while all rooms_to_be_drawn
-  
-  local room_name = room.name
-  local name_width = WindowTextWidth (win, FONT_ID, room_name, true)
-  local add_dots = false
-
-  -- truncate name if too long
-  while name_width > (config.WINDOW.width - 10) do
-    -- get rid of last word
-    local s = string.match (" " .. room_name .. "...", "(%s%S*)$")
-    if not s or #s == 0 then break end
-    room_name = room_name:sub (1, - (#s - 2))  -- except the last 3 dots but add the space
-    name_width = WindowTextWidth (win, FONT_ID, room_name .. " ...", true)
-    add_dots = true
-  end -- while
-  
-  if add_dots then
-    room_name = room_name .. " ..."
-  end -- if
-
-  
-  -- room name
-  
-  draw_text_box (win, FONT_ID, 
-                 (config.WINDOW.width - WindowTextWidth (win, FONT_ID, room_name, true)) / 2,   -- left
-                 3,    -- top
-                 room_name, true,             -- what to draw, utf8
-                 config.ROOM_NAME_TEXT.colour,   -- text colour
-                 config.ROOM_NAME_FILL.colour,   -- fill colour   
-                 config.ROOM_NAME_BORDER.colour)     -- border colour
-  
-  -- area name
-
-  if areas [room.area] then
-    local areaname = areas [room.area] or string.format ("Area %s", room.area)
-    draw_text_box (win, FONT_ID, 
-                   (config.WINDOW.width - WindowTextWidth (win, FONT_ID, areaname, true)) / 2,   -- left
-                   config.WINDOW.height - 3 - font_height,    -- top
-                   areaname, true,              -- what to draw, utf8
-                   config.AREA_NAME_TEXT.colour,   -- text colour
-                   config.AREA_NAME_FILL.colour,   -- fill colour   
-                   config.AREA_NAME_BORDER.colour)     -- border colour
-    
-  end -- if area known
-      
-  
-  -- configure?
-  
-  if draw_configure_box then
-    draw_configuration ()
-  else
-    
-    local x = 5
-    local y = config.WINDOW.height - 2 - font_height
-    local width = draw_text_box (win, FONT_ID, 
-                   5,   -- left
-                   config.WINDOW.height - 2 - font_height,    -- top (ie. at bottom)
-                   "*", true,                   -- what to draw, utf8
-                   config.AREA_NAME_TEXT.colour,   -- text colour
-                   config.AREA_NAME_FILL.colour,   -- fill colour   
-                   config.AREA_NAME_BORDER.colour)     -- border colour
-    
-    WindowAddHotspot(win, "<configure>",  
-                   x, y, x + width, y + font_height,   -- rectangle
-                   "",  -- mouseover
-                   "",  -- cancelmouseover
-                   "",  -- mousedown
-                   "",  -- cancelmousedown
-                   "mouseup_configure",  -- mouseup
-                   "Click to configure map",
-                   1, 0)  -- hand cursor
-  end -- if
-                                                          
-  -- 3D box around whole thing
-  
-  draw_3d_box (win, 0, 0, config.WINDOW.width, config.WINDOW.height)
-      
-  -- make sure window visible
-  WindowShow (win, true)
-
-  last_drawn = uid  -- last room number we drew (for zooming)
-  
-  local end_time = GetInfo (232)
-
-  --print (string.format ("Time to draw= %0.6f", end_time - start_time))
-
-end -- draw_everything
 
 -- here when location changes, eg. : Room.Num 7476
 function got_room_number (s)
@@ -1484,41 +953,8 @@ function got_room_number (s)
     return
   end -- no room number
 
-  
-  -- we changed rooms, and are speedwalking - hop to it
-  if current_room ~= room_number then
-    hyperlink_paths = nil  -- those hyperlinks are meaningless now
-      
-    if current_speedwalk then
-    
-      if room_number ~= expected_room then
-        local exp = rooms [expected_room]
-        if not exp then
-          exp = load_room_from_database (expected_room) or { name = expected_room }
-        end -- if
-        local here = rooms [room_number]
-        if not here then
-          here = load_room_from_database (room_number) or { name = room_number }
-        end -- if
-        exp = expected_room
-        here = room_number
-        maperror (string.format ("Speedwalk failed! Expected to be in '%s' but ended up in '%s'.", exp, here))
-        cancel_speedwalk ()
-      else
-        if #current_speedwalk > 0 then
-          SetStatus ("Speedwalks to go: " .. #current_speedwalk)
-          local dir = table.remove (current_speedwalk, 1)
-          expected_room = dir.uid
-          DoAfter (0.3, dir.dir)
-        else
-          cancel_speedwalk ()
-        end -- if any left    
-      end -- if expected room or not
-    end -- if have a current speedwalk
-  end -- if changed rooms
-
   current_room = room_number
-  draw_everything (room_number)
+  mapper.draw (room_number)
   
   if expected_exit == "0" and from_room then
     fix_up_exit ()
@@ -1543,7 +979,7 @@ function got_room_name (s)
   
   if not room then
     save_room_to_database (current_room, brief)
-    draw_everything (current_room)    -- redraw room with name
+    mapper.draw (current_room)    -- redraw room with name
   end -- if room not there
   
 end -- got_room_name
@@ -1571,7 +1007,7 @@ function got_room_exit (s)
   
   if room and next (room.exits) == nil then
     save_exits_to_database (current_room, exits)
-    draw_everything (current_room)    -- redraw room with exits
+    mapper.draw (current_room)    -- redraw room with exits
   end -- need to save exits
 
 
@@ -1601,7 +1037,7 @@ function got_room_full_exits (s)
   
   if room and next (room.exits) == nil then
     save_full_exits_to_database (current_room, exits)
-    draw_everything (current_room)    -- redraw room with exits
+    mapper.draw (current_room)    -- redraw room with exits
   end -- need to save exits
 
 end -- got_room_exit
@@ -1622,7 +1058,7 @@ function got_environment (s)
   
   if room and room.terrain == nil then
     save_environment_to_database (current_room, s)
-    draw_everything (current_room)    -- redraw room with environment
+    mapper.draw (current_room)    -- redraw room with environment
   end -- need to save environment
 
 end -- got_environment
@@ -1643,7 +1079,7 @@ function got_coordinates (s)
   
   if room and room.x == nil then
     save_coordinates_to_database (current_room, s)
-    draw_everything (current_room)    -- redraw room with area
+    mapper.draw (current_room)    -- redraw room with area
   end -- need to save environment
 
 end -- got_coordinates
@@ -1664,7 +1100,7 @@ function got_info (s)
   
   if room and room.info == nil then
     save_info_to_database (current_room, s)
-    draw_everything (current_room)    -- redraw room with info
+    mapper.draw (current_room)    -- redraw room with info
   end -- need to save environment
 
 end -- got_info
@@ -1693,347 +1129,161 @@ function OnPluginBroadcast (msg, id, name, text)
   end -- if ATCP message
 end
 
--- see: http://www.gammon.com.au/forum/?id=7306&page=2
--- Thanks to Ked.
-
-function make_particle (curr_loc, prev_path)
-  local prev_path = prev_path or {}
-  return {current_room=curr_loc, path=prev_path}
-end
-
-function find_paths (start, destinations)
-	
-	local dest_length = #destinations
-	local dest_lookup = {}
-	local depth = 0
-
-	local explored_rooms, particles = {}, {}
-	
-	-- this is where we collect found paths
-	-- the table is keyed by destination, with paths as values
-	local paths = {}
-		
-	for i, room in pairs (destinations) do
-		dest_lookup[room.uid] = true
-		
-		if room.uid == start then
-  		paths[start] = {}
-  	  dest_length = dest_length - 1
-  	end -- if already there
-	end
-	
-	
-	-- create particle for the initial room
-	table.insert (particles, make_particle (start) )
-	
-	while #particles > 0 and depth < config.SCAN.depth do
-	
-		-- create a new generation of particles
-		new_generation = {}
-		depth = depth + 1
-		
-		-- process each active particle
-		for i, part in ipairs (particles) do
-		
-		  if not rooms [part.current_room] then
-        load_room_from_database (part.current_room)
-		  end -- if not in memory yet
-		
-			-- if room doesn't exist, forget it
-      if rooms [part.current_room] then
-			
-				-- get a list of exits from the current room
-				exits = rooms [part.current_room].exits
-				
-				-- create one new particle for each exit
-				for dir, dest in pairs(exits) do
-				
-					-- if we've been in this room before, drop it
-					if not explored_rooms[dest.uid] then
-						explored_rooms[dest.uid] = true
-						new_path = copytable.deep (part.path)
-						table.insert(new_path, { dir = dir, uid = dest.uid } )
-						
-						-- if this room is in the list of destinations then save its path
-						if dest_lookup[dest.uid] then
-							paths[dest.uid] = new_path
-							dest_length = dest_length - 1
-						end -- found one!
-						
-						-- make a new particle in the new room
-	        	table.insert(new_generation, make_particle(dest.uid, new_path))
-	        	
-					end -- not explored this room
-					
-				end  -- for each exit
-			
-			end -- if room exists
-			
-		end  -- for each particle
-		
-		-- check if all destinations have been reached
-		if dest_length == 0 then
-			return paths
-		end -- if
-			
-		particles = new_generation
-	end	  -- while more particles
-	
-	return paths			
-end -- function find_paths
-
-function check_we_can_find ()
- if not current_room then
-    mapprint ("We don't know where you are right now - try: LOOK")
-    return false
-  end -- if
-  
-  if current_speedwalk then
-    mapprint ("No point doing this while you are speedwalking.")
-    return false
-  end -- if
-  
-  return true
-end -- check_we_can_find
-
-function map_find_things (rooms)
-
-  if #rooms == 0 then
-    Note ("No rooms matched.")
-  end
-  
-  local paths = find_paths (current_room, rooms)
-  
-  table.sort (rooms, function (a, b) 
-    local ap, bp = paths [a.uid], paths [b.uid]
-    local al, bl = 0, 0
-    if ap then
-      al = #ap
-    end -- if
-    if bp then
-      bl = #bp
-    end -- if
-    return al < bl 
-    end)
-  
-  hyperlink_paths = {}
-  not_found_paths = 0
-  
-  for _, room in ipairs (rooms) do
-    if current_room == room.uid then
-      mapprint (room.name, "is the room you are in")
-    elseif not paths [room.uid] then
-      not_found_paths = not_found_paths + 1
-    else
-      local distance = #paths [room.uid] .. " room"
-      if #paths [room.uid] > 1 then
-        distance = distance .. "s"
-      end -- if
-      distance = distance .. " away"
-      
-      Hyperlink ("!!" .. GetPluginID () .. ":do_hyperlink(" .. room.uid .. ")", 
-                room.name .. " (" .. room.uid .. ")", "Click to speedwalk there (" .. distance .. ")", "", "", false)
-      local info = ""
-      if room.info then
-        info = " [" .. capitalize (room.info) .. "]"
-      end -- if
-      mapprint (" - " .. distance .. info) -- new line
-      hyperlink_paths [room.uid] = paths [room.uid]
-    end -- if
-  end -- for each room
-
-  if not_found_paths > 0 then
-    mapprint ("There were", not_found_paths, "room(s) found which I cannot find the path to within", config.SCAN.depth, "rooms from here.")
-  end -- if
-end -- map_find_things
-
 function map_find (name, line, wildcards)
-
-  if not check_we_can_find () then
-    return
-  end -- if
-  
+ 
   local rooms = {}
+  local count = 0
   
+  -- find matching rooms using FTS3
   for row in db:nrows(string.format ("SELECT uid, name FROM rooms_lookup WHERE rooms_lookup MATCH %s", fixsql (wildcards [1]))) do
-     table.insert (rooms, { uid = row.uid, name = row.name } )
+     rooms [row.uid] = true
+     count = count + 1
   end   -- finding room
   
-  map_find_things (rooms)
-    
+  -- see if nearby
+  mapper.find (
+    function (uid) 
+      local room = rooms [uid] 
+      if room then
+        rooms [uid] = nil
+      end -- if
+      return room, next (rooms) == nil
+    end,  -- function
+    show_vnums,  -- show vnum?
+    count,      -- how many to expect
+    false       -- don't auto-walk
+    )
+  
 end -- map_find
 
 function map_shops (name, line, wildcards)
 
-  if not check_we_can_find () then
-    return
-  end -- if
-  
   local rooms = {}
+  local count = 0
   
+  -- build table of special places (with info in them)
   for row in db:nrows(string.format ("SELECT uid, name, info FROM rooms WHERE info IS NOT NULL")) do
-     table.insert (rooms, { uid = row.uid, name = row.name, info = row.info } )
+     if row.info ~= "" then
+       rooms [row.uid] = capitalize (row.info)
+       count = count + 1
+     end -- if
   end   -- finding room
   
-  map_find_things (rooms)
-    
+  -- find such places
+  mapper.find (
+    function (uid) 
+      local room = rooms [uid] 
+      if room then
+        rooms [uid] = nil
+      end -- if
+      return room, next (rooms) == nil  -- room will be type of info (eg. shop)
+    end,  -- function
+    show_vnums,  -- show vnum?
+    count,      -- how many to expect
+    false       -- don't auto-walk
+    )
+        
 end -- map_shops
 
-function find_areas (start)
-	
-  wanted_areas = {}
-  found_areas = {}
+function map_goto (name, line, wildcards)
+
+  local wanted = wildcards [1]
   
-  if next (areas) == nil then
-    Note "No areas known."
+  -- find desired room
+  mapper.find (
+    function (uid) 
+      return uid == wanted, uid == wanted  
+    end,  -- function
+    show_vnums,  -- show vnum?
+    1,          -- how many to expect
+    true        -- just walk there
+    )
+        
+end -- map_goto
+
+function map_resume (name, line, wildcards)
+
+  local wanted = mapper.last_hyperlink_uid or mapper.last_speedwalk_uid
+  
+  if not wanted then
+    mapper.print "No outstanding speedwalks or hyperlinks."
     return
-  end -- if
+  end -- if nothing to do
   
- 
-  for k in pairs (areas) do
-    wanted_areas [k] = true
-  end -- for
-  
-	local depth = 0
+  -- find desired room
+  mapper.find (
+    function (uid) 
+      return uid == wanted, uid == wanted  
+    end,  -- function
+    show_vnums,  -- show vnum?
+    1,      -- how many to expect
+    true    -- just walk there
+    )
+        
+end -- map_resume
 
-	local explored_rooms, particles = {}, {}
-	
-	-- create particle for the initial room
-	table.insert (particles, make_particle (start) )
-	
-	while #particles > 0 and depth < config.SCAN.depth do
-	
-		-- create a new generation of particles
-		new_generation = {}
-		depth = depth + 1
-		
-		-- process each active particle
-		for i, part in ipairs (particles) do
-		
-		  local room = rooms [part.current_room]
-		  if not room then
-        room = load_room_from_database (part.current_room)
-		  end -- if not in memory yet
-		
-			-- if room doesn't exist, forget it
+function map_bookmarks (name, line, wildcards)
+
+  local rooms = {}
+  local count = 0
+  
+  -- build table of special places (with info in them)
+  for row in db_bm:nrows(string.format ("SELECT uid, notes FROM bookmarks")) do
+     rooms [row.uid] = capitalize (row.notes)
+     count = count + 1
+  end   -- finding room
+  
+  -- find such places
+  mapper.find (
+    function (uid) 
+      local room = rooms [uid] 
       if room then
-
-				-- if this room is in the list of wanted areas then save its path
-				if wanted_areas[room.area] then
-					found_areas [room.area] = part.path
-					wanted_areas [room.area] = false
-				end -- found one!
-      			
-				-- get a list of exits from the current room
-				exits = room.exits
-				
-				-- create one new particle for each exit
-				for dir, dest in pairs(exits) do
-				
-					-- if we've been in this room before, drop it
-					if not explored_rooms[dest.uid] then
-						explored_rooms[dest.uid] = true
-						new_path = copytable.deep (part.path)
-						table.insert (new_path, { dir = dir, uid = dest.uid } )
-						
-						-- make a new particle in the new room
-	        	table.insert(new_generation, make_particle(dest.uid, new_path))
-	        	
-					end -- not explored this room
-					
-				end  -- for each exit
-			
-			end -- if room exists
-			
-		end  -- for each particle
-			
-		particles = new_generation
-	end	  -- while more particles
-	
-	return paths			
-end -- function find_areas
+        rooms [uid] = nil
+      end -- if
+      return room, next (rooms) == nil  -- room will be type of info (eg. shop)
+    end,  -- function
+    show_vnums,  -- show vnum?
+    count,       -- how many to expect
+    false        -- don't auto-walk
+    )
+        
+end -- map_bookmarks
 
 function map_areas (name, line, wildcards)
 
-  if not check_we_can_find () then
+  local wanted_areas = {}
+  local count = 0
+  
+  if next (areas) == nil then
+    mapper.maperror "No areas known."
     return
   end -- if
-    
-  local paths = find_areas(current_room)
-  
-   
-  hyperlink_paths = {}
-  local sorted_areas = {}
-  
-  for k in pairs (found_areas) do
-    table.insert (sorted_areas, k)
+ 
+  -- build table of all areas, keyed by area code
+  for k, v in pairs (areas) do
+    wanted_areas [tonumber (k)] = v
+    count = count + 1
   end -- for
-  
-  table.sort (sorted_areas, function (a, b)
-     return #found_areas [a] < #found_areas [b]
-     end)
-  
-  for _, area in ipairs (sorted_areas) do
-    local distance = #found_areas [area] .. " room"
-    if #found_areas [area] > 1 then
-      distance = distance .. "s"
-    end -- if
-    distance = distance .. " away"
     
-    if  #found_areas [area] == 0 then
-      mapprint (areas [area], "is the area you are currently in.")
-    else
-      Hyperlink ("!!" .. GetPluginID () .. ":do_hyperlink(" .. area .. ")", 
-                areas [area], "Click to speedwalk there (" .. distance .. ")", "", "", false)
-      mapprint (" - " .. distance) -- new line
-      hyperlink_paths [area] = found_areas [area]
-    end -- if
-  end -- for each room
-
-  not_found_paths = 0
-
-  for k in pairs (wanted_areas) do
-    not_found_paths = not_found_paths + 1
-  end -- for
-  
-  if not_found_paths > 0 then
-    mapprint ("There are", not_found_paths, "areas which I cannot find the path to within", config.SCAN.depth, "rooms from here.")
-  end -- if
+  -- find all areas
+  mapper.find (
+    function (uid) 
+      local room = rooms [uid]
+      local reason
+			-- if this room is in the list of wanted areas then save its path
+			if wanted_areas[tonumber (room.area)] then
+			  reason = wanted_areas [tonumber (room.area)]
+				wanted_areas [tonumber (room.area)] = nil
+			end -- found one!
+      return reason, next (wanted_areas) == nil
+    end,  -- function
+    show_vnums,  -- show vnum?
+    count,       -- how many to expect
+    false        -- don't auto-walk
+    )
     
 end -- map_areas
 
-function start_speedwalk (path)
-
-  if current_speedwalk and #current_speedwalk > 0 then
-    mapprint ("You are already speedwalking! (Ctrl + RH-click on a room to cancel)")
-    return
-  end -- if
-
-  current_speedwalk = path
-
-  if current_speedwalk then
-    if #current_speedwalk > 0 then
-      SetStatus ("Speedwalks to go: " .. #current_speedwalk)
-      local dir = table.remove (current_speedwalk, 1)
-      Send (dir.dir)
-      expected_room = dir.uid
-    else
-      cancel_speedwalk ()
-    end -- if any left    
-  end -- if
-    
-end -- start_speedwalk
-
-function do_hyperlink (uid)
-  
-  if not hyperlink_paths or not hyperlink_paths [uid] then
-    mapprint ("Hyperlink is no longer valid, as you have moved.")
-    return
-  end -- if
-  
-  start_speedwalk (hyperlink_paths [uid])
-    
-end -- do_hyperlink
 
 valid_direction = {
   n = "n",
@@ -2058,7 +1308,7 @@ valid_direction = {
   southwest = "sw",
   ['in'] = "in",
   out = "out",
-  }  -- end of inverse_direction
+  }  -- end of valid_direction
   
 -- try to detect when we send a movement command
 function OnPluginSent (sText)
@@ -2068,7 +1318,6 @@ function OnPluginSent (sText)
     if current_room and rooms [current_room] then
       expected_exit = rooms [current_room].exits [last_direction_moved]
       if expected_exit then
-        expected_exit = expected_exit.uid
         from_room = current_room
       end -- if
 --     print ("expected exit for this direction is to room", expected_exit)
@@ -2076,28 +1325,16 @@ function OnPluginSent (sText)
   end -- if 
 end -- function
 
-
 function OnPluginConnect ()
-  current_room = nil
-  current_speedwalk = nil
-  expected_room = nil
-  SetStatus ("Ready")  -- in case of outstanding speedwalks etc.
-    
+  mapper.cancel_speedwalk ()
 end -- OnPluginConnect
 
-function cancel_speedwalk ()
-  if current_speedwalk and #current_speedwalk > 0 then
-    mapprint "Speedwalk cancelled."
-  end -- if
-  current_speedwalk = nil
-  expected_room = nil
-  hyperlink_paths = nil
-  SetStatus ("Ready")
-
-end -- cancel_speedwalk
+function OnPluginDisconnect ()
+  mapper.cancel_speedwalk ()
+end -- OnPluginConnect
 
 function OnHelp ()
-  world.Note (world.GetPluginInfo (world.GetPluginID (), 3))
+  mapper.mapprint (world.GetPluginInfo (world.GetPluginID (), 3))
 end
 
 function OnPluginListChanged ()
