@@ -49,6 +49,7 @@ endroomcount = 0
 areacount = 0
 coordcount = 0
 directioncount = 0
+environmentcount = 0
 
 entities = { ['&amp;']  = '&';
              ['&quot;'] = '"';
@@ -84,9 +85,21 @@ function  process_area (areaid, areaname)
                
 end --  process_area 
 
-function process_start_room (roomid, areaid, roomtitle)
+function  process_environment (id, name, color)
+  environmentcount = environmentcount + 1
+  
+  dbcheck (db:execute (string.format (
+    "INSERT INTO environments (uid, name, color, date_added) VALUES (%s, %s, %i, DATETIME('NOW'));",
+      fixsql (id), 
+      fixsql (string.gsub (name, '&%a-;', entities)),
+      color
+    )))
+               
+end --  process_environment 
+
+function process_start_room (roomid, areaid, roomtitle, environment)
   roomcount = roomcount + 1
-  room = { id = roomid, area = areaid, title = string.gsub (roomtitle, '&%a-;', entities) }
+  room = { id = roomid, area = areaid, title = string.gsub (roomtitle, '&%a-;', entities), terrain = environment }
   exits = {}
   coords = {}
 end -- process_start_room
@@ -97,10 +110,11 @@ function process_end_room ()
     print ("no coords for room", room.id)
   else
     dbcheck (db:execute (string.format (
-      "INSERT INTO rooms (uid, name, area, building, x, y, z, date_added) VALUES (%s, %s, %s, %s, %i, %i, %i, DATETIME('NOW'));",
+      "INSERT INTO rooms (uid, name, area, terrain, building, x, y, z, date_added) VALUES (%s, %s, %s, %i, %s, %i, %i, %i, DATETIME('NOW'));",
         fixsql (room.id), 
         fixsql (room.title),
         fixsql (room.area),
+        room.terrain,
         fixsql (coords.building),
         coords.x,
         coords.y,
@@ -177,7 +191,10 @@ function create_map_database (name, line, wildcards)
   
   PRAGMA foreign_keys = ON;
   
+  DROP TABLE IF EXISTS exits;
+  DROP TABLE IF EXISTS rooms;
   DROP TABLE IF EXISTS areas;
+  DROP TABLE IF EXISTS environments;
   
   CREATE TABLE areas (
       areaid      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -187,7 +204,16 @@ function create_map_database (name, line, wildcards)
       UNIQUE (uid)
     );
 
-  DROP TABLE IF EXISTS rooms;
+  
+  CREATE TABLE environments (
+      environmentid INTEGER PRIMARY KEY AUTOINCREMENT,
+      uid           TEXT    NOT NULL,   -- code for the environment
+      name          TEXT,               -- name of environment
+      color         INTEGER,            -- ANSI colour code
+      date_added    DATE,               -- date added to database
+      UNIQUE (uid)
+    );
+    
 
   CREATE TABLE rooms (
       roomid        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -209,7 +235,6 @@ function create_map_database (name, line, wildcards)
   CREATE INDEX IF NOT EXISTS terrain_index ON rooms (terrain);
   CREATE INDEX IF NOT EXISTS area_index ON rooms (area);
    
-  DROP TABLE IF EXISTS exits;
            
   CREATE TABLE exits (
       exitid      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -227,42 +252,51 @@ function create_map_database (name, line, wildcards)
   CREATE VIRTUAL TABLE rooms_lookup USING FTS3(uid, name);
   ]])
   
+  local filename = utils.filepicker ("Mapper database", "", "xml", { xml = "XML files", ["*"] = "All files" }, false)
+  
+  if not filename then
+    return
+  end
   
   db:exec ("BEGIN TRANSACTION;") 
     
-  for line in io.lines ("map.xml") do
+  for line in io.lines (filename) do
     
     local xml = string.match (line, "^%s*<(.-)/?>%s*$")
     
     if xml then
-      local areaid, areaname  = string.match (xml, '^area%s+id="(%d+)"%s+name="(.+)"%s*$')
-    
-      if areaid then
+      local areaid, areaname  = string.match (xml, '^area%s+id="(%d+)"%s+name="([^"]+)"%s*')
+      if areaid then    
         process_area (tonumber (areaid), areaname)
       else
-        local roomid, areaid, roomtitle  = string.match (xml, '^room%s+id="(%d+)"%s+area="(%d+)"%stitle="(.+)"%s*$')
-        if roomid then
-          process_start_room (tonumber (roomid), tonumber (areaid), roomtitle)
-        elseif string.match (xml, "^/room$") then
-          process_end_room ()
+        local environmentid, environmentname, color  = string.match (xml, '^environment%s+id="(%d+)"%s+name="([^"]+)"%scolor="(%d+)"%s*$')
+        if environmentid then
+          process_environment (tonumber (environmentid), environmentname, color)
         else
-         local x, y, z = string.match (xml, '^coord%s+x="(-?%d+)"%s+y="(-?%d+)"%sz="(-?%d+)"%s*$')
-         if x then
-            process_coord (tonumber (x), tonumber (y), tonumber (z))
-         else
-           local x, y, z, building = string.match (xml, '^coord%s+x="(-?%d+)"%s+y="(-?%d+)"%sz="(-?%d+)"%sbuilding="(-?%d+)"%s*$')
+          local roomid, areaid, roomtitle, environment  = string.match (xml, '^room%s+id="(%d+)"%s+area="(%d+)"%stitle="([^"]+)"%senvironment="(%d+)"%s*$')
+          if roomid then
+            process_start_room (tonumber (roomid), tonumber (areaid), roomtitle, environment)
+          elseif string.match (xml, "^/room$") then
+            process_end_room ()
+          else
+           local x, y, z = string.match (xml, '^coord%s+x="(-?%d+)"%s+y="(-?%d+)"%sz="(-?%d+)"%s*$')
            if x then
-              process_coord (tonumber (x), tonumber (y), tonumber (z), tonumber (building))
+              process_coord (tonumber (x), tonumber (y), tonumber (z))
            else
-             local direction, target = string.match (xml, '^exit%s+direction="(%a+)"%s+target="(%d+)"%s*$')
-             if direction then
-              process_direction (direction, tonumber (target))
+             local x, y, z, building = string.match (xml, '^coord%s+x="(-?%d+)"%s+y="(-?%d+)"%sz="(-?%d+)"%sbuilding="(-?%d+)"%s*$')
+             if x then
+                process_coord (tonumber (x), tonumber (y), tonumber (z), tonumber (building))
              else
-               print ("unprocessed line:", xml)
-             end -- if not a direction
-           end   -- not a coord/building line     
-         end     -- if not a coord line
-        end -- if  not a room line
+               local direction, target = string.match (xml, '^exit%s+direction="(%a+)"%s+target="(%d+)"%s*$')
+               if direction then
+                process_direction (direction, tonumber (target))
+               else
+                 print ("unprocessed line:", xml)
+               end -- if not a direction
+             end   -- not a coord/building line     
+           end     -- if not a coord line
+          end -- if  not a room line
+        end -- if not an environment line
       end -- if  not an area line
       
       count = count + 1
@@ -280,6 +314,7 @@ function create_map_database (name, line, wildcards)
   print ("found", endroomcount, "/rooms")
   print ("found", coordcount, "coordinates")
   print ("found", directioncount, "directions")
+  print ("found", environmentcount, "environments")
   
   --for k, v in pairs (directions) do
   --  print (k, v)
