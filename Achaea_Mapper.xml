@@ -8,7 +8,7 @@
 
 <muclient>
 <plugin
-   name="Achaea_Mapper2"
+   name="Achaea_Mapper"
    author="Nick Gammon"
    id="a80b38e2f618fbda79a6440c"
    language="Lua"
