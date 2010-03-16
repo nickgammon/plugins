@@ -4,7 +4,8 @@
   <!ENTITY show_timing "false" > 
   <!ENTITY show_completed "false" > 
   <!ENTITY show_database_mods "true" > 
-  <!ENTITY show_other_areas "false" > 
+  <!ENTITY show_other_areas "true" > 
+  <!ENTITY speedwalk_prefix "" > 
 ]>
 
 <muclient>
@@ -182,7 +183,36 @@ mapper resume      --> resume last speedwalk or hyperlinked speedwalk
   >
   <send>%1</send>
   </trigger>
-
+  
+ <trigger
+   enabled="y"
+   match="You'll have to swim to make it through the water in that direction."
+   send_to="12"
+   sequence="100"
+  >
+  <send>
+    if last_direction_moved then
+      Send ("swim " .. last_direction_moved)
+    end -- if
+  </send>
+  </trigger>
+  
+  <!-- auto-open -->
+  
+  <trigger
+   enabled="y"
+   regexp="y"
+   match="^There is a door in the way"
+   send_to="12"
+   sequence="100"
+  >
+  <send>
+    if last_direction_moved then
+      Send ("open door " .. last_direction_moved)
+    end -- if
+  </send>
+  </trigger>
+  
   <!--  various messages that cancel speedwalks -->
   
   <trigger
@@ -202,6 +232,7 @@ mapper resume      --> resume last speedwalk or hyperlinked speedwalk
    sequence="100"
   >
   </trigger>
+  
   <trigger
    enabled="y"
    match="As you stroll in, you feel your feet slipping on something slimy."
@@ -210,14 +241,15 @@ mapper resume      --> resume last speedwalk or hyperlinked speedwalk
   >
   <send>stand</send>
   </trigger>
+  
   <trigger
    enabled="y"
-   regexp="y"
-   match="^There is a door in the way"
+   match="The door is locked."
    script="mapper.cancel_speedwalk"
    sequence="100"
   >
   </trigger>
+  
   <trigger
    enabled="y"
    match="You are regaining balance and are unable to move."
@@ -272,10 +304,18 @@ mapper resume      --> resume last speedwalk or hyperlinked speedwalk
   >
   </trigger> 
   
-   <trigger
+ <trigger
    enabled="y"
    regexp="y"
    match="^You dream about "
+   script="mapper.cancel_speedwalk"
+   sequence="100"
+  >
+  </trigger>
+   
+ <trigger
+   enabled="y"
+   match="There is no exit in that direction."
    script="mapper.cancel_speedwalk"
    sequence="100"
   >
@@ -306,6 +346,7 @@ local show_timing = &show_timing;
 local show_completed = &show_completed;
 local show_database_mods = &show_database_mods;
 local show_other_areas = &show_other_areas;
+local speedwalk_prefix = "&speedwalk_prefix;"
 
 <![CDATA[
 
@@ -835,7 +876,7 @@ function room_edit_bookmark (room, uid)
   if found then  
     newnotes = utils.inputbox ("Modify room comment (clear it to delete from database)", room.name, notes)
   else
-    newnotes = utils.inputbox ("Enter room comment", room.name, notes)
+    newnotes = utils.inputbox ("Enter room comment (creates a bookmark for this room)", room.name, notes)
   end -- if
   
   if not newnotes then
@@ -1198,6 +1239,7 @@ function OnPluginInstall ()
                 timing = show_timing,       -- want to see timing
                 show_completed = show_completed,  -- want to see "Speedwalk completed." message
                 show_other_areas = show_other_areas,  -- want to see areas other than the current one?
+                speedwalk_prefix = speedwalk_prefix,  -- how to speedwalk
                 } 
   
   mapper.mapprint (string.format ("MUSHclient mapper installed, version %0.1f", mapper.VERSION))
@@ -1487,7 +1529,8 @@ end -- map_find
 local wanted_items = {}
   
 for _, v in ipairs ({
-    "shop", "postoffice", "bank", "newsroom", "postoffice", 
+    "shop", "postoffice", "bank", "newsroom", "postoffice", "guild",
+    "healer", "trainer", "questor",
             }) do wanted_items [v] = true end
             
 function map_shops (name, line, wildcards)
@@ -1671,7 +1714,7 @@ end -- function
 
 function OnPluginConnect ()
   mapper.cancel_speedwalk ()
-  DoAfter (3, "look")  -- force mapper update
+  -- DoAfter (3, "look")  -- force mapper update
 end -- OnPluginConnect
 
 function OnPluginDisconnect ()
