@@ -4,7 +4,8 @@
   <!ENTITY show_timing "false" > 
   <!ENTITY show_completed "false" > 
   <!ENTITY show_database_mods "true" > 
-  <!ENTITY show_other_areas "true" > 
+  <!ENTITY show_other_areas "false" > 
+  <!ENTITY show_area_exits "true" > 
   <!ENTITY speedwalk_prefix "" > 
 ]>
 
@@ -17,7 +18,7 @@
    purpose="Draws map for ATCP MUDs"
    date_written="2010-03-04"
    requires="4.51"
-   version="1.2"
+   version="1.3"
    save_state="y"
    >
 <description trim="y">
@@ -48,10 +49,19 @@ mapper zoom out    --> zoom out
 mapper zoom in     --> zoom in
 mapper hide        --> hide map
 mapper show        --> show map
+
+FINDING THINGS
+
+mapper bookmarks   --> show nearby rooms that you bookmarked
 mapper find <text> --> full-text search  (eg. shop OR baker)
-mapper areas       --> show path to nearby areas
-mapper shops       --> show nearby special shops/banks etc.
-mapper bookmarks   --> show nearby rooms with your comments attached
+mapper areas       --> show path to nearby areas (zones)
+mapper heal        --> show nearby healers
+mapper shop        --> show nearby shops/banks etc.
+mapper train       --> show nearby trainers
+mapper quest       --> show nearby quest-givers
+
+MOVING
+
 mapper goto <room> --> walk to a room by its room number
 mapper stop        --> cancel any current speedwalk
 mapper resume      --> resume last speedwalk or hyperlinked speedwalk
@@ -107,10 +117,41 @@ mapper resume      --> resume last speedwalk or hyperlinked speedwalk
   </alias>  
     
  <alias
-   match="mapper shops"
+   match="^mapper shops?$"
+   regexp="y"
    enabled="y"
    sequence="100"
    script="map_shops"
+  >
+  
+  </alias>  
+
+ <alias
+   match="^mapper train\w*$"
+   regexp="y"
+   enabled="y"
+   sequence="100"
+   script="map_trainers"
+  >
+  
+  </alias>  
+
+ <alias
+   match="^mapper quest\w*$"
+   regexp="y"
+   enabled="y"
+   sequence="100"
+   script="map_quests"
+  >
+  
+  </alias>  
+        
+<alias
+   match="^mapper heal\w*$"
+   regexp="y"
+   enabled="y"
+   sequence="100"
+   script="map_healers"
   >
   
   </alias>  
@@ -125,7 +166,8 @@ mapper resume      --> resume last speedwalk or hyperlinked speedwalk
   </alias>  
     
   <alias
-   match="mapper bookmarks"
+   match="^mapper book\w*$"
+   regexp="y"
    enabled="y"
    sequence="100"
    script="map_bookmarks"
@@ -346,6 +388,7 @@ local show_timing = &show_timing;
 local show_completed = &show_completed;
 local show_database_mods = &show_database_mods;
 local show_other_areas = &show_other_areas;
+local show_area_exits = &show_area_exits;
 local speedwalk_prefix = "&speedwalk_prefix;"
 
 <![CDATA[
@@ -1239,6 +1282,7 @@ function OnPluginInstall ()
                 timing = show_timing,       -- want to see timing
                 show_completed = show_completed,  -- want to see "Speedwalk completed." message
                 show_other_areas = show_other_areas,  -- want to see areas other than the current one?
+                show_area_exits = show_area_exits,    -- want to see area exits?
                 speedwalk_prefix = speedwalk_prefix,  -- how to speedwalk
                 } 
   
@@ -1526,15 +1570,15 @@ function map_find (name, line, wildcards)
   
 end -- map_find
 
-local wanted_items = {}
-  
-for _, v in ipairs ({
-    "shop", "postoffice", "bank", "newsroom", "postoffice", "guild",
-    "healer", "trainer", "questor",
-            }) do wanted_items [v] = true end
-            
-function map_shops (name, line, wildcards)
 
+function map_find_special (which_ones)
+
+local wanted_items = {}
+
+  for _, v in ipairs (which_ones) do 
+    wanted_items [v:lower ()] = true 
+  end
+            
   local rooms = {}
   local count = 0
   
@@ -1544,7 +1588,7 @@ function map_shops (name, line, wildcards)
        local wanted = false
        local t = {}
        for item in string.gmatch (row.info, "[^,]+") do
-          if wanted_items [item] then 
+          if wanted_items [item:lower ()] then 
             wanted = true
             table.insert (t, capitalize (item))
           end -- if
@@ -1570,7 +1614,30 @@ function map_shops (name, line, wildcards)
     false       -- don't auto-walk
     )
         
+end -- map_find_special
+
+  --[[
+for _, v in ipairs ({
+     
+    -- "guild", "healer", "trainer", "questor",
+            }) do wanted_items [v] = true end
+      --]]
+            
+function map_shops (name, line, wildcards)
+  map_find_special { "shop", "postoffice", "bank", "newsroom", }
 end -- map_shops
+
+function map_trainers (name, line, wildcards)
+  map_find_special { "trainer", }
+end -- map_trainers
+
+function map_quests (name, line, wildcards)
+  map_find_special { "questor", }
+end -- map_quests
+
+function map_healers (name, line, wildcards)
+  map_find_special { "healers", }
+end -- map_healers
 
 function map_goto (name, line, wildcards)
 
