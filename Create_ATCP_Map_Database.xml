@@ -245,6 +245,11 @@ end -- get_params
 
 function create_map_database (name, line, wildcards)
 
+  local filename = utils.filepicker ("Mapper database", "", "xml", { xml = "XML files", ["*"] = "All files" }, false)
+  
+  if not filename then
+    return -- they cancelled
+  end
 
   -- open database on disk 
   db = assert (sqlite3.open(GetInfo (66) .. Trim (WorldAddress ()) .. "_" .. WorldPort () .. ".db"))
@@ -316,11 +321,6 @@ function create_map_database (name, line, wildcards)
   CREATE VIRTUAL TABLE rooms_lookup USING FTS3(uid, name);
   ]])
   
-  local filename = utils.filepicker ("Mapper database", "", "xml", { xml = "XML files", ["*"] = "All files" }, false)
-  
-  if not filename then
-    return -- they cancelled
-  end
   
   db:exec ("BEGIN TRANSACTION;") 
     
