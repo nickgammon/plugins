@@ -6,6 +6,7 @@
   <!ENTITY show_database_mods "true" > 
   <!ENTITY show_other_areas "false" > 
   <!ENTITY show_area_exits "true" > 
+  <!ENTITY show_up_down "false" > 
   <!ENTITY speedwalk_prefix "" > 
 ]>
 
@@ -18,7 +19,7 @@
    purpose="Draws map for ATCP MUDs"
    date_written="2010-03-04"
    requires="4.51"
-   version="1.3"
+   version="1.4"
    save_state="y"
    >
 <description trim="y">
@@ -388,6 +389,7 @@ local show_timing = &show_timing;
 local show_completed = &show_completed;
 local show_database_mods = &show_database_mods;
 local show_other_areas = &show_other_areas;
+local show_up_down = &show_up_down;
 local show_area_exits = &show_area_exits;
 local speedwalk_prefix = "&speedwalk_prefix;"
 
@@ -1282,6 +1284,7 @@ function OnPluginInstall ()
                 timing = show_timing,       -- want to see timing
                 show_completed = show_completed,  -- want to see "Speedwalk completed." message
                 show_other_areas = show_other_areas,  -- want to see areas other than the current one?
+                show_up_down = show_up_down,          -- want to follow up/down exits?
                 show_area_exits = show_area_exits,    -- want to see area exits?
                 speedwalk_prefix = speedwalk_prefix,  -- how to speedwalk
                 } 
