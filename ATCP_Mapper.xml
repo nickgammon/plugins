@@ -761,9 +761,11 @@ function create_tables ()
   
   if not table_exists then
     dbcheck (db:execute "CREATE VIRTUAL TABLE rooms_lookup USING FTS3(uid, name);")
+    -- in case we only deleted the rooms_lookup table to save space in the download
+    dbcheck (db:execute "INSERT INTO rooms_lookup (uid, name) SELECT uid, name FROM rooms;")
   end -- if
   
-  -- create rooms table
+  -- create bookmarks and terrain colours table in separate database
   dbcheck (db_bm:execute[[
   
   PRAGMA foreign_keys = ON;
