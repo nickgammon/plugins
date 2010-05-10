@@ -114,6 +114,9 @@ function get_item (hash)
   SendPkt (string.char (IAC, SB, 102) .. "hash_info = \"" .. hash .. "\"" .. string.char (IAC, SE)) 
   -- Note ("Requested cache ID: ", hash)
   
+  -- DEBUG
+  CallPlugin ("b9cfe98d6a35dd98cd8ceacc", "LogIt", "Requested cache ID: " .. hash)
+  
   requested_items [hash] = GetInfo (232)  -- don't request twice
   count_items_requested_from_server = count_items_requested_from_server + 1
   return nil

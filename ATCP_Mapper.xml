@@ -364,6 +364,14 @@ mapper resume      --> resume last speedwalk or hyperlinked speedwalk
   >
   </trigger> 
   
+ <trigger
+   enabled="y"
+   match="Alas, you cannot go that way."
+   script="mapper.cancel_speedwalk"
+   sequence="100"
+  >
+  </trigger>   
+  
 </triggers>
 
 
@@ -1647,6 +1655,11 @@ end -- map_healers
 function map_goto (name, line, wildcards)
 
   local wanted = wildcards [1]
+  
+  if current_room and wanted == current_room then
+    mapper.mapprint ("You are already in that room.")
+    return
+  end -- if
   
   -- find desired room
   mapper.find (

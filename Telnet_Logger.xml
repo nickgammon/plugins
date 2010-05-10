@@ -23,6 +23,7 @@
 
 function OnPluginTelnetOption (option)
   AppendToNotepad ("telnet", os.date ("%H:%M:%S ") .. option .. "\r\n")  
+  --TraceOut (option)
 end -- function OnPluginTelnetOption
 
 
