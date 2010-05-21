@@ -1225,22 +1225,18 @@ local available =  {
    
 end -- room_change_exit
 
-function change_room_area(room, uid)
-	 --print ("not a functional function(pun intended) yet!")
-	 --print ("just print out info of this room")
-	 --tprint(rooms[uid])
-	 --tprint(areas)
+function change_room_area (room, uid)
 	 
-	 if next(areas) == nil then
-		mapper.maperror("There is no available areas to choose from.")
+	if next (areas) == nil then
+		mapper.maperror("There are no available areas to choose from.")
 		return
-	end
+	end -- if
 	
-	 local chosen_area = utils.listbox ("Choose the area to alter this room's area", "Areas ...", areas)
+	local chosen_area = utils.listbox ("Choose the area this room belongs to:", "Areas ...", areas)
 	 
-	 if not chosen_area then
+	if not chosen_area then
 		return
-	end
+	end -- if
 	
 	rooms[uid].area = chosen_area
 	mapper.draw (current_room)
@@ -1280,7 +1276,7 @@ function room_click (uid, flags)
       { name = "Add Exit", func = room_add_exit} ,
       { name = "Change Exit", func = room_change_exit} ,
       { name = "Delete Exit", func = room_delete_exit} ,
-	  { name = "Move the room to a different area", func = change_room_area}
+	    { name = "Set area", func = change_room_area} ,
       } -- handlers
       
   local t, tf = {}, {}
