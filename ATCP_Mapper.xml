@@ -1225,6 +1225,33 @@ local available =  {
    
 end -- room_change_exit
 
+function change_room_area(room, uid)
+	 --print ("not a functional function(pun intended) yet!")
+	 --print ("just print out info of this room")
+	 --tprint(rooms[uid])
+	 --tprint(areas)
+	 
+	 if next(areas) == nil then
+		mapper.maperror("There is no available areas to choose from.")
+		return
+	end
+	
+	 local chosen_area = utils.listbox ("Choose the area to alter this room's area", "Areas ...", areas)
+	 
+	 if not chosen_area then
+		return
+	end
+	
+	rooms[uid].area = chosen_area
+	mapper.draw (current_room)
+	
+	dbcheck (db:execute (string.format ([[
+    UPDATE rooms SET area = %s WHERE uid = %s;
+  ]], fixsql  (chosen_area),  -- area (e.g. "1" for "western ithmia")
+      fixsql  (uid)  -- from current room
+      )))
+end -- change_room_area
+
 function room_click (uid, flags)
 
   -- check we got room at all
@@ -1253,6 +1280,7 @@ function room_click (uid, flags)
       { name = "Add Exit", func = room_add_exit} ,
       { name = "Change Exit", func = room_change_exit} ,
       { name = "Delete Exit", func = room_delete_exit} ,
+	  { name = "Move the room to a different area", func = change_room_area}
       } -- handlers
       
   local t, tf = {}, {}
