@@ -220,6 +220,7 @@ require "getlines"
 require "serialize"  
 require "pairsbykeys"
 require "mw"
+require "movewindow"
 
 function capitalize (s)
   return string.sub (s, 1, 1):upper () .. string.sub (s, 2):lower ()
@@ -1161,20 +1162,23 @@ function Display_Inventory ()
   end
   
    -- recreate the window the correct size
-   check (WindowCreate (win, 
-                 0, 0,   -- left, top (auto-positions)
-                 width,     -- width
-                 height,  -- height
-                 6,       -- auto-position: top right
-                 0,  -- flags
-                 background_colour) )
                  
+   check (WindowCreate (win, 
+                 windowinfo.window_left, 
+                 windowinfo.window_top, 
+                 width,     
+                 height,  
+                 windowinfo.window_mode,   
+                 windowinfo.window_flags,
+                 background_colour) )
+                                  
   max_lines_to_show = math.floor ((height - (font_height * 6)) / font_height)
                  
   WindowFilter (win, 0, 0, 0, 0, 2, 25)  -- monochrome noise in whole window - level 100
                  
-   WindowDeleteAllHotspots (win)
-                       
+  WindowDeleteAllHotspots (win)
+  movewindow.add_drag_handler (win, 0, 0, 0, font_height, 1)
+                        
    -- title rectangle
    check (WindowRectOp (win, 2, 2, 2, -2, font_height * 3, title_colour))
    
@@ -1616,6 +1620,8 @@ function OnPluginInstall ()
   font_id_bold = "inventory_font_bold"  -- our internal name
   font_id_large = "inventory_font_large"  -- our internal name
 
+  windowinfo = movewindow.install (win, 6)
+  
   -- make miniwindow so I can grab the font info
   WindowCreate (win, 
                  0, 0, 1, 1,  
@@ -1693,6 +1699,8 @@ function OnPluginSaveState ()
   
   SetVariable ("spells", 
                "spells = " .. serialize.save_simple (spells))
+               
+  movewindow.save_state (win)
   
 end -- OnPluginSaveState
   
