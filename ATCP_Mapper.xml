@@ -18,8 +18,9 @@
    language="Lua"
    purpose="Draws map for ATCP MUDs"
    date_written="2010-03-04"
+   date_modified="2010-08-15"
    requires="4.51"
-   version="1.4"
+   version="1.5"
    save_state="y"
    >
 <description trim="y">
@@ -45,27 +46,28 @@ room the stub will disappear and the room(s) in question will be drawn.
 
 ACTIONS
 
-mapper help        --> this help  (or click the "?" button on the bottom right)
-mapper zoom out    --> zoom out
-mapper zoom in     --> zoom in
-mapper hide        --> hide map
-mapper show        --> show map
+mapper help         --> this help  (or click the "?" button on the bottom right)
+mapper zoom out     --> zoom out
+mapper zoom in      --> zoom in
+mapper hide         --> hide map
+mapper show         --> show map
 
 FINDING THINGS
 
-mapper bookmarks   --> show nearby rooms that you bookmarked
-mapper find <text> --> full-text search  (eg. shop OR baker)
-mapper areas       --> show path to nearby areas (zones)
-mapper heal        --> show nearby healers
-mapper shop        --> show nearby shops/banks etc.
-mapper train       --> show nearby trainers
-mapper quest       --> show nearby quest-givers
+mapper bookmarks    --> show nearby rooms that you bookmarked
+mapper find <text>  --> full-text search  (eg. shop OR baker)
+mapper areas        --> show path to nearby areas (zones)
+mapper heal         --> show nearby healers
+mapper shop         --> show nearby shops/banks etc.
+mapper train        --> show nearby trainers
+mapper quest        --> show nearby quest-givers
+mapper where <room> --> show directions to a room
 
-MOVING
+MOVING  
 
-mapper goto <room> --> walk to a room by its room number
-mapper stop        --> cancel any current speedwalk
-mapper resume      --> resume last speedwalk or hyperlinked speedwalk
+mapper goto <room>  --> walk to a room by its room number
+mapper stop         --> cancel any current speedwalk
+mapper resume       --> resume last speedwalk or hyperlinked speedwalk
 
 ]]>
 </description>
@@ -162,6 +164,15 @@ mapper resume      --> resume last speedwalk or hyperlinked speedwalk
    enabled="y"
    sequence="100"
    script="map_goto"
+  >
+  
+  </alias>  
+    
+ <alias
+   match="mapper where *"
+   enabled="y"
+   sequence="100"
+   script="map_where"
   >
   
   </alias>  
@@ -405,7 +416,7 @@ local speedwalk_prefix = "&speedwalk_prefix;"
 
 require "serialize"
 require "checkplugin"
-require "mapper"
+mapper = require "mapper"
 
 
 default_config = {
@@ -1696,6 +1707,41 @@ function map_goto (name, line, wildcards)
     )
         
 end -- map_goto
+
+function map_where (name, line, wildcards)
+
+  if not mapper.check_we_can_find () then
+    return
+  end -- if
+
+  local wanted = wildcards [1]
+  
+  if current_room and wanted == current_room then
+    mapper.mapprint ("You are already in that room.")
+    return
+  end -- if
+  
+  local paths = mapper.find_paths (current_room, 
+           function (uid) 
+             return uid == wanted,  -- wanted room?
+                    uid == wanted   -- stop searching?
+            end)
+
+  local uid, item = next (paths, nil) -- extract first (only) path
+  
+  -- nothing? room not found
+  if not item then
+    mapper.mapprint (string.format ("Room %s not found", wanted))
+    return
+  end -- if
+  
+  -- turn into speedwalk
+  local path = mapper.build_speedwalk (item.path)
+  
+  -- display it
+  mapper.mapprint (string.format ("Path to %s is: %s", wanted, path))
+  
+end -- map_where
 
 function map_resume (name, line, wildcards)
 
