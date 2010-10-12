@@ -274,9 +274,12 @@ function OnPluginInstall ()
  -- open database on disk (uses world address, that is which MUD we are playing)
   db = assert (sqlite3.open( GetInfo (66) .. Trim (WorldAddress ()) .. "_" .. WorldPort () .. ".db"))
   
+
+    
   -- create rooms table
   dbcheck (db:execute[[
     PRAGMA foreign_keys = ON;
+    PRAGMA journal_mode = WAL;
   
     CREATE TABLE IF NOT EXISTS 
       rooms(
