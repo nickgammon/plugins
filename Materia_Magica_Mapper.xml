@@ -128,7 +128,7 @@ mapper resume       --> resume last speedwalk or hyperlinked speedwalk
    match_text_colour="y"
    name="Description"
    script="Description"
-   sequence="100"
+   sequence="105"
    text_colour="15"
   >
   </trigger>
@@ -142,6 +142,16 @@ mapper resume       --> resume last speedwalk or hyperlinked speedwalk
   >
   </trigger>
     
+  <trigger
+   enabled="n"
+   match="  Visible Exits: *"
+   name="Exits_Line"
+   script="Exits_Line"
+   sequence="100"
+  >
+  
+  </trigger>
+      
 </triggers>
 
 
@@ -277,8 +287,9 @@ valid_direction = {
 
 function Name_Line (name, line, wildcards, styles)
   got_hyphens = false
-  roomname = Trim (styles [1].text)
+  roomname = Trim (styles [1].text:sub (1, 50))
   roomdesc = line
+  exits = {}
   EnableTrigger ("Hyphen_Line", true)
   EnableTrigger ("Other_Line", true)
 end -- Name_Line
@@ -304,6 +315,7 @@ function Map_Line (name, line, wildcards)
   roomdesc = roomdesc .. line
   EnableTrigger ("Map_Line", false)
   EnableTrigger ("Description", true)
+  EnableTrigger ("Exits_Line", true)
  
 end -- Map_Line
 
@@ -316,10 +328,34 @@ function Description (name, line, wildcards)
   roomdesc = roomdesc .. line
   EnableTrigger ("Other_Line", true)
   EnableTrigger ("Name_Line", false)
+  EnableTrigger ("Exits_Line", false)
 end -- Description
 
 -- -----------------------------------------------------------------
--- 5. Here on line *after* the description
+-- 4. Here on exits line
+-- -----------------------------------------------------------------
+
+function Exits_Line (name, line, wildcards)
+
+  local exits_str = wildcards [1]
+ 
+  -- break up exits into individual directions
+  exits = {}
+  
+  for exit in string.gmatch (exits_str, "%w+") do
+    exit = exit:lower ()
+    local ex = valid_direction [exit]
+    if ex then
+      exits [ex] = "0"  -- don't know where it goes yet
+    end -- if
+  end -- for
+  
+  roomdesc = roomdesc .. exits_str
+  EnableTrigger ("Exits_Line", false)
+end -- Exits_Line
+
+-- -----------------------------------------------------------------
+-- 6. Here on line *after* the description
 -- -----------------------------------------------------------------
 
 function Other_Line (name, line, wildcards)
@@ -327,6 +363,7 @@ function Other_Line (name, line, wildcards)
   EnableTrigger ("Description", false)
   EnableTrigger ("Other_Line", false)
   EnableTrigger ("Name_Line", true)
+  EnableTrigger ("Exits_Line", false)
   
   if not got_hyphens then
     return
@@ -338,7 +375,7 @@ function Other_Line (name, line, wildcards)
   
   -- add to table if not known
   if not rooms [uid] then
-    rooms [uid] = { name = roomname, desc = roomdesc, exits = {} }
+    rooms [uid] = { name = roomname, desc = roomdesc, exits = exits }
   end -- if
 
   -- save so we know current room later on  
@@ -348,7 +385,7 @@ function Other_Line (name, line, wildcards)
   mapper.draw (uid)
 
   -- try to work out where previous room's exit led  
-  if from_room then
+  if expected_exit == "0" and from_room then
     fix_up_exit ()
   end -- exit was wrong
   
@@ -397,6 +434,8 @@ function fix_up_exit ()
   -- where we were before
   local room = rooms [from_room]
   
+--  print ("Moved from", from_room, "to", current_room, "in direction", last_direction_moved)
+  
   -- leads to here
   if from_room ~= current_room then
     room.exits [last_direction_moved] = current_room
@@ -416,7 +455,13 @@ function OnPluginSent (sText)
   if valid_direction [sText] then
     last_direction_moved = valid_direction [sText]
     -- print ("Just moved", last_direction_moved)
-    from_room = current_room
+    if current_room and rooms [current_room] then
+      expected_exit = rooms [current_room].exits [last_direction_moved]
+      if expected_exit then
+        from_room = current_room
+      end -- if
+    -- print ("expected exit for this direction is to room", expected_exit)
+    end -- if
   end -- if 
 end -- function
 
