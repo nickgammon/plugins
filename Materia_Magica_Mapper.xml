@@ -1,0 +1,592 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<muclient>
+<plugin
+   name="Materia_Magica_Mapper"
+   author="Nick Gammon"
+   id="1c17ac2c83b2b66c402c80c6"
+   language="Lua"
+   purpose="Mapper for Materia Magica"
+   save_state="y"
+   date_written="2010-10-12"
+   requires="4.61"
+   version="1.0"
+   >
+
+   <description trim="y">
+<![CDATA[
+AUTOMATIC MAPPER ...  by Nick Gammon
+
+The window can be dragged to a new location by dragging the room name.
+
+Your current room is always in the center with a bolder border.
+
+LH-click on a room to speed-walk to it. RH-click on a room for options. 
+
+LH-click on the "*" button on the bottom-left corner to configure it.
+
+** WHY DOES THE MAP CHANGE? **
+
+The mapper draws from your room outwards - that is, it draws your room's exits
+first, then the rooms leading from those rooms, and so on.
+
+Eventually it finds an overlap, and draws a short "stub" line to indicate there
+is a room there which there isn't space to draw. If you get closer to that 
+room the stub will disappear and the room(s) in question will be drawn.
+
+ACTIONS
+
+mapper help         --> this help  (or click the "?" button on the bottom right)
+mapper zoom out     --> zoom out
+mapper zoom in      --> zoom in
+mapper hide         --> hide map
+mapper show         --> show map
+
+FINDING THINGS
+
+mapper where <room> --> show directions to a room
+
+MOVING  
+
+mapper goto <room>  --> walk to a room by its room number
+mapper stop         --> cancel any current speedwalk
+mapper resume       --> resume last speedwalk or hyperlinked speedwalk
+
+]]>
+</description>
+
+
+</plugin>
+
+
+<!--  Triggers  -->
+
+<triggers>
+
+  <trigger
+   back_colour="8"
+   bold="y"
+   enabled="y"
+   match="*"
+   match_back_colour="y"
+   match_bold="y"
+   match_inverse="y"
+   match_italic="y"
+   match_text_colour="y"
+   name="Name_Line"
+   script="Name_Line"
+   sequence="100"
+   text_colour="11"
+   
+  >
+  </trigger>
+  
+ <trigger
+   back_colour="8"
+   bold="y"
+   enabled="n"
+   match="(-------------------------------------------------)*"
+   match_back_colour="y"
+   match_bold="y"
+   match_inverse="y"
+   match_italic="y"
+   match_text_colour="y"
+   name="Hyphen_Line"
+   script="Hyphen_Line"
+   sequence="100"
+   text_colour="12"
+   
+  >
+  </trigger>
+    
+   
+  <trigger
+   back_colour="8"
+   enabled="n"
+   match="*"
+   match_back_colour="y"
+   match_bold="y"
+   match_inverse="y"
+   match_italic="y"
+   match_text_colour="y"
+   name="Map_Line"
+   script="Map_Line"
+   sequence="100"
+   text_colour="15"
+  >
+  </trigger>  
+  
+  <trigger
+   back_colour="8"
+   enabled="n"
+   match="*"
+   match_back_colour="y"
+   match_bold="y"
+   match_inverse="y"
+   match_italic="y"
+   match_text_colour="y"
+   name="Description"
+   script="Description"
+   sequence="100"
+   text_colour="15"
+  >
+  </trigger>
+  
+  <trigger
+   enabled="n"
+   match="*"
+   name="Other_Line"
+   script="Other_Line"
+   sequence="110"
+  >
+  </trigger>
+    
+</triggers>
+
+
+<aliases>
+ 
+  <!--  zooming aliases -->
+
+ <alias
+   match="mapper zoom out"
+   enabled="y"
+   sequence="100"
+   omit_from_command_history="y"
+   omit_from_output="y"
+   script="mapper.zoom_out"
+  >
+  </alias>
+  
+<alias
+   match="mapper zoom in"
+   enabled="y"
+   sequence="100"
+   omit_from_command_history="y"
+   omit_from_output="y"
+   script="mapper.zoom_in"
+  >
+  </alias>  
+    
+    
+ <alias
+   match="mapper goto *"
+   enabled="y"
+   sequence="100"
+   script="map_goto"
+  >
+  
+  </alias>  
+    
+ <alias
+   match="mapper where *"
+   enabled="y"
+   sequence="100"
+   script="map_where"
+  >
+  
+  </alias>  
+    
+ <alias
+   match="mapper resume"
+   enabled="y"
+   sequence="100"
+   script="map_resume"
+  >
+  
+  </alias>  
+    
+  <alias
+   script="OnHelp"
+   match="mapper help"
+   enabled="y"
+  >
+  </alias>
+    
+  <!--  cancel speedwalking -->
+  
+ <alias
+   match="mapper stop"
+   enabled="y"
+   sequence="100"
+   script="mapper.cancel_speedwalk"
+  >
+  </alias>  
+
+  <!--  show/hide mapper -->
+      
+  <alias
+   match="mapper hide"
+   enabled="y"
+   sequence="100"
+   script="mapper.hide"
+  >
+  </alias>  
+  
+   <alias
+   match="mapper show"
+   enabled="y"
+   sequence="100"
+   script="mapper.show"
+  >
+  </alias>  
+  
+</aliases>
+
+<!--  Script  -->
+
+
+<script>
+<![CDATA[
+
+require "mapper"
+require "serialize"
+require "copytable"
+  
+rooms = {}
+
+valid_direction = {
+  n = "n",
+  s = "s",
+  e = "e",
+  w = "w",
+  u = "u",
+  d = "d",
+  ne = "ne",
+  sw = "sw",
+  nw = "nw",
+  se = "se",
+  north = "n",
+  south = "s",
+  east = "e",
+  west = "w",
+  up = "u",
+  down = "d",
+  northeast = "ne",
+  northwest = "nw",
+  southeast = "se",
+  southwest = "sw",
+  ['in'] = "in",
+  out = "out",
+  }  -- end of valid_direction
+  
+-- -----------------------------------------------------------------
+-- 1. Here on yellow line - room name
+-- -----------------------------------------------------------------
+
+function Name_Line (name, line, wildcards, styles)
+  got_hyphens = false
+  roomname = Trim (styles [1].text)
+  roomdesc = line
+  EnableTrigger ("Hyphen_Line", true)
+  EnableTrigger ("Other_Line", true)
+end -- Name_Line
+
+
+-- -----------------------------------------------------------------
+-- 2. Here on: (-------------------------------------------------)
+-- -----------------------------------------------------------------
+
+function Hyphen_Line (name, line, wildcards)
+  got_hyphens = true
+  roomdesc = roomdesc .. line
+  EnableTrigger ("Map_Line", true)
+  EnableTrigger ("Hyphen_Line", false)
+  EnableTrigger ("Other_Line", false)
+end -- Hyphen_Line
+
+-- -----------------------------------------------------------------
+-- 3. Here on third line (rest of compass)
+-- -----------------------------------------------------------------
+
+function Map_Line (name, line, wildcards)
+  roomdesc = roomdesc .. line
+  EnableTrigger ("Map_Line", false)
+  EnableTrigger ("Description", true)
+ 
+end -- Map_Line
+
+
+-- -----------------------------------------------------------------
+-- 4. Here on description line
+-- -----------------------------------------------------------------
+
+function Description (name, line, wildcards)
+  roomdesc = roomdesc .. line
+  EnableTrigger ("Other_Line", true)
+  EnableTrigger ("Name_Line", false)
+end -- Description
+
+-- -----------------------------------------------------------------
+-- 5. Here on line *after* the description
+-- -----------------------------------------------------------------
+
+function Other_Line (name, line, wildcards)
+  roomdesc = roomdesc .. line
+  EnableTrigger ("Description", false)
+  EnableTrigger ("Other_Line", false)
+  EnableTrigger ("Name_Line", true)
+  
+  if not got_hyphens then
+    return
+  end -- no hyphens line
+    
+  -- genereate a "room ID" by hashing the room name, description and exits
+  uid = utils.tohex (utils.md5 (roomname .. roomdesc))
+  uid = uid:sub (1, 25)  
+  
+  -- add to table if not known
+  if not rooms [uid] then
+    rooms [uid] = { name = roomname, desc = roomdesc, exits = {} }
+  end -- if
+
+  -- save so we know current room later on  
+  current_room = uid
+  
+  -- call mapper to draw this rom
+  mapper.draw (uid)
+
+  -- try to work out where previous room's exit led  
+  if from_room then
+    fix_up_exit ()
+  end -- exit was wrong
+  
+end -- Other_Line
+
+-- -----------------------------------------------------------------
+-- mapper 'get_room' callback - it wants to know about room uid
+-- -----------------------------------------------------------------
+
+function get_room (uid)
+  
+  if not rooms [uid] then 
+   return nil
+  end -- if
+ 
+  local room = copytable.deep (rooms [uid])
+ 
+  local texits = {}
+  for dir in pairs (room.exits) do
+    table.insert (texits, dir)
+  end -- for
+  table.sort (texits)
+  
+  room.hovermessage = string.format (
+      "%s\tExits: %s\nRoom: %s",
+      room.name, 
+      table.concat (texits, ", "),
+      uid
+      )
+      
+  if uid == current_room then
+    room.bordercolour = config.OUR_ROOM_COLOUR.colour
+    room.borderpenwidth = 2
+  end -- not in this area
+      
+  return room
+  
+end -- get_room
+
+-- -----------------------------------------------------------------
+-- We have changed rooms - work out where the previous room led to 
+-- -----------------------------------------------------------------
+
+function fix_up_exit ()
+
+  -- where we were before
+  local room = rooms [from_room]
+  
+  -- leads to here
+  if from_room ~= current_room then
+    room.exits [last_direction_moved] = current_room
+  end -- if
+    
+  -- clear for next time
+  last_direction_moved = nil
+  from_room = nil
+  
+end -- fix_up_exit
+
+-- -----------------------------------------------------------------
+-- try to detect when we send a movement command
+-- -----------------------------------------------------------------
+
+function OnPluginSent (sText)
+  if valid_direction [sText] then
+    last_direction_moved = valid_direction [sText]
+    -- print ("Just moved", last_direction_moved)
+    from_room = current_room
+  end -- if 
+end -- function
+
+
+default_config = {
+  -- assorted colours
+  BACKGROUND_COLOUR       = { name = "Background",        colour =  ColourNameToRGB "lightseagreen", },
+  ROOM_COLOUR             = { name = "Room",              colour =  ColourNameToRGB "cyan", },
+  EXIT_COLOUR             = { name = "Exit",              colour =  ColourNameToRGB "darkgreen", },
+  EXIT_COLOUR_UP_DOWN     = { name = "Exit up/down",      colour =  ColourNameToRGB "darkmagenta", },
+  EXIT_COLOUR_IN_OUT      = { name = "Exit in/out",       colour =  ColourNameToRGB "#3775E8", },
+  OUR_ROOM_COLOUR         = { name = "Our room",          colour =  ColourNameToRGB "black", },
+  UNKNOWN_ROOM_COLOUR     = { name = "Unknown room",      colour =  ColourNameToRGB "#00CACA", },
+  DIFFERENT_AREA_COLOUR   = { name = "Another area",      colour =  ColourNameToRGB "#009393", },
+  SHOP_FILL_COLOUR        = { name = "Shop",              colour =  ColourNameToRGB "darkolivegreen", },
+  POSTOFFICE_FILL_COLOUR  = { name = "Post Office",       colour =  ColourNameToRGB "yellowgreen", },
+  BANK_FILL_COLOUR        = { name = "Bank",              colour =  ColourNameToRGB "gold", },
+  NEWSROOM_FILL_COLOUR    = { name = "Newsroom",          colour =  ColourNameToRGB "lightblue", },
+  MAPPER_NOTE_COLOUR      = { name = "Messages",          colour =  ColourNameToRGB "lightgreen" },
+  
+  ROOM_NAME_TEXT          = { name = "Room name text",    colour = ColourNameToRGB "#BEF3F1", },
+  ROOM_NAME_FILL          = { name = "Room name fill",    colour = ColourNameToRGB "#105653", },
+  ROOM_NAME_BORDER        = { name = "Room name box",     colour = ColourNameToRGB "black", },
+  
+  AREA_NAME_TEXT          = { name = "Area name text",    colour = ColourNameToRGB "#BEF3F1",},
+  AREA_NAME_FILL          = { name = "Area name fill",    colour = ColourNameToRGB "#105653", },   
+  AREA_NAME_BORDER        = { name = "Area name box",     colour = ColourNameToRGB "black", },
+               
+  FONT = { name =  get_preferred_font {"Dina",  "Lucida Console",  "Fixedsys", "Courier", "Sylfaen",} ,
+           size = 8
+         } ,
+         
+  -- size of map window
+  WINDOW = { width = 400, height = 400 },
+  
+  -- how far from where we are standing to draw (rooms)
+  SCAN = { depth = 30 },
+  
+  -- speedwalk delay
+  DELAY = { time = 0.3 },
+  
+  -- how many seconds to show "recent visit" lines (default 3 minutes)
+  LAST_VISIT_TIME = { time = 60 * 3 },  
+  
+  }
+
+  
+-- -----------------------------------------------------------------
+-- Plugin Install
+-- -----------------------------------------------------------------
+
+function OnPluginInstall ()
+  
+  config = {}  -- in case not found
+
+  -- get saved configuration
+  assert (loadstring (GetVariable ("config") or "")) ()
+
+  -- allow for additions to config
+  for k, v in pairs (default_config) do
+    config [k] = config [k] or v
+  end -- for
+  
+  -- and rooms
+  assert (loadstring (GetVariable ("rooms") or "")) ()
+  
+  -- initialize mapper
+  
+  mapper.init { config = config, 
+                get_room = get_room,
+                show_help = OnHelp,         -- to show help
+  } 
+  mapper.mapprint (string.format ("MUSHclient mapper installed, version %0.1f", mapper.VERSION))
+
+end -- OnPluginInstall
+
+-- -----------------------------------------------------------------
+-- Plugin Save State
+-- -----------------------------------------------------------------
+
+function OnPluginSaveState ()
+  mapper.save_state ()
+  SetVariable ("config", "config = " .. serialize.save_simple (config))
+  SetVariable ("rooms", "rooms = " .. serialize.save_simple (rooms))
+end -- OnPluginSaveState
+
+function map_resume (name, line, wildcards)
+
+  local wanted = mapper.last_hyperlink_uid or mapper.last_speedwalk_uid
+  
+  if not wanted then
+    mapper.print "No outstanding speedwalks or hyperlinks."
+    return
+  end -- if nothing to do
+  
+  -- find desired room
+  mapper.find (
+    function (uid) 
+      return uid == wanted, uid == wanted  
+    end,  -- function
+    show_vnums,  -- show vnum?
+    1,      -- how many to expect
+    true    -- just walk there
+    )
+        
+end -- map_resume
+
+function map_goto (name, line, wildcards)
+
+  local wanted = wildcards [1]
+  
+  if current_room and wanted == current_room then
+    mapper.mapprint ("You are already in that room.")
+    return
+  end -- if
+  
+  -- find desired room
+  mapper.find (
+    function (uid) 
+      return uid == wanted, uid == wanted  
+    end,  -- function
+    show_vnums,  -- show vnum?
+    1,          -- how many to expect
+    true        -- just walk there
+    )
+        
+end -- map_goto
+
+function map_where (name, line, wildcards)
+
+  if not mapper.check_we_can_find () then
+    return
+  end -- if
+
+  local wanted = wildcards [1]
+  
+  if current_room and wanted == current_room then
+    mapper.mapprint ("You are already in that room.")
+    return
+  end -- if
+  
+  local paths = mapper.find_paths (current_room, 
+           function (uid) 
+             return uid == wanted,  -- wanted room?
+                    uid == wanted   -- stop searching?
+            end)
+
+  local uid, item = next (paths, nil) -- extract first (only) path
+  
+  -- nothing? room not found
+  if not item then
+    mapper.mapprint (string.format ("Room %s not found", wanted))
+    return
+  end -- if
+  
+  -- turn into speedwalk
+  local path = mapper.build_speedwalk (item.path)
+  
+  -- display it
+  mapper.mapprint (string.format ("Path to %s is: %s", wanted, path))
+  
+end -- map_where
+
+function OnHelp ()
+  mapper.mapprint (string.format ("[MUSHclient mapper, version %0.1f]", mapper.VERSION))
+  mapper.mapprint (world.GetPluginInfo (world.GetPluginID (), 3))
+end
+
+]]>
+</script>
+
+
+</muclient>
