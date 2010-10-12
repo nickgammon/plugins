@@ -116,23 +116,7 @@ mapper resume       --> resume last speedwalk or hyperlinked speedwalk
    text_colour="15"
   >
   </trigger>  
-  
-  <trigger
-   back_colour="8"
-   enabled="n"
-   match="*"
-   match_back_colour="y"
-   match_bold="y"
-   match_inverse="y"
-   match_italic="y"
-   match_text_colour="y"
-   name="Description"
-   script="Description"
-   sequence="105"
-   text_colour="15"
-  >
-  </trigger>
-  
+ 
   <trigger
    enabled="n"
    match="*"
@@ -288,10 +272,13 @@ valid_direction = {
 function Name_Line (name, line, wildcards, styles)
   got_hyphens = false
   roomname = Trim (styles [1].text:sub (1, 50))
-  roomdesc = line
+  roomdesc = ""
   exits = {}
+  exits_str = ""
+  map_str = ""
   EnableTrigger ("Hyphen_Line", true)
   EnableTrigger ("Other_Line", true)
+  EnableTrigger ("Name_Line", false)
 end -- Name_Line
 
 
@@ -301,7 +288,6 @@ end -- Name_Line
 
 function Hyphen_Line (name, line, wildcards)
   got_hyphens = true
-  roomdesc = roomdesc .. line
   EnableTrigger ("Map_Line", true)
   EnableTrigger ("Hyphen_Line", false)
   EnableTrigger ("Other_Line", false)
@@ -312,24 +298,11 @@ end -- Hyphen_Line
 -- -----------------------------------------------------------------
 
 function Map_Line (name, line, wildcards)
-  roomdesc = roomdesc .. line
   EnableTrigger ("Map_Line", false)
-  EnableTrigger ("Description", true)
+  EnableTrigger ("Other_Line", true)
   EnableTrigger ("Exits_Line", true)
  
 end -- Map_Line
-
-
--- -----------------------------------------------------------------
--- 4. Here on description line
--- -----------------------------------------------------------------
-
-function Description (name, line, wildcards)
-  roomdesc = roomdesc .. line
-  EnableTrigger ("Other_Line", true)
-  EnableTrigger ("Name_Line", false)
-  EnableTrigger ("Exits_Line", false)
-end -- Description
 
 -- -----------------------------------------------------------------
 -- 4. Here on exits line
@@ -337,7 +310,7 @@ end -- Description
 
 function Exits_Line (name, line, wildcards)
 
-  local exits_str = wildcards [1]
+  exits_str = wildcards [1]
  
   -- break up exits into individual directions
   exits = {}
@@ -350,32 +323,88 @@ function Exits_Line (name, line, wildcards)
     end -- if
   end -- for
   
-  roomdesc = roomdesc .. exits_str
   EnableTrigger ("Exits_Line", false)
 end -- Exits_Line
 
+
 -- -----------------------------------------------------------------
--- 6. Here on line *after* the description
+-- 5. Here on description line
 -- -----------------------------------------------------------------
 
-function Other_Line (name, line, wildcards)
-  roomdesc = roomdesc .. line
-  EnableTrigger ("Description", false)
+function Description (name, line, wildcards, styles)
+
+
+end -- Description
+
+
+-- -----------------------------------------------------------------
+-- 5. Here on description, or line *after* the description
+-- -----------------------------------------------------------------
+
+function Other_Line (name, line, wildcards, styles)
+  EnableTrigger ("Exits_Line", false)
+
+  -- if totally spaces, (and no description yet) skip it
+  if #line == 0 or not string.match (line, "%S") then
+    if roomdesc == "" and map_str == "" then
+      return
+    end -- if
+  end -- if
+  
+  -- see if a world map line
+  
+  local char_count = 0
+  local letter_count = 0
+  
+  for ch in string.gmatch (line, "%S") do
+    char_count = char_count + 1
+  end -- for
+
+  for ch in string.gmatch (line, "%a") do
+    letter_count = letter_count + 1
+  end -- for
+
+  -- if mainly dots and stuff, assume world map line
+  if char_count >= 12 and letter_count < char_count / 2 then
+    map_str = map_str .. line
+    return
+  end -- if
+  
+  if #styles == 1 and map_str == "" then
+
+    if styles [1].textcolour == GetNormalColour (8) and
+       styles [1].backcolour == GetNormalColour (1) then
+      -- description lines do not start with spaces, except the first one
+      if roomdesc == "" or string.match (line, "^%S") then
+        roomdesc = roomdesc .. " " .. line
+        return
+      end -- if not start with spaces
+    end -- if right colours
+  end -- if a description line
+
+  
+  -- ready for next time
+  
   EnableTrigger ("Other_Line", false)
   EnableTrigger ("Name_Line", true)
-  EnableTrigger ("Exits_Line", false)
-  
+    
   if not got_hyphens then
     return
   end -- no hyphens line
     
   -- genereate a "room ID" by hashing the room name, description and exits
-  uid = utils.tohex (utils.md5 (roomname .. roomdesc))
+  uid = utils.tohex (utils.md5 (roomname .. roomdesc .. exits_str .. map_str))
   uid = uid:sub (1, 25)  
-  
+
+    
   -- add to table if not known
   if not rooms [uid] then
-    rooms [uid] = { name = roomname, desc = roomdesc, exits = exits }
+  
+    -- print ("Added room", uid)  -- debugging
+    -- print ("Name", roomname)
+    -- ColourNote ("rosybrown", "", roomdesc)
+    
+    rooms [uid] = { name = roomname, desc = Trim (roomdesc), exits = exits }
   end -- if
 
   -- save so we know current room later on  
