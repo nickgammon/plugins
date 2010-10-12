@@ -10,8 +10,9 @@
    purpose="Mapper for Materia Magica"
    save_state="y"
    date_written="2010-10-12"
+   date_modified="2010-10-13"
    requires="4.61"
-   version="1.0"
+   version="1.1"
    >
 
    <description trim="y">
@@ -325,17 +326,6 @@ function Exits_Line (name, line, wildcards)
   
   EnableTrigger ("Exits_Line", false)
 end -- Exits_Line
-
-
--- -----------------------------------------------------------------
--- 5. Here on description line
--- -----------------------------------------------------------------
-
-function Description (name, line, wildcards, styles)
-
-
-end -- Description
-
 
 -- -----------------------------------------------------------------
 -- 5. Here on description, or line *after* the description
