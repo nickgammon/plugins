@@ -19,9 +19,9 @@
    purpose="Mapper for Materia Magica"
    save_state="y"
    date_written="2010-10-12"
-   date_modified="2010-10-13"
+   date_modified="2010-10-15 07:00"
    requires="4.61"
-   version="1.1"
+   version="1.2"
    >
 
    <description trim="y">
@@ -501,7 +501,7 @@ function Other_Line (name, line, wildcards, styles)
     return
   end -- no hyphens line
     
-  -- genereate a "room ID" by hashing the room name, description and exits
+  -- generate a "room ID" by hashing the room name, description and exits
   uid = utils.tohex (utils.md5 (roomname .. roomdesc .. exits_str .. map_str))
   uid = uid:sub (1, 10)    -- more manageable length
 
@@ -977,7 +977,7 @@ function load_room_from_database (uid)
      room = {
        name = row.name,
        area = row.area,
-       desc = row.desc,
+       description = row.description,
        shop = row.shop,
        train = row.train,
        notes = row.notes,
@@ -1001,22 +1001,22 @@ function load_room_from_database (uid)
 end -- load_room_from_database
 
 
-function save_room_to_database (uid, title, desc)
+function save_room_to_database (uid, title, description)
   
   assert (uid, "No UID supplied to save_room_to_database")
   
   dbcheck (db:execute (string.format (
-        "INSERT INTO rooms (uid, name, desc, date_added) VALUES (%s, %s, %s, DATETIME('NOW'));",
+        "INSERT INTO rooms (uid, name, description, date_added) VALUES (%s, %s, %s, DATETIME('NOW'));",
           fixsql (uid), 
           fixsql (title),
-          fixsql (desc)
+          fixsql (description)
         )))
         
   dbcheck (db:execute (string.format ([[
-        INSERT INTO rooms_lookup (uid, name, desc) VALUES (%s, %s, %s);
+        INSERT INTO rooms_lookup (uid, name, description) VALUES (%s, %s, %s);
       ]], fixsql  (uid),       
           fixsql  (title),
-          fixsql  (desc) 
+          fixsql  (description) 
           )))
         
   room_not_in_database [uid] = false
@@ -1061,7 +1061,7 @@ function create_tables ()
       roomid        INTEGER PRIMARY KEY AUTOINCREMENT,
       uid           TEXT NOT NULL,   -- vnum or how the MUD identifies the room
       name          TEXT,            -- name of room
-      desc          TEXT,            -- description
+      description   TEXT,            -- description
       building      TEXT,            -- which building it is in
       shop          INTEGER,         -- 1 = shop here
       train         INTEGER,         -- 1 = trainer here
@@ -1092,9 +1092,9 @@ function create_tables ()
   end  -- for
   
   if not table_exists then
-    dbcheck (db:execute "CREATE VIRTUAL TABLE rooms_lookup USING FTS3(uid, name, desc);")
+    dbcheck (db:execute "CREATE VIRTUAL TABLE rooms_lookup USING FTS3(uid, name, description);")
     -- in case we only deleted the rooms_lookup table to save space in the download
-    dbcheck (db:execute "INSERT INTO rooms_lookup (uid, name, desc) SELECT uid, name, desc FROM rooms;")
+    dbcheck (db:execute "INSERT INTO rooms_lookup (uid, name, description) SELECT uid, name, description FROM rooms;")
   end -- if
    
       
