@@ -21,7 +21,7 @@
    date_written="2010-10-12"
    date_modified="2010-10-15 07:00"
    requires="4.61"
-   version="1.2"
+   version="1.3"
    >
 
    <description trim="y">
@@ -407,6 +407,7 @@ function Name_Line (name, line, wildcards, styles)
   exits = {}
   exits_str = ""
   map_str = ""
+  got_exits = false
   EnableTrigger ("Hyphen_Line", true)
   EnableTrigger ("Other_Line", true)
   EnableTrigger ("Name_Line", false)
@@ -444,6 +445,7 @@ function Exits_Line (name, line, wildcards)
   exits_str = string.gsub (wildcards [1]:lower (), "[()]", "")
 
   EnableTrigger ("Exits_Line", false)
+  got_exits = true
 end -- Exits_Line
 
 -- -----------------------------------------------------------------
@@ -518,6 +520,19 @@ function Other_Line (name, line, wildcards, styles)
     -- print ("Loading room", current_room, "from database")
     room = load_room_from_database (current_room)
   end -- not in cache
+  
+  if not got_exits then
+    ColourNote ("palevioletred", "", [[
+    
+WARNING: I did not see a "Visible Exits:" line.
+The mapper will not connect rooms to other rooms without it.
+Please turn on the exits by typing:
+]])
+    ColourNote ("yellow", "", [[
+         set show-exits
+         
+]])         
+  end -- if
   
   if not room then
     -- print ("Added room", uid)  -- debugging
@@ -711,7 +726,7 @@ function fix_up_exit ()
   -- where we were before
   local room = rooms [from_room]
   
---  print ("Moved from", from_room, "to", current_room, "in direction", last_direction_moved)
+  -- print ("Moved from", from_room, "to", current_room, "in direction", last_direction_moved)
   
   -- leads to here
   if from_room ~= current_room then
@@ -723,7 +738,7 @@ function fix_up_exit ()
           fixsql  (from_room),       -- from previous room
           fixsql  (last_direction_moved)  -- direction (eg. "n")
           )))
-          
+    
     if show_database_mods then
       mapper.mapprint ("Fixed exit", last_direction_moved, "from room", from_room, "to be to", current_room)
     end -- if
