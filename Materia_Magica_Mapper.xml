@@ -19,9 +19,9 @@
    purpose="Mapper for Materia Magica"
    save_state="y"
    date_written="2010-10-12"
-   date_modified="2010-10-15 07:00"
+   date_modified="2010-10-18 07:05"
    requires="4.61"
-   version="1.3"
+   version="1.4"
    >
 
    <description trim="y">
@@ -63,7 +63,7 @@ mapper where <room> --> show directions to a room
 
 MOVING  
 
-mapper goto <room>  --> walk to a room by its room number
+mapper goto <room>  --> walk to a room by its room number (partial)
 mapper stop         --> cancel any current speedwalk
 mapper resume       --> resume last speedwalk or hyperlinked speedwalk
 
@@ -886,7 +886,17 @@ function map_goto (name, line, wildcards)
 
   local wanted = wildcards [1]
   
-  if current_room and wanted == current_room then
+  -- check valid string
+  if string.match (wanted, "%X") then
+    mapper.maperror ("Room number must be hex string (0-9, A-F), you entered: " .. wanted)
+    return
+  end -- if
+  
+  -- internally rooms are upper-case hex
+  wanted = wanted:upper ()
+  
+  -- see if already there
+  if current_room and string.match (current_room, "^" .. wanted) then
     mapper.mapprint ("You are already in that room.")
     return
   end -- if
@@ -894,7 +904,8 @@ function map_goto (name, line, wildcards)
   -- find desired room
   mapper.find (
     function (uid) 
-      return uid == wanted, uid == wanted  
+      local found = string.match (uid, "^" .. wanted)
+      return found, found  
     end,  -- function
     show_vnums,  -- show vnum?
     1,          -- how many to expect
@@ -1453,14 +1464,31 @@ function room_click (uid, flags)
                            
 end -- room_click
 
+
 function map_find (name, line, wildcards)
  
   local rooms = {}
   local count = 0
+  local snippets = {}
+  local reset = ANSI (0)
+  local bold = ANSI (1)
+  local unbold = ANSI (22)
+  
+  function show_snippet (uid)
+    AnsiNote (reset .. snippets [uid])
+  end -- show_snippet
+
   
   -- find matching rooms using FTS3
-  for row in db:nrows(string.format ("SELECT uid, name FROM rooms_lookup WHERE rooms_lookup MATCH %s", fixsql (wildcards [1]))) do
+  for row in db:nrows(string.format (
+     [[
+     SELECT uid, name, snippet(rooms_lookup, '%s', '%s', ' ... ', -1, -10) AS snippet 
+        FROM rooms_lookup 
+        WHERE rooms_lookup MATCH %s]], 
+      bold, unbold,
+      fixsql (wildcards [1]))) do
      rooms [row.uid] = true
+     snippets [row.uid] = row.snippet
      count = count + 1
   end   -- finding room
   
@@ -1475,7 +1503,8 @@ function map_find (name, line, wildcards)
     end,  -- function
     show_vnums,  -- show vnum?
     count,      -- how many to expect
-    false       -- don't auto-walk
+    false,       -- don't auto-walk
+    show_snippet -- show find snippet
     )
   
 end -- map_find
