@@ -37,7 +37,7 @@ FONT_NAME = "Lucida Console"
 FONT_SIZE = 9
 
 -- where to put the window
-WINDOW_POSITION = 6  -- see below (6 is top right)
+WINDOW_POSITION = 7  -- see below (6 is top right)
 
 --[[
 Useful positions:

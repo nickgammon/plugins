@@ -1260,6 +1260,49 @@ function change_room_area (room, uid)
       )))
 end -- change_room_area
 
+function add_area (room, uid)
+   
+  local roomname
+  local roomarea
+  
+  for row in db:nrows(string.format ("SELECT name, area FROM rooms WHERE uid = %s", fixsql (uid))) do
+    roomname = row.name
+    roomarea = row.area
+  end   -- finding room
+
+  if roomname == nil then
+    mapper.maperror("Cannot find this room in the database")
+    return
+  end -- if
+
+  if roomarea then
+    mapper.maperror("This room already belongs to area " .. roomarea)
+    return
+  end -- if
+  
+  local area_name = utils.inputbox ("Name for area: " .. roomarea,
+                                    "Choose the name for this area",
+                                    areas [roomarea] )
+   
+  if not area_name or area_name == "" then
+    return
+  end -- if
+  
+  dbcheck (db:execute (string.format (
+    "INSERT INTO areas (uid, name, date_added) VALUES (%s, %s, DATETIME('NOW'));",
+      fixsql (roomarea), 
+      fixsql (area_name)
+    )))
+      
+  mapper.mapprint (string.format ("Added area '%s' with area code '%s'", 
+                   area_name, roomarea))
+                         
+  areas [roomarea] = area_name
+                              
+  mapper.draw (current_room)
+      
+end -- add_area
+
 function room_click (uid, flags)
 
   -- check we got room at all
@@ -1288,7 +1331,9 @@ function room_click (uid, flags)
       { name = "Add Exit", func = room_add_exit} ,
       { name = "Change Exit", func = room_change_exit} ,
       { name = "Delete Exit", func = room_delete_exit} ,
-      { name = "Set area", func = change_room_area} ,
+      { name = "-", } ,
+      { name = "Set area for room", func = change_room_area} ,
+      { name = "Add new area", func = add_area} ,
       } -- handlers
       
   local t, tf = {}, {}
