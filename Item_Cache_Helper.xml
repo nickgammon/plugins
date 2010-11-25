@@ -93,17 +93,6 @@ end -- load_item_from_database
 
 local IAC, SB, SE = 0xFF, 0xFA, 0xF0
 
-local function loader (s)
-local done = false
-
-  return function ()
-    if done then return end
-    done = true
-    return s
-  end -- ld
-end -- loader
-
-
 -- check if single item cached
 function get_item (hash)
 
@@ -113,14 +102,8 @@ function get_item (hash)
   -- yes? just return it then
   if item then
     -- print ("found item for", hash, "hash of it is", utils.tohex (utils.md5 (item)))
-    
     local t = {}  
-    if _VERSION == "Lua 5.1" then
-      setfenv (assert (loadstring (item)), t) () -- compile and load into t
-    else
-      assert (loadin (t, loader (item))) ()
-    end -- if
-    
+    setfenv (assert (loadstring (item)), t) () -- compile and load into t
     return t  
   end -- if found
   
@@ -182,12 +165,8 @@ end -- OnPluginClose
 function OnPluginTelnetOption (option)
 
   local t = {}  -- incoming server variables will go into table t
+  setfenv (assert (loadstring (option)), t) () -- compile and load into t
   
-  if _VERSION == "Lua 5.1" then
-    setfenv (assert (loadstring (option)), t) () -- compile and load into t
-  else
-    assert (loadin (t, loader (option))) ()
-  end -- if
   
   -- cache incoming item information
   if t.hash_info then

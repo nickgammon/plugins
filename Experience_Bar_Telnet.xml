@@ -99,26 +99,11 @@ function draw_bar ()
   
 end -- draw_bar
 
-local function loader (s)
-local done = false
-
-  return function ()
-    if done then return end
-    done = true
-    return s
-  end -- ld
-end -- loader
-
 
 function OnPluginTelnetOption (option)
 
   local t = {}  -- incoming server variables will go into table t
-  
-  if _VERSION == "Lua 5.1" then
-    setfenv (assert (loadstring (option)), t) () -- compile and load into t
-  else
-    assert (loadin (t, loader (option))) ()
-  end -- if
+  setfenv (assert (loadstring (option)), t) () -- compile and load into t
   
   if not t.group then
     return
