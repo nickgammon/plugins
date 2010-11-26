@@ -47,8 +47,8 @@ room the stub will disappear and the room(s) in question will be drawn.
 ACTIONS
 
 mapper help         --> this help  (or click the "?" button on the bottom right)
-mapper zoom out     --> zoom out
-mapper zoom in      --> zoom in
+mapper zoom out     --> zoom out   (or use the mouse-wheel)
+mapper zoom in      --> zoom in    (or use the mouse-wheel)
 mapper hide         --> hide map
 mapper show         --> show map
 
