@@ -16,8 +16,41 @@
 <description trim="y">
 <![CDATA[
 To get general help:
+  
+  mchelp <search string>
+  
+  mchelp   --> on its own, shows this help
 
-mchelp <search string>
+Search strings can have boolean operators in them, namely the words:
+  
+  AND NEAR NOT OR
+
+These words must be in all capitals or they are just searched for literally. 
+
+For example:
+
+  mchelp trigger AND alias
+  mchelp delete AND trigger NEAR count
+  mchelp search NOT table
+  mchelp search -table
+  mchelp add OR delete
+  mchelp next NEAR/5 table
+  mchelp add AND (trigger OR alias)
+
+(The syntax NEAR/5 means if one word is within 5 words of another word, the default is 10)
+
+You can use a wildcard suffix, eg.
+  
+  mchelp trigg*
+
+You can look for phrases by putting them in quotes, eg.
+  
+  mchelp "hash a string"
+  
+You can restrict the lookup to the item name (eg. the function name) like this:
+
+  mchelp name:utils.*
+
 ]]>
 </description>
 
@@ -29,13 +62,21 @@ mchelp <search string>
 <aliases>
   <alias
    script="help_find"
-   match="^mchelp ([\w* %d/&quot;]+)$"
+   match="^mchelp (.+)$"
    enabled="y"
    group="help"
    regexp="y"
    sequence="100"
   >
   </alias>
+  
+  <alias
+   script="OnHelp"
+   match="mchelp"
+   enabled="y"
+  >
+  </alias>
+  
 </aliases>
 
 <!--  Script  -->
@@ -44,16 +85,20 @@ mchelp <search string>
 <script>
 <![CDATA[
 
+require "pairsbykeys"
+
 local CODECOLOUR = "greenyellow"
 local RETURNVALUE = "thistle"
 local BOLDCOLOUR = "orange"
 local ITALICCOLOUR = "linen"
 
-require "pairsbykeys"
-
 local reset = ANSI (0)
 local bold = ANSI (1)
 local unbold = ANSI (22)
+
+local styles
+
+-- horizontal rule helper function
 
 function hr ()
   local v = tonumber (Version ())
@@ -65,6 +110,8 @@ function hr ()
   end -- if
   
 end -- if
+
+-- SQL fixup functions
 
 function fixsql (s)
   
@@ -83,58 +130,7 @@ function fixbool (b)
   end -- if
 end -- fixbool
 
-function show_functions_help (row)
-
-  hr ()
-
-  ColourNote ("yellow", "", "Function")
-  print ""
-  ColourNote ("cyan", "", row.name)
-  print ""
-  
-  -- Summary
-  ColourNote ("yellow", "", "Summary")
-  print ""
-  ColourNote ("white", "", row.summary)
-  print ""
-
-  -- Prototype
-  ColourNote ("yellow", "", "Prototype")
-  print ""
-  ColourNote ("white", "", row.prototype)
-  print ""
-  
-  -- description
-  ColourNote ("yellow", "", "Description")
-  print ""
-  ColourNote ("white", "", row.description)
-  print ""
-
-  -- return value
-  ColourNote ("yellow", "", "Return Value")
-  print ""
-  ColourNote (RETURNVALUE, "", row.return_value)
-  print ""
-
-  -- Lua example
-  ColourNote ("yellow", "", "Lua Example")
-  print ""
-  ColourNote (CODECOLOUR, "", row.lua_example)
-  print ""
-  
-  -- Lua notes
-  if row.lua_notes and row.lua_notes ~= "" then
-    ColourNote ("yellow", "", "Lua Notes")
-    print ""
-    ColourNote ("white", "", row.lua_notes)
-    print ""
-  end -- if 
-  
-  hr ()
-
-end -- show_functions_help
-
-local styles
+-- tagged-text helpers
 
 function opentag (tag, recurses)
 
@@ -240,24 +236,50 @@ function processtag (xml, offset, tag)
   outputblock (xml:sub (offset))
   
 end -- processtag
+
+function show_item (hdg_colour, hdg, text_colour, text, tagged)
+
+  if text and text ~= "" then
   
-  
-function show_general_help (row)
-  
+    if hdg and hdg ~= "" then
+      ColourNote (hdg_colour, "", hdg)
+      print ""
+    end -- if any heading
+        
+    if tagged then
+      local notecolour = GetNoteColourFore ()
+      styles = {}
+      SetNoteColourFore (ColourNameToRGB (text_colour))
+      processtag (text, 1, nil);
+      SetNoteColourFore (notecolour)
+    else
+      ColourNote (text_colour, "", text)
+    end -- if tagged or not
     
+    print ""
+  end -- if any text
+  
+end -- show_item
+
+function show_functions_help (row)
+
+  hr ()
+  show_item ("yellow", "Function",      "cyan",       row.name)
+  show_item ("yellow", "Summary",       "white",      row.summary)
+  show_item ("yellow", "Prototype",     "white",      row.prototype)
+  show_item ("yellow", "Description",   "white",      row.description)
+  show_item ("yellow", "Return Value",  RETURNVALUE,  row.return_value)
+  show_item ("yellow", "Lua Example",   CODECOLOUR,   row.lua_example)
+  show_item ("yellow", "Lua Notes",     "white",      row.lua_notes)
   hr ()
 
-  ColourNote ("cyan", "", row.title)
+end -- show_functions_help
   
- 
-  -- description
-  print ""
-  styles = {}
-  SetNoteColourFore (ColourNameToRGB ("white"))
-  processtag (row.description, 1, nil);
-  print ""
+function show_general_help (row)
 
- 
+  hr ()
+  show_item ("", "",                    "cyan",       row.title)
+  show_item ("yellow", "Summary",       "white",      row.description,   true)
   hr ()
   
 end -- show_general_help
@@ -265,41 +287,22 @@ end -- show_general_help
 function show_lua_functions_help (row)
 
   hr ()
-
-  ColourNote ("yellow", "", "Lua")
-  print ""
-  ColourNote ("cyan", "", row.name)
-  print ""
-  
-  -- Summary
-  ColourNote ("yellow", "", "Summary")
-  print ""
-  ColourNote ("white", "", row.summary)
-  print ""
-
-  -- Prototype
-  ColourNote ("yellow", "", "Prototype")
-  print ""
-  ColourNote ("white", "", row.prototype)
-  print ""
-
-  -- description
-  ColourNote ("yellow", "", "Description")
-  print ""
-  styles = {}
-  SetNoteColourFore (ColourNameToRGB ("white"))
-  processtag (row.description, 1, nil);
-  print ""
-
-   
+  show_item ("yellow", "Lua",         "cyan",       row.name)
+  show_item ("yellow", "Summary",     "cyan",       row.summary)
+  show_item ("yellow", "Prototype",   "cyan",       row.prototype)
+  show_item ("yellow", "Description", "white",      row.description,  true)
   hr ()
 
 end -- show_lua_functions_help
+
+-- here when hyperlink clicked
 
 function do_hyperlink (s)
   local what, name = string.match (s, "([%a_]+):([%a%d_%. :]+)")
   
   if not what then return end
+  
+  -- display in different way depending on type of help
   
   if what == "functions" then
   
@@ -330,8 +333,9 @@ function do_hyperlink (s)
       
   end -- if
   
-
 end -- do_hyperlink
+
+-- here when they want to search the help
 
 function help_find (name, line, wildcards)
  
@@ -368,12 +372,12 @@ function help_find (name, line, wildcards)
   -- find matching items using FTS
   for row in db:nrows(string.format (
      [[
-     SELECT doc_name, title, snippet(general_doc_lookup, '%s', '%s', ' ... ', -1, -10) AS snippet 
+     SELECT name, title, snippet(general_doc_lookup, '%s', '%s', ' ... ', -1, -10) AS snippet 
         FROM general_doc_lookup 
         WHERE general_doc_lookup MATCH %s]], 
       bold, unbold,
      searchfor)) do
-     general [row.doc_name] = { snippet = row.snippet, title = row.title }
+     general [row.name] = { snippet = row.snippet, title = row.title }
      count = count + 1
   end   -- finding item
   
@@ -426,11 +430,9 @@ function help_find (name, line, wildcards)
     end -- for
   end -- if  
   
-  
   if count == 0 then
     print ("Nothing found for:", wildcards [1])
   end -- if
-  
   
 end -- help_find
 
@@ -442,28 +444,28 @@ function OnPluginInstall ()
   end -- if
   
   
-  local fts3 = false
+  local fts4 = false
   
-  -- see if FTS3 tables exist
+  -- see if fts4 tables exist
   for row in db:nrows("SELECT * FROM sqlite_master WHERE type = 'table' AND name = 'commands_lookup'") do 
-    fts3 = true
+    fts4 = true
   end
 
-    -- if no fts3 tables, make them
-  if not fts3 then
+    -- if no fts4 tables, make them
+  if not fts4 then
     local start = utils.timer ()
     ColourNote ("cyan", "", "Creating help database full-text lookup tables ...")
     assert (db:execute[[
         BEGIN TRANSACTION;
         
         DROP TABLE IF EXISTS commands_lookup;
-        CREATE VIRTUAL TABLE commands_lookup USING FTS4(command_name, short_description, description);
-        INSERT INTO commands_lookup (command_name, short_description, description) 
+        CREATE VIRTUAL TABLE commands_lookup USING FTS4(name, short_description, description);
+        INSERT INTO commands_lookup (name, short_description, description) 
                SELECT command_name, short_description, description FROM commands;
         
         DROP TABLE IF EXISTS dialogs_lookup;
-        CREATE VIRTUAL TABLE dialogs_lookup USING FTS4(dialog_name, title, description);
-        INSERT INTO dialogs_lookup (dialog_name, title, description) 
+        CREATE VIRTUAL TABLE dialogs_lookup USING FTS4(name, title, description);
+        INSERT INTO dialogs_lookup (name, title, description) 
                SELECT dialog_name, title, description FROM dialogs;
         
         DROP TABLE IF EXISTS functions_lookup;
@@ -472,13 +474,13 @@ function OnPluginInstall ()
                SELECT name, summary, description, lua_example, lua_notes FROM functions;
         
         DROP TABLE IF EXISTS general_doc_lookup;
-        CREATE VIRTUAL TABLE general_doc_lookup USING FTS4(doc_name, title, description);
-        INSERT INTO general_doc_lookup (doc_name, title, description) 
+        CREATE VIRTUAL TABLE general_doc_lookup USING FTS4(name, title, description);
+        INSERT INTO general_doc_lookup (name, title, description) 
                SELECT doc_name, title, description FROM general_doc;
         
         DROP TABLE IF EXISTS errors_lookup;
-        CREATE VIRTUAL TABLE errors_lookup USING FTS4(error_name, error_code, meaning);
-        INSERT INTO errors_lookup (error_name, error_code, meaning) 
+        CREATE VIRTUAL TABLE errors_lookup USING FTS4(name, error_code, description);
+        INSERT INTO errors_lookup (name, error_code, description) 
                SELECT error_name, error_code, meaning FROM errors;
         
         DROP TABLE IF EXISTS lua_functions_lookup;
@@ -493,27 +495,14 @@ function OnPluginInstall ()
   end -- if 
     
 end -- OnPluginInstall
+
+function OnHelp ()
+  hr ()
+  world.Note (world.GetPluginInfo (world.GetPluginID (), 3))
+  hr ()
+end
+
 ]]>
 </script>
-
-
-<!--  Plugin help  -->
-
-<aliases>
-  <alias
-   script="OnHelp"
-   match="mchelp"
-   enabled="y"
-  >
-  </alias>
-</aliases>
-
-<script>
-<![CDATA[
-function OnHelp ()
-  world.Note (world.GetPluginInfo (world.GetPluginID (), 3))
-end
-]]>
-</script> 
 
 </muclient>
