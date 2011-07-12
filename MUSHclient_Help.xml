@@ -1,0 +1,519 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<muclient>
+<plugin
+   name="MUSHclient_Help"
+   author="Nick Gammon"
+   id="d2fa45d390d935d947cdc169"
+   language="Lua"
+   purpose="Shows the MUSHclient help file"
+   save_state="y"
+   date_written="2011-06-13 08:58:30"
+   requires="4.75"
+   version="1.0"
+   >
+<description trim="y">
+<![CDATA[
+To get general help:
+
+mchelp <search string>
+]]>
+</description>
+
+</plugin>
+
+
+<!--  Aliases  -->
+
+<aliases>
+  <alias
+   script="help_find"
+   match="^mchelp ([\w* %d/&quot;]+)$"
+   enabled="y"
+   group="help"
+   regexp="y"
+   sequence="100"
+  >
+  </alias>
+</aliases>
+
+<!--  Script  -->
+
+
+<script>
+<![CDATA[
+
+local CODECOLOUR = "greenyellow"
+local RETURNVALUE = "thistle"
+local BOLDCOLOUR = "orange"
+local ITALICCOLOUR = "linen"
+
+require "pairsbykeys"
+
+local reset = ANSI (0)
+local bold = ANSI (1)
+local unbold = ANSI (22)
+
+function hr ()
+  local v = tonumber (Version ())
+  
+  if v and v >= 4.76 then
+    NoteHr ()
+  else
+    print (string.rep ("-", GetOption ("wrap_column") - 1))
+  end -- if
+  
+end -- if
+
+function fixsql (s)
+  
+  if s then
+    return "'" .. (string.gsub (s, "'", "''")) .. "'" -- replace single quotes with two lots of single quotes
+  else
+    return "NULL"
+  end -- if
+end -- fixsql
+
+function fixbool (b)
+  if b then
+    return 1
+  else
+    return 0
+  end -- if
+end -- fixbool
+
+function show_functions_help (row)
+
+  hr ()
+
+  ColourNote ("yellow", "", "Function")
+  print ""
+  ColourNote ("cyan", "", row.name)
+  print ""
+  
+  -- Summary
+  ColourNote ("yellow", "", "Summary")
+  print ""
+  ColourNote ("white", "", row.summary)
+  print ""
+
+  -- Prototype
+  ColourNote ("yellow", "", "Prototype")
+  print ""
+  ColourNote ("white", "", row.prototype)
+  print ""
+  
+  -- description
+  ColourNote ("yellow", "", "Description")
+  print ""
+  ColourNote ("white", "", row.description)
+  print ""
+
+  -- return value
+  ColourNote ("yellow", "", "Return Value")
+  print ""
+  ColourNote (RETURNVALUE, "", row.return_value)
+  print ""
+
+  -- Lua example
+  ColourNote ("yellow", "", "Lua Example")
+  print ""
+  ColourNote (CODECOLOUR, "", row.lua_example)
+  print ""
+  
+  -- Lua notes
+  if row.lua_notes and row.lua_notes ~= "" then
+    ColourNote ("yellow", "", "Lua Notes")
+    print ""
+    ColourNote ("white", "", row.lua_notes)
+    print ""
+  end -- if 
+  
+  hr ()
+
+end -- show_functions_help
+
+local styles
+
+function opentag (tag, recurses)
+
+  if recurses then
+    table.insert (styles, GetNoteColourFore () )
+  end -- if
+  
+  if tag == "b" then
+    SetNoteColourFore (ColourNameToRGB (BOLDCOLOUR))
+  elseif tag == "i" then
+    SetNoteColourFore (ColourNameToRGB (ITALICCOLOUR))
+  elseif tag == "ul" then
+    -- SetNoteColourFore (ColourNameToRGB ("indianred"))
+  elseif tag == "li" then
+    Tell (" * ")
+  elseif tag == "hr" then
+    hr ()
+  elseif tag == "code" then
+    SetNoteColourFore (ColourNameToRGB (CODECOLOUR))
+  else
+    print ("Unknown tag: ", tag)
+  end
+
+end -- opentag
+
+function closetag (tag)
+
+  -- put old colour back
+  SetNoteColourFore (table.remove (styles))
+
+end -- closetag
+
+local entities = {
+  ["&lt;"] = "<",
+  ["&gt;"] = ">",
+  ["&amp;"] = "&",
+  ["&quot;"] = "\"",
+  } -- end of entities
+  
+function outputblock (s)
+  Tell ((string.gsub (s, "&%a+;", entities)))
+end -- outputblock
+
+function processtag (xml, offset, tag)
+  if tag then
+    opentag (tag, true)
+  end -- if
+
+  while true do 
+    start, finish, what = string.find (xml, "([\n<])", offset) 
+    if not start then break end
+    
+    if what == "\n" then
+      if tag == "code" then
+        outputblock (xml:sub (offset, start))
+      else
+        outputblock (xml:sub (offset, start))
+      end -- if
+      
+      offset = finish + 1
+    else
+      -- must be start of tag
+      
+      -- output up to tag
+      outputblock (xml:sub (offset, start - 1))
+       
+      closestart, closefinish = string.find (xml, ">", start + 1)
+      assert (closestart, "Unterminated tag")
+      newtag = Trim (xml:sub (start + 1, closestart - 1))
+      assert (newtag ~= "", "Empty tag not supported")
+      
+      -- look for closing tag
+      if newtag:sub (1, 1) == "/" then
+        assert (newtag:sub (2) == tag, 
+                "Tags closed output of sequence: " .. tag .. " / " .. newtag:sub (2) )
+        closetag (tag)
+        return closefinish + 1
+      end -- if closing tag
+      
+      -- not closing tag, must be opening one
+      
+      -- look for something like <li/> which doesn't recurse
+      
+      if newtag:sub (-1) == "/" then
+        newtag = Trim (newtag:sub (1, -2))  -- drop slash
+        assert (newtag ~= "", "Empty tag not supported")
+        opentag (newtag, false)
+        offset = closefinish + 1
+      else
+      
+        -- recurse to handle it
+        
+        offset = processtag (xml, closefinish + 1, newtag)
+      
+      end -- if
+      
+    end -- if
+    
+  end -- while
+  
+  assert (not tag, "Tags closed out of sequence")
+  
+  outputblock (xml:sub (offset))
+  
+end -- processtag
+  
+  
+function show_general_help (row)
+  
+    
+  hr ()
+
+  ColourNote ("cyan", "", row.title)
+  
+ 
+  -- description
+  print ""
+  styles = {}
+  SetNoteColourFore (ColourNameToRGB ("white"))
+  processtag (row.description, 1, nil);
+  print ""
+
+ 
+  hr ()
+  
+end -- show_general_help
+
+function show_lua_functions_help (row)
+
+  hr ()
+
+  ColourNote ("yellow", "", "Lua")
+  print ""
+  ColourNote ("cyan", "", row.name)
+  print ""
+  
+  -- Summary
+  ColourNote ("yellow", "", "Summary")
+  print ""
+  ColourNote ("white", "", row.summary)
+  print ""
+
+  -- Prototype
+  ColourNote ("yellow", "", "Prototype")
+  print ""
+  ColourNote ("white", "", row.prototype)
+  print ""
+
+  -- description
+  ColourNote ("yellow", "", "Description")
+  print ""
+  styles = {}
+  SetNoteColourFore (ColourNameToRGB ("white"))
+  processtag (row.description, 1, nil);
+  print ""
+
+   
+  hr ()
+
+end -- show_lua_functions_help
+
+function do_hyperlink (s)
+  local what, name = string.match (s, "([%a_]+):([%a%d_%. :]+)")
+  
+  if not what then return end
+  
+  if what == "functions" then
+  
+    for row in db:nrows(string.format (
+       [[
+       SELECT * FROM functions WHERE name = %s]], 
+        fixsql (name))) do
+       show_functions_help (row)
+    end   -- finding function
+      
+  elseif what == "general" then
+  
+    for row in db:nrows(string.format (
+       [[
+       SELECT * FROM general_doc WHERE doc_name = %s]], 
+        fixsql (name))) do
+       show_general_help (row)
+    end -- finding general doc
+ 
+  elseif what == "lua_functions" then
+  
+    for row in db:nrows(string.format (
+       [[
+       SELECT * FROM lua_functions WHERE name = %s]], 
+        fixsql (name))) do
+       show_lua_functions_help (row)
+    end   -- finding lua_functions
+      
+  end -- if
+  
+
+end -- do_hyperlink
+
+function help_find (name, line, wildcards)
+ 
+  local searchfor = fixsql (wildcards [1])
+  
+  AnsiNote (reset)
+  
+  assert (db, "No help database found")
+  
+  local count = 0
+  local functions = {}
+  local general = {}
+  local lua_functions = {}
+  
+  function show_snippet (what, name, title, extra, snippet)
+    Tell " "
+    Hyperlink ("!!" .. GetPluginID () .. ":do_hyperlink(" .. what .. ":" .. name .. ")", 
+                title, "Click to show help", "cyan", "", false)
+    if extra ~= "" then
+        Tell (" - ", extra)
+    end -- if
+    print ""  
+    
+    -- show snippet
+           
+    --AnsiNote (reset .. snippet)
+    --print ""
+  end -- show_snippet
+
+  hr ()
+ 
+  -- GENERAL documentation
+  
+  -- find matching items using FTS
+  for row in db:nrows(string.format (
+     [[
+     SELECT doc_name, title, snippet(general_doc_lookup, '%s', '%s', ' ... ', -1, -10) AS snippet 
+        FROM general_doc_lookup 
+        WHERE general_doc_lookup MATCH %s]], 
+      bold, unbold,
+     searchfor)) do
+     general [row.doc_name] = { snippet = row.snippet, title = row.title }
+     count = count + 1
+  end   -- finding item
+  
+  if next (general) then
+    ColourNote ("yellow", "", "Topics")
+    for k, v in pairsByKeys (general) do
+      show_snippet ("general", k, v.title, "", v.snippet)
+    end -- for
+  end -- if
+      
+ -- FUNCTIONS documentation
+  
+  -- find matching items using FTS
+  for row in db:nrows(string.format (
+     [[
+     SELECT name, summary, snippet(functions_lookup, '%s', '%s', ' ... ', -1, -10) AS snippet 
+        FROM functions_lookup 
+        WHERE functions_lookup MATCH %s]], 
+      bold, unbold,
+      searchfor)) do
+     functions [row.name] = { snippet = row.snippet, summary = row.summary }
+     count = count + 1
+  end   -- finding item
+  
+  if next (functions) then
+    ColourNote ("yellow", "", "Functions")
+    for k, v in pairsByKeys (functions) do
+      show_snippet ("functions", k, k, v.summary, v.snippet)
+    end -- for
+  end -- if
+    
+ -- LUA FUNCTIONS documentation
+  
+  -- find matching items using FTS
+  for row in db:nrows(string.format (
+     [[
+     SELECT name, summary, snippet(lua_functions_lookup, '%s', '%s', ' ... ', -1, -10) AS snippet 
+        FROM lua_functions_lookup 
+        WHERE lua_functions_lookup MATCH %s]], 
+      bold, unbold,
+      searchfor)) do
+     lua_functions [row.name] = { snippet = row.snippet, summary = row.summary }
+     count = count + 1
+  end   -- finding item
+  
+  if next (lua_functions) then
+    ColourNote ("yellow", "", "Lua")
+    for k, v in pairsByKeys (lua_functions) do
+      show_snippet ("lua_functions", k, k, v.summary, v.snippet)
+    end -- for
+  end -- if  
+  
+  
+  if count == 0 then
+    print ("Nothing found for:", wildcards [1])
+  end -- if
+  
+  
+end -- help_find
+
+function OnPluginInstall ()
+  -- open database on disk 
+  
+  if not db then
+    db = assert (sqlite3.open(GetInfo (66) .. "help.db"))
+  end -- if
+  
+  
+  local fts3 = false
+  
+  -- see if FTS3 tables exist
+  for row in db:nrows("SELECT * FROM sqlite_master WHERE type = 'table' AND name = 'commands_lookup'") do 
+    fts3 = true
+  end
+
+    -- if no fts3 tables, make them
+  if not fts3 then
+    local start = utils.timer ()
+    ColourNote ("cyan", "", "Creating help database full-text lookup tables ...")
+    assert (db:execute[[
+        BEGIN TRANSACTION;
+        
+        DROP TABLE IF EXISTS commands_lookup;
+        CREATE VIRTUAL TABLE commands_lookup USING FTS4(command_name, short_description, description);
+        INSERT INTO commands_lookup (command_name, short_description, description) 
+               SELECT command_name, short_description, description FROM commands;
+        
+        DROP TABLE IF EXISTS dialogs_lookup;
+        CREATE VIRTUAL TABLE dialogs_lookup USING FTS4(dialog_name, title, description);
+        INSERT INTO dialogs_lookup (dialog_name, title, description) 
+               SELECT dialog_name, title, description FROM dialogs;
+        
+        DROP TABLE IF EXISTS functions_lookup;
+        CREATE VIRTUAL TABLE functions_lookup USING FTS4(name, summary, description, lua_example, lua_notes);
+        INSERT INTO functions_lookup (name, summary, description, lua_example, lua_notes) 
+               SELECT name, summary, description, lua_example, lua_notes FROM functions;
+        
+        DROP TABLE IF EXISTS general_doc_lookup;
+        CREATE VIRTUAL TABLE general_doc_lookup USING FTS4(doc_name, title, description);
+        INSERT INTO general_doc_lookup (doc_name, title, description) 
+               SELECT doc_name, title, description FROM general_doc;
+        
+        DROP TABLE IF EXISTS errors_lookup;
+        CREATE VIRTUAL TABLE errors_lookup USING FTS4(error_name, error_code, meaning);
+        INSERT INTO errors_lookup (error_name, error_code, meaning) 
+               SELECT error_name, error_code, meaning FROM errors;
+        
+        DROP TABLE IF EXISTS lua_functions_lookup;
+        CREATE VIRTUAL TABLE lua_functions_lookup USING FTS4(name, summary, description);
+        INSERT INTO lua_functions_lookup (name, summary, description) 
+               SELECT name, summary, description FROM lua_functions;
+        
+        COMMIT;
+    ]])
+    ColourNote ("cyan", "", string.format ("Done. Took %0.3f seconds.", utils.timer () - start))
+    
+  end -- if 
+    
+end -- OnPluginInstall
+]]>
+</script>
+
+
+<!--  Plugin help  -->
+
+<aliases>
+  <alias
+   script="OnHelp"
+   match="mchelp"
+   enabled="y"
+  >
+  </alias>
+</aliases>
+
+<script>
+<![CDATA[
+function OnHelp ()
+  world.Note (world.GetPluginInfo (world.GetPluginID (), 3))
+end
+]]>
+</script> 
+
+</muclient>
