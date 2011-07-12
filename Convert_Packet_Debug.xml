@@ -53,8 +53,8 @@ require "getlines"
 
 function convert_packet (name, line, wildcards)
 
-  -- get clipboard, remove carriage-returns
-  local clip = string.gsub (GetClipboard (), "\r", "")
+  -- get clipboard
+  local clip = GetClipboard ()
   
   -- starting line of hyphens
   print (string.rep ("-", 60))
@@ -62,7 +62,7 @@ function convert_packet (name, line, wildcards)
   -- for each line see if it looks like a debug line
   -- debug lines have 16 ASCII characters, 3 spaces, and then some hex stuff
   for line in getlines (clip) do
-    local hex = string.match (line, "^................   ([%x ]+)$")
+    local hex = string.match (line, "^................   ([%x ]+)%s*$")
     if hex then  -- looks OK
       for s in string.gmatch (hex, "%x%x") do
         Tell ("\\" .. s)  -- output without a linebreak
