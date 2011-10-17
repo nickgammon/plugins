@@ -21,7 +21,7 @@
    date_written="2010-10-12"
    date_modified="2010-10-18 07:05"
    requires="4.61"
-   version="1.4"
+   version="1.5"
    >
 
    <description trim="y">
@@ -1101,8 +1101,8 @@ function create_tables ()
   CREATE TABLE IF NOT EXISTS exits (
       exitid      INTEGER PRIMARY KEY AUTOINCREMENT,
       dir         TEXT    NOT NULL, -- direction, eg. "n", "s"
-      fromuid     STRING  NOT NULL, -- exit from which room (in rooms table)
-      touid       STRING  NOT NULL, -- exit to which room (in rooms table)
+      fromuid     TEXT    NOT NULL, -- exit from which room (in rooms table)
+      touid       TEXT    NOT NULL, -- exit to which room (in rooms table)
       date_added  DATE,             -- date added to database
       FOREIGN KEY(fromuid) REFERENCES rooms(uid)
     );
