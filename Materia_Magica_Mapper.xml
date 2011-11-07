@@ -12,14 +12,14 @@
 
 <muclient>
 <plugin
-   name="Materia_Magica_Mapper"
+   name="Xyllomer_Mapper"
    author="Nick Gammon"
    id="1c17ac2c83b2b66c402c80c6"
    language="Lua"
-   purpose="Mapper for Materia Magica"
+   purpose="Mapper for Xyllomer"
    save_state="y"
    date_written="2010-10-12"
-   date_modified="2010-10-18 07:05"
+   date_modified="2011-11-07 15:18"
    requires="4.61"
    version="1.5"
    >
@@ -209,6 +209,31 @@ mapper resume       --> resume last speedwalk or hyperlinked speedwalk
   > 
   </trigger>
     
+</triggers>
+
+<triggers>
+  <trigger
+   enabled="y"
+   match="\[(.*)\]\[Exits\: (.*)\]\[COORDS: (.*)\]"
+   script="Xyllomer_Line"
+   regexp="y"
+   sequence="100"
+  >
+  </trigger>
+  
+  <trigger
+   enabled="y"
+   group="Multi Line"
+   lines_to_match="2"
+   keep_evaluating="y"
+   match="\[(.*)\n\]\[Exits\: (.*)\]\[COORDS\: (.*)\]\Z"
+   multi_line="y"
+   regexp="y"
+   script="Xyllomer_Line"
+   sequence="100"
+  >
+  </trigger>
+
 </triggers>
 
 
@@ -562,6 +587,51 @@ Please turn on the exits by typing:
 end -- Other_Line
 
 
+function Xyllomer_Line (name, line, wildcards)
+
+ -- generate a "room ID" by hashing the room name, description and exits
+  uid = utils.tohex (utils.md5 (wildcards [3]))
+  uid = uid:sub (1, 10)    -- more manageable length
+
+  -- save so we know current room later on  
+  current_room = uid
+  
+  local room = rooms [current_room]
+  
+  -- not cached - see if in database
+  if room then
+    print ("Found cached room", current_room)
+  else
+    print ("Loading room", current_room, "from database")
+    room = load_room_from_database (current_room)
+  end -- not in cache
+  
+  if not room then
+    print ("Added room", uid)  -- debugging
+    print ("Name", roomname)
+     
+    db:exec ("BEGIN TRANSACTION;") 
+
+    save_room_to_database (current_room, wildcards [1], "")
+    save_exits_to_database (current_room, wildcards [2])
+    
+    db:exec ("COMMIT;") 
+
+    -- get it back now
+    room = load_room_from_database (current_room)
+
+  end -- if room not there
+  
+  -- call mapper to draw this rom
+  mapper.draw (current_room)    -- redraw room with name
+
+  -- try to work out where previous room's exit led  
+  if expected_exit ~= uid and from_room then
+    fix_up_exit ()
+  end -- exit was wrong
+  
+end -- Xyllomer_Line
+
 function Shop_Line (name, line, wildcards)
 
   -- location not known?
@@ -646,7 +716,7 @@ function get_room (uid)
 
   local room = copytable.deep (ourroom)
   
-  room.area = "Materia Magica"
+  room.area = "Xyllomer"
   
   if uid == current_room then
     current_area = room.area
@@ -1068,7 +1138,7 @@ function save_exits_to_database (uid, exits)
         fixsql  (0)     -- destination room (not known)
         )))
     if show_database_mods then
-      -- mapper.mapprint ("Added unknown exit", dir, "from room", uid, "to database.")
+       mapper.mapprint ("Added unknown exit", dir, "from room", uid, "to database.")
     end -- if
   
   end -- for each exit
