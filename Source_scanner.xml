@@ -1,0 +1,370 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<muclient>
+<plugin
+   name="Source_scanner"
+   author="Nick Gammon"
+   id="efc3c27a95ba6d8b534e46d5"
+   language="Lua"
+   purpose="Scans source files for keywords"
+   date_written="2012-11-04"
+   requires="4.41"
+   version="1.0"
+   >
+<description>
+find &lt;phrase&gt; 
+
+eg. 
+
+cat AND dog              --&gt; both words 
+cat dog                  --&gt; both words, the "AND" is implied
+fish OR bicycle          --&gt; one or the other
+cat NOT food             --&gt; one word but not the other
+bite NEAR me             --&gt; one near the other (within 10 words)
+disk NEAR/3 drive        --&gt; one within 3 words of the other
+"trouble brewing"        --&gt; exact phrase
+chip*                    --&gt; prefix query, matches chip, chips, chipping etc.
+fish NOT (bacon OR eggs) --&gt; brackets can be used to clarify groupings
+    
+The words AND / OR / NEAR / NOT must be in upper case or they just match those words literally.
+
+Note: words with underscores (eg. BUFFER_LENGTH) should be quoted because they are treated as two words.
+
+filter name &lt;wildcard&gt;   --&gt; filter on file name, not contents
+    
+You can use "f" instead of "filter".
+
+index   --&gt;  scans new directory (choose one) to re-make the database
+
+help    --&gt;  this text
+</description>
+
+</plugin>
+
+<aliases>
+ 
+ <alias
+   script="filter_files"
+   match="^(?:f|find) (.+)$"
+   enabled="y"
+   regexp="y"
+   sequence="100"
+  >
+  </alias>
+  
+  <alias
+   script="load_text_files"
+   match="index"
+   enabled="y"
+   sequence="100"
+  >
+  </alias>
+  
+  <alias
+   script="OnHelp"
+   match="help"
+   enabled="y"
+   sequence="100"
+  >
+  </alias>
+    
+</aliases>
+
+<!--  Script  -->
+
+
+<script>
+<![CDATA[
+
+-- ----------- CONFIGURATION -----------
+
+-- file types, separate by spaces, commas, semicolons, whatever. 
+-- We assume suffixes are alphanumeric
+SUFFIXES = "cpp,c,h,xml,lua"
+
+-- default drive for directory picker
+DRIVE_TO_SCAN = "C:\\\\"
+
+-- file name for the database (MUSHclient directory)
+SOURCE_FILES = GetInfo (66) .. "\\source_files.db"
+
+-- colour to show file names in
+HYPERLINK_COLOUR = "dodgerblue"
+
+-- viewer program 
+TEXT_VIEWER = "C:\\Program Files\\Crimson Editor\\cedt.exe"
+
+-- or maybe:
+-- TEXT_VIEWER = "C:\\Windows\\notepad.exe"
+
+-- view program title (for bringing to the front)
+EDITOR_WINDOW_NAME = "Crimson Editor"
+
+-- or maybe:
+-- EDITOR_WINDOW_NAME = "Notepad"
+
+-- show this many before suggesting they narrow the search
+MAX_RESULTS = 500
+
+-- number of tokens to display around the snippet
+SNIPPET_SIZE = -7
+
+-- strip from displayed file names to avoid clutter, like always having "Desktop" or
+--  "My Documents" there, which you might not care about.
+PREFIX_TO_OMIT = "^%a:\\Documents and Settings\\.-\\"
+
+-- for opening editor and bringing it to the front
+-- available here: http://www.gammon.com.au/files/mushclient/lua5.1_extras/windows_utils.zip
+
+assert (package.loadlib ("windows_utils.dll", "luaopen_windows_utils")) ()
+
+require "alphanum"
+os.setlocale ("", "time")
+
+-- build suffixes into a table (keyed by suffix) for quick lookup later
+local suffixes = {}
+for w in string.gmatch (SUFFIXES, "[%a%d]+") do
+  suffixes [w:lower ()] = true 
+end -- for
+  
+-- helper function to check for database errors
+function dbcheck (code)
+
+ if code ~= sqlite3.OK and       -- no error
+    code ~= sqlite3.ROW and      -- completed OK with another row of data
+    code ~= sqlite3.DONE then    -- completed OK, no more rows
+      local err = db:errmsg()    -- the rollback will change the error message
+      db:exec ("ROLLBACK")       -- rollback any transaction to unlock the database
+      error (err, 2)             -- show error in caller's context
+  end -- if error
+
+end -- dbcheck 
+
+-- find where to start scanning from
+function get_text_path ()
+  local path = utils.directorypicker ("Directory for source", DRIVE_TO_SCAN)
+  if not path then
+    return false
+  end -- if
+  text_drive, text_path = string.match (path, "^(%a:)(.+)$")
+  return true
+end --  get_text_path
+ 
+-- process one file
+function read_file (text_drive, name, stats)
+  
+  SetStatus ("Processing: " .. name)
+  
+  -- ignore empty files
+  if stats.size == 0 then
+    return
+  end -- if
+
+  -- look for wanted suffix  
+  if not suffixes [string.match (name:lower (), "%.(%a+)$")] then
+    return
+  end -- if
+
+  count = count + 1
+
+  -- read contents into memory  
+  local f = assert (io.open (text_drive .. name, "rb")) 
+  local s = f:read ("*a")  
+  f:close ()  -- close it
+  
+  -- quotes have to be doubled
+  local fixed_name = string.gsub (text_drive .. name, "'", "''")
+  s = string.gsub (s, "%z", "")  -- get rid of 0x00 bytes
+  local fixed_contents = string.gsub (s, "'", "''")
+   
+  -- save contents
+  dbcheck (db:exec ( string.format ([[
+  INSERT INTO source (name, contents, size, date_written) 
+         VALUES ('%s', '%s', %i, %i);
+  ]], 
+      fixed_name, 
+      fixed_contents, 
+      stats.size, 
+      stats.write_time)))
+
+end -- read_file
+
+-- process one directory (recurses if necessary)
+function scan_text_dir (text_drive, text_path, f)
+  
+  -- find all files in that directory
+  local t = assert (utils.readdir (text_drive .. text_path .. "\\*"), 
+                    "Could not find " .. text_drive .. text_path  .. "\\*")
+    
+  for k, v in pairs (t) do
+   if not v.hidden and 
+      not v.system and
+      k:sub (1, 1) ~= "." then
+      
+      -- recurse to process file or subdirectory
+      if v.directory then
+        scan_text_dir (text_drive, text_path .. "\\" .. k, f)
+      else
+        f (text_drive, text_path .. "\\" .. k, v)
+      end -- if directory or not
+     
+   end -- if not hidden or system
+  
+  end -- for
+
+end -- scan_text_dir 
+
+-- scan entire tree
+function load_text_files (name, line, wildcards)
+
+  if not get_text_path () then
+    return
+  end -- no directory
+
+  db, err, errmsg = sqlite3.open(SOURCE_FILES)
+ 
+  if not db then 
+    ColourNote ("white", "red", errmsg .. ": " .. SOURCE_FILES)
+    return 
+  end
+
+  dbcheck (db:exec [[
+    DROP TABLE IF EXISTS source;
+    CREATE VIRTUAL TABLE source USING FTS4(name, contents, size, date_written);
+   ]])
+ 
+  count = 0   -- actual
+  start_time = utils.timer ()
+  
+  -- write database inside a transaction  
+  db:exec "BEGIN TRANSACTION;"
+  scan_text_dir (text_drive, text_path, read_file)
+  db:exec "COMMIT;"
+  db:close()  -- close
+
+  end_time = utils.timer ()
+  
+  SetStatus ("Ready")
+  print (string.format ("Loaded %i files in %.1f seconds.", count, end_time - start_time))
+ 
+end -- load_text_files
+
+local snippets = {}
+local reset = ANSI (0)
+local highlight = ANSI (1) .. ANSI (36)  -- bold and cyan
+local unhighlight = ANSI (22) .. ANSI (37)  -- unbold and white
+
+-- here when hyperlink clicked to open a particular file
+function display_text_file (name)
+  assert (windows_utils.shell_execute (TEXT_VIEWER, '"' .. name .. '"'))
+  windows_utils.send_to_front (EDITOR_WINDOW_NAME)
+end -- display_text_file
+
+function show_filtered (show_snippet)
+  local names = {}
+  for k in pairs (filtered) do
+    table.insert (names, k)
+  end -- for
+  
+  table.sort(names, alphanum (names))
+ 
+  ColourNote ("yellow", "", "Search term: " .. match)
+  print ""
+  -- now pull out all entries
+   
+  for _, name in ipairs (names) do
+     Hyperlink ("!!" .. GetPluginID () .. ":display_text_file(" .. name .. ")", 
+          (string.gsub (name, PREFIX_TO_OMIT, "")), 
+          "Click to open", HYPERLINK_COLOUR, "", 0)
+     if name == current then
+       print ("  <-- this file")
+     else
+       print ""
+     end -- if
+     if show_snippet then
+       AnsiNote (reset .. filtered [name])
+       print ""
+     end -- if
+  end -- for each file
+
+  ColourNote ("yellow", "", "Matched " .. #names .. " file(s) (Search term: " .. match .. ")")
+  
+end -- show_filtered
+
+-- search function ... searches on name or contents
+function filter_on (what, field)
+
+  db, err, errmsg = sqlite3.open(SOURCE_FILES)
+ 
+  if not db then 
+   ColourNote ("white", "red", errmsg .. ": " .. SOURCE_FILES)
+   return 
+  end
+
+  local matches = 0
+ 
+  filtered = {}
+  local fixed_match = string.gsub (what, "'", "''")
+  
+  for row in db:nrows(string.format ([[
+      SELECT name,
+             snippet(source, '%s', '%s', ' ... ', -1, %i) AS snippet 
+             FROM source WHERE %s MATCH '%s']], 
+      highlight,    -- for snippet
+      unhighlight,  -- also for snippet
+      SNIPPET_SIZE,
+      field,        -- name or contents
+      fixed_match)) do 
+     filtered [row.name] = row.snippet
+     matches = matches + 1
+  end -- for
+
+  print (string.rep ("+", 79))
+  
+  -- show matches  
+  if matches == 0 then
+    ColourNote ("red", "", "No matches on '" .. match .. "'.")
+  elseif matches <= MAX_RESULTS then
+    show_filtered (field == "contents")
+  else
+    ColourNote ("red", "", "Too many to list - try using 'this AND that' to narrow it down")
+    ColourNote ("yellow", "", "Matched " .. matches .. " files (Search term: " .. match .. ")")
+  end -- if
+  
+  local source_files = 0
+  
+  -- show how many files were considered
+  for row in db:nrows "SELECT COUNT(*) AS row_count FROM source;" do
+    source_files = row.row_count
+  end -- for
+  
+  print (source_files, "files searched.")
+  print (string.rep ("-", 79))
+
+  db:close ()
+  
+end -- filter_on
+
+-- here when they want to filter on name or contents
+function filter_files (name, line, wildcards)
+
+  match = wildcards [1]
+  
+  local a, b = string.match (Trim (match), "(name)%s+(.+)")
+  if a and a:lower () == "name" then
+    filter_on (b, "name")
+  else
+    filter_on (match, "contents")
+  end
+end -- filter_files
+
+]]>
+
+-- show help
+function OnHelp ()
+  ColourNote ("cyan", "", GetPluginInfo (GetPluginID (), 3))
+end
+
+</script>
+</muclient>
