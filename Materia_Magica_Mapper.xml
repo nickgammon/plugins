@@ -492,7 +492,7 @@ function fix_up_exit ()
   -- where we were before
   local room = rooms [from_room]
   
-  -- print ("Moved from", from_room, "to", current_room, "in direction", last_direction_moved)
+   print ("Moved from", from_room, "to", current_room, "in direction", last_direction_moved)
   
   -- leads to here
   if from_room ~= current_room then
@@ -525,13 +525,13 @@ end -- fix_up_exit
 function OnPluginSent (sText)
   if valid_direction [sText] then
     last_direction_moved = valid_direction [sText]
-    -- print ("Just moved", last_direction_moved)
+    print ("Just moved", last_direction_moved)
     if current_room and rooms [current_room] then
       expected_exit = rooms [current_room].exits [last_direction_moved]
       if expected_exit then
         from_room = current_room
       end -- if
-    -- print ("expected exit for this direction is to room", expected_exit)
+     print ("expected exit for this direction is to room", expected_exit)
     end -- if
   end -- if 
 end -- function
