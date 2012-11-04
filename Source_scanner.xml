@@ -31,7 +31,7 @@ The words AND / OR / NEAR / NOT must be in upper case or they just match those w
 
 Note: words with underscores (eg. BUFFER_LENGTH) should be quoted because they are treated as two words.
 
-filter name &lt;wildcard&gt;   --&gt; filter on file name, not contents
+find name &lt;wildcard&gt;   --&gt; filter on file name, not contents
     
 You can use "f" instead of "filter".
 
