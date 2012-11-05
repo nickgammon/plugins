@@ -10,7 +10,7 @@
    purpose="Scans source files for keywords"
    date_written="2012-11-04"
    requires="4.41"
-   version="1.0"
+   version="1.1"
    >
 <description>
 find &lt;phrase&gt; 
@@ -28,8 +28,6 @@ chip*                    --&gt; prefix query, matches chip, chips, chipping etc.
 fish NOT (bacon OR eggs) --&gt; brackets can be used to clarify groupings
     
 The words AND / OR / NEAR / NOT must be in upper case or they just match those words literally.
-
-Note: words with underscores (eg. BUFFER_LENGTH) should be quoted because they are treated as two words.
 
 find name &lt;wildcard&gt;   --&gt; filter on file name, not contents
     
@@ -229,9 +227,16 @@ function load_text_files (name, line, wildcards)
     return 
   end
 
+  -- omit the "tokenize" line to get normal tokenization
+  -- that line omits underscores as tokens (for C source)
+  -- the "X" is there because of SQLITE3 bug:
+  -- http://sqlite.1065341.n5.nabble.com/FTS-simple-tokenizer-with-custom-delimeters-td43926.html
+  
   dbcheck (db:exec [[
     DROP TABLE IF EXISTS source;
-    CREATE VIRTUAL TABLE source USING FTS4(name, contents, size, date_written);
+    CREATE VIRTUAL TABLE source USING FTS4(name, contents, size, date_written, 
+    tokenize=simple X ' !"#$%&''()*+,-./:;<=>?@[\]^`{|}~'
+    );
    ]])
  
   count = 0   -- actual
