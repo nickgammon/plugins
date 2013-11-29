@@ -184,7 +184,7 @@ groups = {
           },  -- end Movement
 
   { name = "To do / improvements", list = todo, 
-            extrahelp = { "Eat", "Drink", "Gulp", "Run", "Find", "aq", "Listen", "www", "rules" },
+            extrahelp = { "Eat", "Drink", "Gulp", "Run", "Find", "aq", "Listen", "www", "rules", "tasks" },
             },  -- end To do 
 
   { name = "Information about you", list = mystuff, 
@@ -212,7 +212,7 @@ groups = {
   { name = "Communications", list = comms, 
            extrahelp = { "Tell", "Reply", "Ignore", "Whois", "Warinfo", 
                          "Say", "Emote", "Note", "Subscribe", "Forum",
-                         "afk", "deaf", "ignore", "rank" },
+                         "afk", "deaf", "ignore", "rank", "Newbietalk", "finger" },
                       }, -- end Communications
   
   { name = "Help", list = help, 
