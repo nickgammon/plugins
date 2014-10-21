@@ -103,6 +103,15 @@ mapper resume       --> resume last speedwalk or hyperlinked speedwalk
 
   <trigger
    enabled="y"
+   match="In your dreams, or what?"
+   script="Cannot_Go"
+   sequence="100"
+   >
+   </trigger>
+
+
+  <trigger
+   enabled="y"
    match="You need a boat or be an excellent swimmer to go there."
    script="Cannot_Go"
    sequence="100"
@@ -159,6 +168,15 @@ mapper resume       --> resume last speedwalk or hyperlinked speedwalk
    sequence="100"
   >
   </trigger>
+
+ <trigger
+   enabled="y"
+   match="It is pitch black..."
+   script="Cannot_Go"
+   sequence="100"
+  >
+  </trigger>
+
 
   <trigger
    enabled="n"
