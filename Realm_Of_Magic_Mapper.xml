@@ -61,6 +61,7 @@ mapper bookmarks    --> show nearby rooms that you bookmarked
 mapper find <text>  --> full-text search  (eg. shop OR baker)
 mapper shop         --> show nearby shops/banks etc.
 mapper train        --> show nearby trainers
+mapper inn          --> show nearby inns
 mapper where <room> --> show directions to a room
 
 MOVING
@@ -86,7 +87,6 @@ mapper resume       --> resume last speedwalk or hyperlinked speedwalk
   <trigger
    enabled="y"
    match="Alas, you cannot go that way..."
-   name=""
    script="Cannot_Go"
    sequence="100"
    >
@@ -96,7 +96,6 @@ mapper resume       --> resume last speedwalk or hyperlinked speedwalk
   <trigger
    enabled="y"
    match="Nah... You feel too relaxed to do that.."
-   name=""
    script="Cannot_Go"
    sequence="100"
    >
@@ -105,7 +104,6 @@ mapper resume       --> resume last speedwalk or hyperlinked speedwalk
   <trigger
    enabled="y"
    match="You need a boat or be an excellent swimmer to go there."
-   name=""
    script="Cannot_Go"
    sequence="100"
    >
@@ -114,7 +112,14 @@ mapper resume       --> resume last speedwalk or hyperlinked speedwalk
   <trigger
    enabled="y"
    match="Maybe you should get on your feet first?"
-   name=""
+   script="Cannot_Go"
+   sequence="100"
+   >
+   </trigger>
+
+  <trigger
+   enabled="y"
+   match="A guildguard blocks your way."
    script="Cannot_Go"
    sequence="100"
    >
@@ -122,8 +127,8 @@ mapper resume       --> resume last speedwalk or hyperlinked speedwalk
 
  <trigger
    enabled="y"
-   match="The door seems to be closed."
-   name=""
+   match="^The (door|gate) seems to be closed\.$"
+   regexp="y"
    script="Cannot_Go"
    sequence="100"
    >
@@ -132,7 +137,6 @@ mapper resume       --> resume last speedwalk or hyperlinked speedwalk
  <trigger
    enabled="y"
    match="As you try to enter the corridor, a field of energy pushes you back."
-   name=""
    script="Cannot_Go"
    sequence="100"
    >
@@ -154,6 +158,33 @@ mapper resume       --> resume last speedwalk or hyperlinked speedwalk
    script="Cannot_Go"
    sequence="100"
   >
+  </trigger>
+
+  <trigger
+   enabled="n"
+   match="Sorry, but you can't do that here!"
+   name="shop_trigger"
+   omit_from_output="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>
+  ColourNote ("dimgray", "", "(Not a shop)")
+  EnableTrigger ( "shop_trigger" , false )
+  </send>
+  </trigger>
+
+  <trigger
+   enabled="y"
+   match=" Nr-lev-----------------------------*"
+   send_to="12"
+   sequence="100"
+  >
+  <send>
+   if current_room and rooms [current_room] and not rooms [current_room].shop then
+    ColourNote ("yellow", "", "ALERT! Room appears to be a shop but is not marked as such")
+   end -- if
+ </send>
   </trigger>
 
 </triggers>
@@ -240,6 +271,16 @@ mapper resume       --> resume last speedwalk or hyperlinked speedwalk
    enabled="y"
    sequence="100"
    script="map_trainers"
+  >
+
+  </alias>
+
+ <alias
+   match="^mapper inns?$"
+   regexp="y"
+   enabled="y"
+   sequence="100"
+   script="map_inns"
   >
 
   </alias>
@@ -396,10 +437,13 @@ function Cannot_Go ()
   mapper.cancel_speedwalk ()
   if #moves > 0 then
     debugprint ("Removing the following outstanding moves ...")
-    tprint (moves)
+    if debugging then
+      tprint (moves)
+    end -- if
     moves = {}
   end -- if
 end -- Cannot_Go
+
 -- -----------------------------------------------------------------
 -- mapper 'get_room' callback - it wants to know about room uid
 -- -----------------------------------------------------------------
@@ -445,6 +489,11 @@ function get_room (uid)
     train = "\nRoom has trainer"
   end -- if train
 
+  local inn = ""
+  if room.inn then
+    inn = "\nRoom is an inn"
+  end -- if inn
+
   local notes = ""
   if room.notes then
     notes = "\nBookmark: " .. room.notes
@@ -457,12 +506,13 @@ function get_room (uid)
   table.sort (texits)
 
   room.hovermessage = string.format (
-      "%s\tExits: %s\nRoom: %s%s%s%s",
+      "%s\tExits: %s\nRoom: %s%s%s%s%s",
       room.name,
       table.concat (texits, ", "),
       uid,
       shop,
       train,
+      inn,
       notes
       -- depth,
       -- table.concat (path, ",")
@@ -478,6 +528,11 @@ function get_room (uid)
 
   if room.shop then
     room.fillcolour = config.SHOP_FILL_COLOUR.colour
+    room.fillbrush = 8
+  end -- if
+
+  if room.inn then
+    room.fillcolour = config.INN_FILL_COLOUR.colour
     room.fillbrush = 8
   end -- if
 
@@ -658,8 +713,8 @@ default_config = {
   DIFFERENT_AREA_COLOUR   = { name = "Another area",      colour =  ColourNameToRGB "#009393", },
   SHOP_FILL_COLOUR        = { name = "Shop",              colour =  ColourNameToRGB "darkolivegreen", },
   POSTOFFICE_FILL_COLOUR  = { name = "Post Office",       colour =  ColourNameToRGB "yellowgreen", },
-  BANK_FILL_COLOUR        = { name = "Bank",              colour =  ColourNameToRGB "gold", },
-  NEWSROOM_FILL_COLOUR    = { name = "Newsroom",          colour =  ColourNameToRGB "lightblue", },
+  BANK_FILL_COLOUR        = { name = "Bank",              colour =  ColourNameToRGB "lightblue", },
+  INN_FILL_COLOUR         = { name = "Inn",               colour =  ColourNameToRGB "gold", },
   TRAINER_FILL_COLOUR     = { name = "Trainer",           colour =  ColourNameToRGB "lightgreen" },
 
   ROOM_NAME_TEXT          = { name = "Room name text",    colour = ColourNameToRGB "#BEF3F1", },
@@ -681,7 +736,7 @@ default_config = {
   SCAN = { depth = 30 },
 
   -- speedwalk delay
-  DELAY = { time = 0.3 },
+  DELAY = { time = 0.0 },
 
   -- how many seconds to show "recent visit" lines (default 3 minutes)
   LAST_VISIT_TIME = { time = 60 * 3 },
@@ -879,8 +934,9 @@ function load_room_from_database (uid)
        name = row.name,
        area = row.area,
        description = row.description,
-       shop = row.shop,
-       train = row.train,
+       shop = row.shop == "1",
+       train = row.train == "1",
+       inn = row.inn == "1",
        notes = row.notes,
 
        exits = {} }
@@ -966,11 +1022,13 @@ function create_tables ()
       building      TEXT,            -- which building it is in
       shop          INTEGER,         -- 1 = shop here
       train         INTEGER,         -- 1 = trainer here
+      inn           INTEGER,         -- 1 = inn here
       notes         TEXT,            -- player notes
       date_added    DATE,            -- date added to database
       UNIQUE (uid)
     );
   CREATE INDEX IF NOT EXISTS shop_index ON rooms (shop);
+  CREATE INDEX IF NOT EXISTS inn_index  ON rooms (inn);
   CREATE INDEX IF NOT EXISTS train_index ON rooms (train);
 
   CREATE TABLE IF NOT EXISTS exits (
@@ -1069,6 +1127,26 @@ function room_toggle_shop (room, uid)
   mapper.draw (current_room)
 
 end -- room_toggle_shop
+
+function room_toggle_inn (room, uid)
+
+  rooms [uid].inn = not rooms [uid].inn
+
+  dbcheck (db:execute (string.format (
+      "UPDATE rooms SET inn = %i WHERE uid = %s;",
+        fixbool (rooms [uid].inn),
+        fixsql (uid)
+      )))
+
+  if rooms [uid].inn then
+    mapper.mapprint ("Room", uid, "marked as an inn")
+  else
+    mapper.mapprint ("Room", uid, "not an inn any more")
+  end
+
+  mapper.draw (current_room)
+
+end -- room_toggle_inn
 
 function room_toggle_train (room, uid)
 
@@ -1282,6 +1360,7 @@ function room_click (uid, flags)
       { name = "-", } ,
       { name = "Toggle Shop", func = room_toggle_shop } ,
       { name = "Toggle Trainer", func = room_toggle_train } ,
+      { name = "Toggle Inn", func = room_toggle_inn } ,
      } -- handlers
 
   local t, tf = {}, {}
@@ -1410,6 +1489,9 @@ function map_trainers (name, line, wildcards)
   map_find_special ("train")
 end -- map_trainers
 
+function map_inns (name, line, wildcards)
+  map_find_special ("inn")
+end -- map_inns
 
 function Door_Closed (name, line, wildcards)
 
@@ -1503,7 +1585,14 @@ function handleRoomDescription (desc)
     -- get it back now
     room = load_room_from_database (current_room)
 
+    EnableTrigger ( "shop_trigger" , true )
+    SendNoEcho ("list") -- see if a shop
   end -- if room not there
+
+
+  if string.match (roomname:lower (), "%f[%a]inn%f[%A]") and not room.inn then
+    ColourNote ("yellow", "", "ALERT! Room appears to be an inn but is not marked as such")
+  end -- if
 
 
   -- try to work out where previous room's exit led
@@ -1518,6 +1607,8 @@ end -- handleRoomDescription
 
 function OnPluginMXPcloseTag (name)
   local tagname, text = string.match (name, "(%a-),(.*)")
+  AppendToNotepad ("MXP", "Closing tag: " .. tagname .. "\r\n")
+  AppendToNotepad ("MXP", "Text: " .. text .. "\r\n")
 
   if tagname == "ex" then
     handleRoomExit (text)
@@ -1533,26 +1624,30 @@ end -- function
 
 -- debugging
 function map_rooms (name, line, wildcards)
+
   print (string.rep ("-", 80))
-  tprint (rooms)
-  print (string.rep ("-", 80))
+  if debugging then
+    tprint (rooms)
+    print (string.rep ("-", 80))
+  end -- if
   t = {}
   for k, v in pairs (rooms) do
     table.insert (t, k)
   end -- for
+  NoteColourRGB (ColourNameToRGB ("yellowgreen"), ColourNameToRGB ("black"))
   table.sort (t)
   for k, v in ipairs (t) do
-    debugprint ("UID:", v, "Name: ", rooms [v].name)
+    print ("UID:", v, "Name: ", rooms [v].name)
     if rooms [v].exits then
       for dir, where in pairs (rooms [v].exits) do
         if rooms [where] then
-          debugprint ("  ", dir, "-->", where, "(" .. rooms [where].name .. ")")
+          print ("  ", dir, "-->", where, "(" .. rooms [where].name .. ")")
         else
-          debugprint ("  ", dir, "-->", where)
+          print ("  ", dir, "-->", where)
         end -- if
       end -- for each exit
     else
-      debugprint ("  ", "No exits.")
+      print ("  ", "No exits.")
     end -- if
   end -- for
   print (string.rep ("-", 80))
