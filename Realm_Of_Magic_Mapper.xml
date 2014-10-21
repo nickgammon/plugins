@@ -952,10 +952,10 @@ function load_room_from_database (uid)
        name = row.name,
        area = row.area,
        description = row.description,
-       shop = row.shop == "1",
-       train = row.train == "1",
-       inn = row.inn == "1",
-       notes = row.notes,
+       shop   = tonumber (row.shop)  == 1,
+       train  = tonumber (row.train) == 1,
+       inn    = tonumber (row.inn)   == 1,
+       notes  = row.notes,
 
        exits = {} }
 
