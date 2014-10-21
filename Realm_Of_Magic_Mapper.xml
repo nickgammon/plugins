@@ -62,6 +62,7 @@ mapper find <text>  --> full-text search  (eg. shop OR baker)
 mapper shop         --> show nearby shops/banks etc.
 mapper train        --> show nearby trainers
 mapper inn          --> show nearby inns
+mapper guild        --> show nearby guild master
 mapper where <room> --> show directions to a room
 
 MOVING
@@ -303,6 +304,16 @@ mapper resume       --> resume last speedwalk or hyperlinked speedwalk
 
   </alias>
 
+   <alias
+   match="^mapper guilds?$"
+   regexp="y"
+   enabled="y"
+   sequence="100"
+   script="map_guilds"
+  >
+
+  </alias>
+  
  <alias
    match="mapper resume"
    enabled="y"
@@ -512,6 +523,11 @@ function get_room (uid)
     inn = "\nRoom is an inn"
   end -- if inn
 
+  local guild = ""
+  if room.guild then
+    guild = "\nRoom is an guild room"
+  end -- if guild
+
   local notes = ""
   if room.notes then
     notes = "\nBookmark: " .. room.notes
@@ -524,13 +540,14 @@ function get_room (uid)
   table.sort (texits)
 
   room.hovermessage = string.format (
-      "%s\tExits: %s\nRoom: %s%s%s%s%s",
+      "%s\tExits: %s\nRoom: %s%s%s%s%s%s",
       room.name,
       table.concat (texits, ", "),
       uid,
       shop,
       train,
       inn,
+      guild,
       notes
       -- depth,
       -- table.concat (path, ",")
@@ -558,6 +575,12 @@ function get_room (uid)
     room.fillcolour = config.TRAINER_FILL_COLOUR.colour
     room.fillbrush = 8
   end -- if
+
+  if room.guild then
+    room.fillcolour = config.GUILD_FILL_COLOUR.colour
+    room.fillbrush = 8
+  end -- if
+
 
   if uid == current_room then
     room.bordercolour = config.OUR_ROOM_COLOUR.colour
@@ -730,7 +753,7 @@ default_config = {
   UNKNOWN_ROOM_COLOUR     = { name = "Unknown room",      colour =  ColourNameToRGB "#00CACA", },
   DIFFERENT_AREA_COLOUR   = { name = "Another area",      colour =  ColourNameToRGB "#009393", },
   SHOP_FILL_COLOUR        = { name = "Shop",              colour =  ColourNameToRGB "darkolivegreen", },
-  POSTOFFICE_FILL_COLOUR  = { name = "Post Office",       colour =  ColourNameToRGB "yellowgreen", },
+  GUILD_FILL_COLOUR       = { name = "Guild",             colour =  ColourNameToRGB "yellowgreen", },
   BANK_FILL_COLOUR        = { name = "Bank",              colour =  ColourNameToRGB "lightblue", },
   INN_FILL_COLOUR         = { name = "Inn",               colour =  ColourNameToRGB "gold", },
   TRAINER_FILL_COLOUR     = { name = "Trainer",           colour =  ColourNameToRGB "lightgreen" },
@@ -955,6 +978,7 @@ function load_room_from_database (uid)
        shop   = tonumber (row.shop)  == 1,
        train  = tonumber (row.train) == 1,
        inn    = tonumber (row.inn)   == 1,
+       guild  = tonumber (row.guild) == 1,
        notes  = row.notes,
 
        exits = {} }
@@ -1041,12 +1065,14 @@ function create_tables ()
       shop          INTEGER,         -- 1 = shop here
       train         INTEGER,         -- 1 = trainer here
       inn           INTEGER,         -- 1 = inn here
+      guild         INTEGER,         -- 1 = guild master here
       notes         TEXT,            -- player notes
       date_added    DATE,            -- date added to database
       UNIQUE (uid)
     );
-  CREATE INDEX IF NOT EXISTS shop_index ON rooms (shop);
-  CREATE INDEX IF NOT EXISTS inn_index  ON rooms (inn);
+  CREATE INDEX IF NOT EXISTS shop_index  ON rooms (shop);
+  CREATE INDEX IF NOT EXISTS inn_index   ON rooms (inn);
+  CREATE INDEX IF NOT EXISTS guild_index ON rooms (guild);
   CREATE INDEX IF NOT EXISTS train_index ON rooms (train);
 
   CREATE TABLE IF NOT EXISTS exits (
@@ -1126,67 +1152,41 @@ function room_edit_bookmark (room, uid)
 
 end -- room_edit_bookmark
 
-function room_toggle_shop (room, uid)
-
-  rooms [uid].shop = not rooms [uid].shop
+function room_toggle_thing (room, uid, fieldname, description)
+  rooms [uid] [fieldname] = not rooms [uid] [fieldname]
 
   dbcheck (db:execute (string.format (
-      "UPDATE rooms SET shop = %i WHERE uid = %s;",
-        fixbool (rooms [uid].shop),
+      "UPDATE rooms SET %s = %i WHERE uid = %s;",
+        fieldname,
+        fixbool (rooms [uid] [fieldname]),
         fixsql (uid)
       )))
 
-  if rooms [uid].shop then
-    mapper.mapprint ("Room", uid, "marked as a shop")
+  if rooms [uid] [fieldname] then
+    mapper.mapprint ("Room", uid, "marked as " .. description)
   else
-    mapper.mapprint ("Room", uid, "not a shop any more")
+    mapper.mapprint ("Room", uid, "not " .. description .. " any more")
   end
 
   mapper.draw (current_room)
 
+end -- room_toggle_thing
+
+function room_toggle_shop (room, uid)
+  room_toggle_thing (room, uid, "shop", "a shop")
 end -- room_toggle_shop
 
 function room_toggle_inn (room, uid)
-
-  rooms [uid].inn = not rooms [uid].inn
-
-  dbcheck (db:execute (string.format (
-      "UPDATE rooms SET inn = %i WHERE uid = %s;",
-        fixbool (rooms [uid].inn),
-        fixsql (uid)
-      )))
-
-  if rooms [uid].inn then
-    mapper.mapprint ("Room", uid, "marked as an inn")
-  else
-    mapper.mapprint ("Room", uid, "not an inn any more")
-  end
-
-  mapper.draw (current_room)
-
+  room_toggle_thing (room, uid, "inn", "an inn")
 end -- room_toggle_inn
 
 function room_toggle_train (room, uid)
-
-  rooms [uid].train = not rooms [uid].train
-
-  dbcheck (db:execute (string.format (
-      "UPDATE rooms SET train = %i WHERE uid = %s;",
-        fixbool (rooms [uid].train),
-        fixsql (uid)
-      )))
-
-  if rooms [uid].train then
-    mapper.mapprint ("Room", uid, "marked as a training room")
-  else
-    mapper.mapprint ("Room", uid, "not a training room any more")
-  end
-
-  mapper.draw (current_room)
-
+  room_toggle_thing (room, uid, "train", "a training room")
 end -- room_toggle_train
 
-
+function room_toggle_guild (room, uid)
+  room_toggle_thing (room, uid, "guild", "a guild master room")
+end -- room_toggle_guild
 
 function room_add_exit (room, uid)
 
@@ -1369,16 +1369,25 @@ function room_click (uid, flags)
     return
   end -- if still not there
 
+  local function checkmark (which)
+    if rooms [uid] [which] then
+      return "+"
+    else
+      return ""
+    end -- if
+  end -- checkmark
+    
   local handlers = {
       { name = "Edit bookmark", func = room_edit_bookmark} ,
       { name = "-", } ,
-      { name = "Add Exit", func = room_add_exit} ,
+      { name = "Add Exit",    func = room_add_exit} ,
       { name = "Change Exit", func = room_change_exit} ,
       { name = "Delete Exit", func = room_delete_exit} ,
       { name = "-", } ,
-      { name = "Toggle Shop", func = room_toggle_shop } ,
-      { name = "Toggle Trainer", func = room_toggle_train } ,
-      { name = "Toggle Inn", func = room_toggle_inn } ,
+      { name = checkmark ("shop")  .. "Shop",         func = room_toggle_shop } ,
+      { name = checkmark ("train") .. "Trainer",      func = room_toggle_train } ,
+      { name = checkmark ("inn")   .. "Inn",          func = room_toggle_inn } ,
+      { name = checkmark ("guild") .. "Guildmaster",  func = room_toggle_guild } ,
      } -- handlers
 
   local t, tf = {}, {}
@@ -1511,6 +1520,10 @@ function map_inns (name, line, wildcards)
   map_find_special ("inn")
 end -- map_inns
 
+function map_guilds (name, line, wildcards)
+  map_find_special ("guild")
+end -- map_guilds
+
 function Door_Closed (name, line, wildcards)
 
   -- make copy as we will be modifying it
@@ -1612,6 +1625,9 @@ function handleRoomDescription (desc)
     ColourNote ("yellow", "", "ALERT! Room appears to be an inn but is not marked as such")
   end -- if
 
+ if string.match (roomname:lower (), "%f[%a]guild%f[%A]") and not room.guild then
+    ColourNote ("yellow", "", "ALERT! Room appears to be an guild room but is not marked as such")
+  end -- if
 
   -- try to work out where previous room's exit led
   if room_changed and #moves > 0 then
