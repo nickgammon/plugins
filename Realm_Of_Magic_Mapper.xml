@@ -22,8 +22,9 @@
    purpose="Mapper for Realm of Magic"
    save_state="y"
    date_written="2014-10-17 07:00"
+   date_modified="2014-10-23 07:56"
    requires="4.61"
-   version="1.1"
+   version="1.2"
    >
 
    <description trim="y">
@@ -387,6 +388,7 @@ for _, v in ipairs {
     "As you try to enter the corridor, a field of energy pushes you back.",
     "You are too exhausted to go any farther.",
     "It is pitch black...",
+    "No way!  You're fighting for your life!",
 
 -- add more here
 
@@ -597,6 +599,7 @@ function fix_up_exit ()
     end -- if destination different
 
     if two_way_exits and
+       from_room and
        inv_dir and
        (current_return == nil or current_return == "0") then
 
