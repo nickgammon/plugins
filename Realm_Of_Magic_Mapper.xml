@@ -87,97 +87,12 @@ mapper resume       --> resume last speedwalk or hyperlinked speedwalk
 
   <trigger
    enabled="y"
-   match="Alas, you cannot go that way..."
-   script="Cannot_Go"
-   sequence="100"
-   >
-   </trigger>
-
-
-  <trigger
-   enabled="y"
-   match="Nah... You feel too relaxed to do that.."
-   script="Cannot_Go"
-   sequence="100"
-   >
-   </trigger>
-
-  <trigger
-   enabled="y"
-   match="In your dreams, or what?"
-   script="Cannot_Go"
-   sequence="100"
-   >
-   </trigger>
-
-
-  <trigger
-   enabled="y"
-   match="You need a boat or be an excellent swimmer to go there."
-   script="Cannot_Go"
-   sequence="100"
-   >
-   </trigger>
-
-  <trigger
-   enabled="y"
-   match="Maybe you should get on your feet first?"
-   script="Cannot_Go"
-   sequence="100"
-   >
-   </trigger>
-
-  <trigger
-   enabled="y"
-   match="A guildguard blocks your way."
-   script="Cannot_Go"
-   sequence="100"
-   >
-   </trigger>
-
- <trigger
-   enabled="y"
-   match="^The (door|gate) seems to be closed\.$"
-   regexp="y"
-   script="Cannot_Go"
-   sequence="100"
-   >
-   </trigger>
-
- <trigger
-   enabled="y"
-   match="As you try to enter the corridor, a field of energy pushes you back."
-   script="Cannot_Go"
-   sequence="100"
-   >
-   </trigger>
-
-  <trigger
-   enabled="y"
-   match="^The (door|gate) is closed\.$"
-   regexp="y"
-   name="Door_Closed"
-   script="Door_Closed"
-   sequence="100"
+   match="*"
+   script="check_for_cannot_go"
+   keep_evaluating="y"
+   sequence="1"
   >
   </trigger>
-
-  <trigger
-   enabled="y"
-   match="You are too exhausted to go any farther."
-   script="Cannot_Go"
-   sequence="100"
-  >
-  </trigger>
-
- <trigger
-   enabled="y"
-   match="It is pitch black..."
-   script="Cannot_Go"
-   sequence="100"
-  >
-  </trigger>
-
 
   <trigger
    enabled="n"
@@ -313,7 +228,7 @@ mapper resume       --> resume last speedwalk or hyperlinked speedwalk
   >
 
   </alias>
-  
+
  <alias
    match="mapper resume"
    enabled="y"
@@ -454,6 +369,29 @@ local inverse_direction = {
   out = "in",
   }  -- end of inverse_direction
 
+local cannot_move_messages = { }
+
+-- put messages from the MUD which stop you moving here ...
+for _, v in ipairs {
+
+    "Alas, you cannot go that way...",
+    "Nah... You feel too relaxed to do that..",
+    "In your dreams, or what?",
+    "You need a boat or be an excellent swimmer to go there.",
+    "Maybe you should get on your feet first?",
+    "A guildguard blocks your way.",
+    "The door seems to be closed.",
+    "The gate seems to be closed.",
+    "The door is closed.",
+    "The gate is closed.",
+    "As you try to enter the corridor, a field of energy pushes you back.",
+    "You are too exhausted to go any farther.",
+    "It is pitch black...",
+
+-- add more here
+
+    } do cannot_move_messages [v] = true end
+
 -- output debugging message if debugging is true
 function debugprint (...)
   if debugging then
@@ -476,6 +414,13 @@ function debugtprint (t)
   end -- if debugging
 end -- debugprint
 
+-- see table: cannot_move_messages
+function check_for_cannot_go (name, line, wildcards)
+  if cannot_move_messages [line] then
+    Cannot_Go ()
+  end -- if
+end -- check_for_cannot_go
+
 function Cannot_Go ()
   debugprint ("Cannot go this way, cancelling speedwalk.")
   mapper.cancel_speedwalk ()
@@ -494,7 +439,7 @@ function get_room (uid)
 
   -- check we got room at all
   if not uid then
-   -- return nil
+    return nil
   end -- if
 
   -- look it up
@@ -518,28 +463,25 @@ function get_room (uid)
     current_area = room.area
   end -- if
 
+  -- default colours
+  room.bordercolour     = config.ROOM_COLOUR.colour
+  room.borderpen        = miniwin.pen_solid
+  room.borderpenwidth   = 1
+  room.fillcolour       = ColourNameToRGB "blue"
+  room.fillbrush        = miniwin.brush_null
+
   -- build hover message
 
-
-  local shop = ""
-  if room.shop then
-    shop = "\nRoom is shop"
-  end -- if shop
-
-  local train = ""
-  if room.train then
-    train = "\nRoom has trainer"
-  end -- if train
-
-  local inn = ""
-  if room.inn then
-    inn = "\nRoom is an inn"
-  end -- if inn
-
-  local guild = ""
-  if room.guild then
-    guild = "\nRoom is an guild room"
-  end -- if guild
+  -- for the hover message, and also sets the room colour
+  local function getinfo (which, description, colour)
+    if room [which] then
+      room.fillcolour = colour
+      room.fillbrush  = miniwin.brush_fine_pattern
+      return "\nRoom " .. description
+    else
+      return ""
+    end -- if
+  end -- getinfo
 
   local notes = ""
   if room.notes then
@@ -557,43 +499,14 @@ function get_room (uid)
       room.name,
       table.concat (texits, ", "),
       uid,
-      shop,
-      train,
-      inn,
-      guild,
+      getinfo ("shop",  "is a shop",        config.SHOP_FILL_COLOUR.colour),
+      getinfo ("train", "has a trainer",    config.TRAINER_FILL_COLOUR.colour),
+      getinfo ("inn",   "is an inn",        config.INN_FILL_COLOUR.colour),
+      getinfo ("guild", "is a guild room",  config.GUILD_FILL_COLOUR.colour),
       notes
       -- depth,
       -- table.concat (path, ",")
       )
-
-  room.bordercolour = config.ROOM_COLOUR.colour
-  room.borderpen = 0 -- solid
-  room.borderpenwidth = 1
-  room.fillcolour = 0xff0000
-  room.fillbrush = 1 -- no fill
-
-  -- special room fill colours
-
-  if room.shop then
-    room.fillcolour = config.SHOP_FILL_COLOUR.colour
-    room.fillbrush = 8
-  end -- if
-
-  if room.inn then
-    room.fillcolour = config.INN_FILL_COLOUR.colour
-    room.fillbrush = 8
-  end -- if
-
-  if room.train then
-    room.fillcolour = config.TRAINER_FILL_COLOUR.colour
-    room.fillbrush = 8
-  end -- if
-
-  if room.guild then
-    room.fillcolour = config.GUILD_FILL_COLOUR.colour
-    room.fillbrush = 8
-  end -- if
-
 
   if uid == current_room then
     room.bordercolour = config.OUR_ROOM_COLOUR.colour
@@ -620,7 +533,6 @@ function fix_up_exit ()
   end -- for
 
   if #moves == 0 then
-
     debugprint "No outstanding moves."
     return
   end -- if
@@ -791,7 +703,7 @@ default_config = {
   -- how many seconds to show "recent visit" lines (default 3 minutes)
   LAST_VISIT_TIME = { time = 60 * 3 },
 
-  }
+  } -- end of default_config
 
 
 -- -----------------------------------------------------------------
@@ -932,9 +844,7 @@ end -- map_where
 function OnHelp ()
   mapper.mapprint (string.format ("[MUSHclient mapper, version %0.1f]", mapper.VERSION))
   mapper.mapprint (world.GetPluginInfo (world.GetPluginID (), 3))
-end
-
-
+end -- end of OnHelp
 
 room_not_in_database = {}
 room_in_database = {}
@@ -1108,7 +1018,6 @@ function create_tables ()
     -- in case we only deleted the rooms_lookup table to save space in the download
     dbcheck (db:execute "INSERT INTO rooms_lookup (uid, name, description) SELECT uid, name, description FROM rooms;")
   end -- if
-
 
 end -- function create_tables
 
@@ -1385,7 +1294,7 @@ function room_click (uid, flags)
       return ""
     end -- if
   end -- checkmark
-    
+
   local handlers = {
       { name = "Edit bookmark", func = room_edit_bookmark} ,
       { name = "-", } ,
