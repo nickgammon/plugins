@@ -24,7 +24,7 @@
    date_written="2014-10-17 07:00"
    date_modified="2014-10-23 07:56"
    requires="4.61"
-   version="1.2"
+   version="1.3"
    >
 
    <description trim="y">
@@ -379,6 +379,7 @@ for _, v in ipairs {
     "Nah... You feel too relaxed to do that..",
     "In your dreams, or what?",
     "You need a boat or be an excellent swimmer to go there.",
+    "You need a boat or be able to swim to go there.",
     "Maybe you should get on your feet first?",
     "A guildguard blocks your way.",
     "The door seems to be closed.",
