@@ -454,10 +454,25 @@ local inverse_direction = {
   out = "in",
   }  -- end of inverse_direction
 
+-- output debugging message if debugging is true
 function debugprint (...)
   if debugging then
-    NoteColourRGB (ColourNameToRGB ("saddlebrown"), ColourNameToRGB ("black"))
+    local old_note_colour = GetNoteColourFore ()
+    SetNoteColourFore(ColourNameToRGB ("saddlebrown"))
     print (...)
+    SetNoteColourFore (old_note_colour)
+  end -- if debugging
+end -- debugprint
+
+-- output debugging 'tprint' if debugging is true
+function debugtprint (t)
+  if debugging then
+    local old_note_colour = GetNoteColourFore ()
+    SetNoteColourFore(ColourNameToRGB ("saddlebrown"))
+    print (string.rep ("-", 80))
+    tprint (t)
+    print (string.rep ("-", 80))
+    SetNoteColourFore (old_note_colour)
   end -- if debugging
 end -- debugprint
 
@@ -466,9 +481,7 @@ function Cannot_Go ()
   mapper.cancel_speedwalk ()
   if #moves > 0 then
     debugprint ("Removing the following outstanding moves ...")
-    if debugging then
-      tprint (moves)
-    end -- if
+    debugtprint (moves)
     moves = {}
   end -- if
 end -- Cannot_Go
@@ -617,9 +630,7 @@ function fix_up_exit ()
   end -- if don't know where we are
 
   debugprint "Fixing up exits"
-  if debugging then
-    tprint (moves)
-  end -- if
+  debugtprint (moves)
 
   -- get the earliest move we made
   last_direction_moved = moves [1].dir
@@ -734,12 +745,10 @@ function OnPluginSent (sText)
       t.from = current_room
     end -- if first stacked move
     table.insert (moves, t)
-    if debugging then
-      tprint (t)
-    end -- if
+    debugtprint (t)
     from_room = moves [1].from
   end -- if  valid direction
-end -- function
+end -- OnPluginSent
 
 
 default_config = {
@@ -1659,11 +1668,7 @@ end -- function
 -- debugging
 function map_rooms (name, line, wildcards)
 
-  print (string.rep ("-", 80))
-  if debugging then
-    tprint (rooms)
-    print (string.rep ("-", 80))
-  end -- if
+  debugtprint (rooms)
   t = {}
   for k, v in pairs (rooms) do
     table.insert (t, k)
