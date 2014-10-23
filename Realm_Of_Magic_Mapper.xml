@@ -24,7 +24,7 @@
    date_written="2014-10-17 07:00"
    date_modified="2014-10-23 07:56"
    requires="4.61"
-   version="1.3"
+   version="1.4"
    >
 
    <description trim="y">
@@ -1580,22 +1580,27 @@ end -- function
 
 -- debugging
 function map_rooms (name, line, wildcards)
-
+  local old_note_colour = GetNoteColourFore ()
+  local incoming_exits = {}
   debugtprint (rooms)
   t = {}
   for k, v in pairs (rooms) do
     table.insert (t, k)
   end -- for
-  NoteColourRGB (ColourNameToRGB ("yellowgreen"), ColourNameToRGB ("black"))
+  SetNoteColourFore (ColourNameToRGB ("yellowgreen"))
   table.sort (t)
   for k, v in ipairs (t) do
-    print ("UID:", v, "Name: ", rooms [v].name)
+    print ("Room:", v, "Name: ", rooms [v].name)
     if rooms [v].exits then
       for dir, where in pairs (rooms [v].exits) do
         if rooms [where] then
-          print ("  ", dir, "-->", where, "(" .. rooms [where].name .. ")")
+          print ("  ", dir:upper (), "-->", where, "(" .. rooms [where].name .. ")")
+          local destination = where
+          incoming_exits [destination] = incoming_exits [destination] or {}
+          incoming_exits [destination] [dir] = incoming_exits [destination] [dir] or {}
+          table.insert (incoming_exits [destination] [dir], v)
         else
-          print ("  ", dir, "-->", where)
+          print ("  ", dir:upper (), "-->", where)
         end -- if
       end -- for each exit
     else
@@ -1603,6 +1608,20 @@ function map_rooms (name, line, wildcards)
     end -- if
   end -- for
   print (string.rep ("-", 80))
+
+  -- see if multiple rooms enter one rooms from the same direction
+  for k, v in pairs (incoming_exits) do
+    for dir, exits in pairs (v) do
+      if #exits > 1 then
+        print (#exits, "exits lead", dir:upper (), "to room", k, "(" .. rooms [k].name .. ")")
+        for _, exit in ipairs (exits) do
+          print ("  From:", exit, "(" .. rooms [exit].name .. ")")
+        end -- for each of those exits
+      end -- if
+    end -- for each exit
+  end -- for each room that something leads to
+  print (string.rep ("-", 80))
+  SetNoteColourFore (old_note_colour)
 end -- map_trainers
 
 ]]>
