@@ -24,7 +24,7 @@
    date_written="2014-10-17 07:00"
    date_modified="2014-10-23 07:56"
    requires="4.61"
-   version="1.4"
+   version="1.5"
    >
 
    <description trim="y">
@@ -1563,8 +1563,6 @@ end -- handleRoomDescription
 
 function OnPluginMXPcloseTag (name)
   local tagname, text = string.match (name, "(%a-),(.*)")
-  AppendToNotepad ("MXP", "Closing tag: " .. tagname .. "\r\n")
-  AppendToNotepad ("MXP", "Text: " .. text .. "\r\n")
 
   if tagname == "ex" then
     handleRoomExit (text)
