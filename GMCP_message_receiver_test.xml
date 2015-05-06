@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<muclient>
+<plugin
+   name="GMCP_message_receiver_test"
+   author="Nick Gammon"
+   id="b35ff32bccfac9d02023ad3b"
+   language="Lua"
+   purpose="Test OnPluginBroadcast for GMCP"
+   date_written="2015-05-06 08:00:31"
+   requires="4.90"
+   version="1.0"
+   >
+
+</plugin>
+
+<!--  Script  -->
+
+<script>
+<![CDATA[
+
+require "tprint"
+require "json"
+  
+function getStats (what)
+  result, value = CallPlugin("3e7dedbe37e44942dd46d264", "gmcpval", what)
+  if result ~= 0 then
+    ColourNote ("orange", "", "Warning: Could not get stats for " .. what)
+    return nil
+  end -- if
+  return value
+end -- getStats
+
+function gotCharacterVitals (vitals)
+--  tprint (vitals)
+
+ -- example:
+ 
+  print ("HP is now:", tonumber (vitals.hp))
+  
+end  -- gotCharacterVitals
+
+function gotCharacterStatus (status)
+--  tprint (status)
+end  -- gotCharacterStatus
+
+function gotRoomInfo (info)
+--  tprint (info)
+end  -- gotRoomInfo
+
+function gotRoomPlayers (players)
+--  tprint (players)
+end  -- gotRoomPlayers
+
+function gotWrongDirection (dir)
+--  print ("Could not head: ", dir [1])
+  Sound ("ding.wav")
+end -- gotWrongDirection
+
+function gotAddPlayer (which)
+  tprint (which)
+end -- gotAddPlayer
+
+function gotRemovePlayer (which)
+  tprint (which)
+end -- gotRemovePlayer
+
+function gotCharacterName (name)
+  tprint (name)
+end -- gotCharacterName
+
+function gotCharacterStatusVars (status)
+  -- tprint (status)
+end -- gotCharacterStatusVars
+
+function gotCharacterAfflictionsList (affs)
+  tprint (affs)
+end -- gotCharacterAfflictionsList
+
+function gotCharacterAfflictionsAdd (what)
+  tprint (what)
+end -- gotCharacterAfflictionsAdd
+
+function gotCharacterDefencesList (defs)
+  tprint (defs)
+end -- gotCharacterDefencesList
+
+function gotCharacterDefencesAdd (add)
+  tprint (add)
+end -- gotCharacterDefencesAdd
+
+function gotCharacterAfflictionsRemove (what)
+  tprint (what)
+end -- gotCharacterAfflictionsRemove
+
+-- WARNING: Put handlers table AFTER the handler functions
+--          Make names lower case, as we do a lower-case conversion for the lookup
+
+handlers = {
+  ["char.vitals"]           = gotCharacterVitals,
+  ["char.status"]           = gotCharacterStatus,
+  ["char.name"]             = gotCharacterName,
+  ["char.statusvars"]       = gotCharacterStatusVars,
+  ["char.afflictions.list"] = gotCharacterAfflictionsList,
+  ["char.afflictions.add"]  = gotCharacterAfflictionsAdd,
+  ["char.afflictions.remove"] = gotCharacterAfflictionsRemove,
+  ["char.defences.list"]    = gotCharacterDefencesList,
+  ["char.defences.add"]     = gotCharacterDefencesAdd,
+  
+  ["room.info"]             = gotRoomInfo,
+  ["room.players"]          = gotRoomPlayers,
+  ["room.wrongdir"]         = gotWrongDirection,
+  ["room.removeplayer"]     = gotRemovePlayer,
+  ["room.addplayer"]        = gotAddPlayer,
+  
+  } -- end of handlers
+  
+function OnPluginBroadcast (msg, id, name, text)
+ if id == "74f8c420df7d59ad5aa66246" then  -- GMCP_handler_NJG
+  
+   -- pull out GMCP message, plus the data belonging to it
+   message, params = string.match (text, "([%a.]+)%s+(.*)")
+  
+   -- no match? oops!
+   if not message then
+      return
+   end -- if
+           
+   -- ensure we have an array or object
+   if not string.match (params, "^[%[{]") then
+      params =  "[" .. params .. "]"  -- JSON hack, make msg first element of an array.
+   end -- if 
+   
+   -- decode it
+   result = assert (json.decode (params))
+   
+   -- debugging
+   ColourNote ("yellow", "", "GMCP: " .. message)
+   
+   -- find a handler for this message type
+   local handler = handlers [message:lower ()]
+   
+   -- warn if not found
+   if not handler then
+     ColourNote ("red", "", "Warning: No handler for: " .. message)
+     return
+   end -- no handler
+   
+   -- call the handler, pass in whatever we got
+   handler (result)
+  end -- if GMCP message
+end -- OnPluginBroadcast
+
+]]>
+</script>
+
+</muclient>
