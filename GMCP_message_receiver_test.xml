@@ -33,7 +33,7 @@ function getStats (what)
 end -- getStats
 
 function gotCharacterVitals (vitals)
---  tprint (vitals)
+  -- tprint (vitals)
 
  -- example:
  

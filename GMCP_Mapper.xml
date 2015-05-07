@@ -367,13 +367,6 @@ mapper resume       --> resume last speedwalk or hyperlinked speedwalk
   >
   </trigger>
    
- <trigger
-   enabled="y"
-   match="There is no exit in that direction."
-   script="mapper.cancel_speedwalk"
-   sequence="100"
-  >
-  </trigger> 
   
  <trigger
    enabled="y"
@@ -1674,7 +1667,7 @@ function gotRoomInfo (info)
   end -- if
   
   if info.area then
-    areas [current_area] = info.area 
+    areas [current_area] = info.area:sub (1, 1):upper () .. info.area:sub (2)
   end -- if 
   
 end  -- gotRoomInfo
@@ -1682,13 +1675,32 @@ end  -- gotRoomInfo
 
 function gotWrongDirection (dir)
 
-  -- something?
-
+   mapper.cancel_speedwalk ()
+   
 end -- gotWrongDirection
+
+function gotCharacterAfflictionsAdd (what)
+  if what.name == "sleeping" then
+    asleep = true
+--    mapper.mapprint "Detected being asleep"
+    mapper.cancel_speedwalk ()
+  end -- if
+end -- gotCharacterAfflictionsAdd
+
+function gotCharacterAfflictionsRemove (what)
+  if what [1] == "sleeping" then
+    asleep = false
+--    mapper.mapprint "Detected being awake"
+  end -- if
+end -- gotCharacterAfflictionsRemove
 
 GMCP_handlers = {
   ["room.info"]             = gotRoomInfo,
   ["room.wrongdir"]         = gotWrongDirection,
+  
+  ["char.afflictions.add"]  = gotCharacterAfflictionsAdd,
+  ["char.afflictions.remove"] = gotCharacterAfflictionsRemove,
+
   } -- end of handlers
   
 function OnPluginBroadcast (msg, id, name, text)
@@ -2008,6 +2020,7 @@ end -- function
 
 function OnPluginConnect ()
   mapper.cancel_speedwalk ()
+  asleep = false
   -- DoAfter (3, "look")  -- force mapper update
 end -- OnPluginConnect
 
