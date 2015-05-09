@@ -130,6 +130,18 @@ mapper goto <room>  --> walk to a room by its room ID
 </aliases>
   
 <triggers>
+
+ <!--  Things which prevent us moving  -->
+
+  <trigger
+   enabled="y"
+   match="*"
+   script="check_for_cannot_go"
+   keep_evaluating="y"
+   sequence="1"
+  >
+  </trigger>
+  
   <trigger
    enabled="y"
    keep_evaluating="y"
@@ -137,7 +149,7 @@ mapper goto <room>  --> walk to a room by its room ID
    name="got_room_name"
    script="process_room_name"
    regexp="y"
-   sequence="110"
+   sequence="90"
   >
   </trigger>
   
@@ -167,72 +179,6 @@ mapper goto <room>  --> walk to a room by its room ID
      sequence="90"
     >
   </trigger>
-
-  <trigger
-   enabled="y"
-   match="You are too exhausted."
-   script="mapper.cancel_speedwalk"
-   sequence="100"
-  > 
-  </trigger>
-
-  <trigger
-   enabled="y"
-   match="You take a running start and slam head first into a wall."
-   script="cannot_walk"
-   sequence="100"
-  > 
-  </trigger>
-    
-  <trigger
-   enabled="y"
-   match="WHAM! Face first into the wall! Good one spaz."
-   script="cannot_walk"
-   sequence="100"
-  > 
-  </trigger>
-  
-  <trigger
-   enabled="y"
-   match="THUD! Your sore face suggests there wasn't a secret passage there afterall."
-   script="cannot_walk"
-   sequence="100"
-  > 
-  </trigger>
-  
-  <trigger
-   enabled="y"
-   match="You aren't allowed in there."
-   script="cannot_walk"
-   sequence="100"
-  > 
-  </trigger>  
-  
-  <trigger
-   enabled="y"
-   match="Alas, you cannot go that way."
-   script="cannot_walk"
-   sequence="100"
-  > 
-  </trigger>  
-  
-  <trigger
-   enabled="y"
-   match="In your dreams, or what?"
-   script="cannot_walk"
-   sequence="100"
-  > 
-  </trigger>  
- 
-  
-<trigger
-   enabled="y"
-   match="No way!  You are still fighting!"
-   script="cannot_walk"
-   regexp="y"
-   sequence="100"
-  > 
-  </trigger>  
   
 </triggers>
 
@@ -305,6 +251,28 @@ local inverse_direction = {
   out = "in",
   }  -- end of inverse_direction
   
+local cannot_move_messages = { }
+
+-- put messages from the MUD which stop you moving here ...
+for _, v in ipairs {
+
+    "You are too exhausted.",
+    "You take a running start and slam head first into a wall.",
+    "WHAM! Face first into the wall! Good one spaz.",
+    "THUD! Your sore face suggests there wasn't a secret passage there afterall.",
+    "You aren't allowed in there.",
+    "Alas, you cannot go that way.",
+    "In your dreams, or what?",
+    "You stumble all over yourself trying to do in that direction.",
+    "The door is closed.",
+    "You huff and puff trying to go that way, but, alas, you can't!.",
+    "No way!  You are still fighting!",
+    "You need a boat to go there.",
+    
+-- add more here
+
+    } do cannot_move_messages [v] = true end
+      
 -- -----------------------------------------------------------------
 -- mapper 'get_room' callback - it wants to know about room uid
 -- -----------------------------------------------------------------
@@ -338,8 +306,11 @@ function get_room (uid)
   -- build hover message
   
   local texits = {}
-  for dir in pairs (room.exits) do
-    table.insert (texits, dir)
+  for dir, where in pairs (room.exits) do
+    if where == 0 then
+      where = "?"
+    end -- if
+    table.insert (texits, dir .. " --> " .. where:sub (1, 5))
   end -- for
   table.sort (texits)
 
@@ -347,7 +318,7 @@ function get_room (uid)
       "%s\tExits: %s\nRoom: %s\n\n%s",
       room.name, 
       table.concat (texits, ", "),
-      uid,
+      uid:sub (1, 5),
       room.description
       )
       
@@ -410,15 +381,15 @@ function end_of_description ()
   
   exits_string = table.concat (current_exits, ",")
   
-    -- genereate a "room ID" by hashing the room name, description and exits
+  -- genereate a "room ID" by hashing the room name, description and exits
     
   uid = utils.tohex (utils.md5 (room_name .. room_description .. exits_string))
   uid = uid:sub (1, 25)  
 
   if debugging then
     ColourNote ("cyan", "", room_description)
-    ColourNote ("pink", "", "last_direction_moved = " .. (last_direction_moved or "none"))
-    ColourNote ("pink", "", "current_room = " .. (current_room or "none"))
+    ColourNote ("darkorange", "", "last_direction_moved = " .. (last_direction_moved or "none"))
+    ColourNote ("darkorange", "", "current_room = " .. (current_room or "none"))
   end -- if
   
   -- assume we know the room name by now
@@ -445,7 +416,7 @@ function end_of_description ()
         and last_direction_moved then
     -- previous room led here
     if rooms [current_room] then
-      if rooms [current_room].exits [last_direction_moved] ~= uid then
+      if rooms [current_room].exits [last_direction_moved] ~= uid and show_database_mods then
         mapper.mapprint ("Fixed exit ", last_direction_moved, "from", current_room, "to here in database")
       end -- if
       rooms [current_room].exits [last_direction_moved] = uid 
@@ -456,8 +427,28 @@ function end_of_description ()
   
      -- this is now our current room
   current_room = uid
-  
     
+  -- remove exits the room had, but now no longer has
+  for k, v in pairs (rooms [uid].exits) do
+    if not current_exits [k] then
+      rooms [uid].exits [k] = nil
+      if show_database_mods then
+        mapper.mapprint ("Removing exit: " .. k)
+      end -- if
+    end -- if
+  end -- for each exit this room has
+
+  -- add in exits we know about but which aren't there
+  for k, v in pairs (current_exits) do
+    if not rooms [uid].exits [k] then
+      rooms [uid].exits [k] = 0
+      if show_database_mods then
+        mapper.mapprint ("Adding exit: " .. k)
+      end -- if
+    end -- if
+  end -- for
+
+     
   -- draw this room
   mapper.draw (current_room)
 
@@ -490,7 +481,7 @@ function process_room_name (name, line, wildcards, styles)
   local name = line
   
   if debugging then
-    ColourNote ("yellow", "", "process_room_name: " .. name .. ", Styles: " .. #styles)
+    ColourNote ("yellow", "", "process_room_name: " .. name)
   end -- if
     
   -- ignore exits lines
@@ -522,7 +513,11 @@ function process_description_line (name, line, wildcards)
   end -- if
   
   if debugging then
-    ColourNote ("yellow", "", "process_description_line")
+    ColourNote ("yellow", "", "process_description_line: " .. line)
+  end -- if
+  
+  if not current_description then
+    ColourNote ("yellow", "", "No current description")
   end -- if
   
   if just_got_room_name then
@@ -557,10 +552,15 @@ function process_exits_line (name, line, wildcards)
     
     for w in string.gmatch (line, "%a+") do
       dir = valid_direction [w]
-      if dir and not current_exits [dir] then
+      if dir then
         current_exits [dir] = 0
       end -- if
     end -- for
+    
+    if debugging then
+      ColourNote ("yellow", "", "Exits: " .. line)
+      ColourNote ("yellow", "", #current_exits .. " changed exits")
+    end -- if
     
     end_of_description ()
 end -- process_exits_line
@@ -647,7 +647,7 @@ end -- cannot_walk
 -- -----------------------------------------------------------------
 function map_goto (name, line, wildcards)
 
-  local wanted = wildcards [1]
+  local wanted = wildcards [1]:upper ()
   
   if #wanted < 3 then
       mapper.mapprint ("Specify at least 3 characters of room ID.")
@@ -716,6 +716,17 @@ function map_where (name, line, wildcards)
   mapper.mapprint (string.format ("Path to %s is: %s", wanted, path))
   
 end -- map_where
+
+-- -----------------------------------------------------------------
+-- map_where - where is a room
+-- see table: cannot_move_messages
+-- -----------------------------------------------------------------
+function check_for_cannot_go (name, line, wildcards)
+  if cannot_move_messages [line] then
+    cannot_walk ()
+  end -- if
+end -- check_for_cannot_go
+
 
 ]]>
 </script>
