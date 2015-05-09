@@ -927,6 +927,11 @@ function get_room (uid)
     room.bordercolour = config.DIFFERENT_AREA_COLOUR.colour
   end -- not in this area
   
+  -- make exits strings
+  for k, v in pairs (room.exits) do
+    room.exits [k] = tostring (v)
+  end -- for
+  
   return room      
       
 end -- get_room
@@ -1036,7 +1041,7 @@ function room_edit_terrain_colour (room, uid)
    
    user_terrain_colour [environmentname] = newcolour
 
-   mapper.draw (current_room)
+   mapper.draw (tostring (current_room))
 
 end -- room_edit_terrain_colour
 
@@ -1106,7 +1111,7 @@ local available =  {
   -- update in-memory table
   rooms [uid].exits [chosen_exit] = exit_destination
   
-  mapper.draw (current_room)
+  mapper.draw (tostring (current_room))
    
 end -- room_add_exit
 
@@ -1159,7 +1164,7 @@ local available =  {
   -- update in-memory table
   rooms [uid].exits [chosen_exit] = nil
   
-  mapper.draw (current_room)
+  mapper.draw (tostring (current_room))
    
 end -- room_delete_exit
 
@@ -1233,7 +1238,7 @@ local available =  {
   
   -- update in-memory table
   rooms [uid].exits [chosen_exit] = exit_destination
-  mapper.draw (current_room)
+  mapper.draw (tostring (current_room))
    
 end -- room_change_exit
 
@@ -1251,7 +1256,7 @@ function change_room_area (room, uid)
   end -- if
   
   rooms[uid].area = chosen_area
-  mapper.draw (current_room)
+  mapper.draw (tostring (current_room))
   
   dbcheck (db:execute (string.format ([[
     UPDATE rooms SET area = %s WHERE uid = %s;
@@ -1309,7 +1314,7 @@ function add_area (room, uid)
                          
   areas [roomarea] = area_name
                               
-  mapper.draw (current_room)
+  mapper.draw (tostring (current_room))
       
 end -- add_area
 
@@ -1472,7 +1477,7 @@ function got_room_number (s)
   end -- no room number
 
   current_room = room_number
-  mapper.draw (room_number)
+  mapper.draw (tostring (room_number))
   
   if expected_exit == "0" and from_room then
     fix_up_exit ()
@@ -1497,7 +1502,7 @@ function got_room_name (s)
   
   if not room then
     save_room_to_database (current_room, brief)
-    mapper.draw (current_room)    -- redraw room with name
+    mapper.draw (tostring (current_room))    -- redraw room with name
   end -- if room not there
   
 end -- got_room_name
@@ -1525,7 +1530,7 @@ function got_room_exit (s)
   
   if room and next (room.exits) == nil then
     save_exits_to_database (current_room, exits)
-    mapper.draw (current_room)    -- redraw room with exits
+    mapper.draw (tostring (current_room))    -- redraw room with exits
   end -- need to save exits
 
 
@@ -1555,7 +1560,7 @@ function got_room_full_exits (s)
   
   if room and next (room.exits) == nil then
     save_full_exits_to_database (current_room, exits)
-    mapper.draw (current_room)    -- redraw room with exits
+    mapper.draw (tostring (current_room))    -- redraw room with exits
   end -- need to save exits
 
 end -- got_room_full_exits
@@ -1576,7 +1581,7 @@ function got_environment (s)
   
   if room and room.terrain == nil then
     save_environment_to_database (current_room, s)
-    mapper.draw (current_room)    -- redraw room with environment
+    mapper.draw (tostring (current_room) )    -- redraw room with environment
   end -- need to save environment
 
 end -- got_environment
@@ -1597,7 +1602,7 @@ function got_coordinates (s)
   
   if room and (room.area == nil or tonumber (room.area) == 0) then
     save_coordinates_to_database (current_room, s)
-    mapper.draw (current_room)    -- redraw room with area
+    mapper.draw (tostring (current_room) )    -- redraw room with area
   end -- need to save environment
 
 end -- got_coordinates
@@ -1618,7 +1623,7 @@ function got_info (s)
   
   if room and room.info == nil then
     save_info_to_database (current_room, s)
-    mapper.draw (current_room)    -- redraw room with info
+    mapper.draw (tostring (current_room))    -- redraw room with info
   end -- need to save environment
 
 end -- got_info

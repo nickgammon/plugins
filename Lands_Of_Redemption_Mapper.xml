@@ -1,0 +1,513 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient [
+  <!ENTITY show_database_mods "true" > 
+  <!ENTITY speedwalk_prefix "" > 
+]>
+
+<muclient>
+<plugin
+   name="Lands_Of_Redemption_Mapper"
+   author="Nick Gammon"
+   id="7c54b861a8cd3c4745c28834"
+   language="Lua"
+   purpose="Mapper for Lands of Redemption"
+   save_state="y"
+   date_written="2015-05-09"
+   requires="4.61"
+   version="1.0"
+   >
+
+<description trim="y">
+<![CDATA[
+AUTOMATIC MAPPER ...  by Nick Gammon
+
+ACTIONS
+
+mapper help         --> this help  (or click the "?" button on the bottom right)
+mapper zoom out     --> zoom out   (or use the mouse-wheel)
+mapper zoom in      --> zoom in    (or use the mouse-wheel)
+mapper hide         --> hide map
+mapper show         --> show map
+mapper find <text>  --> search 
+
+]]>
+</description>
+
+</plugin>
+
+<aliases>
+  <alias
+   match="mapper help"
+   script="OnHelp"
+   enabled="y"
+  >
+  </alias>
+
+ <!--  zooming aliases -->
+
+ <alias
+   match="mapper zoom out"
+   enabled="y"
+   sequence="100"
+   omit_from_command_history="y"
+   omit_from_output="y"
+   script="mapper.zoom_out"
+  >
+  </alias>
+  
+<alias
+   match="mapper zoom in"
+   enabled="y"
+   sequence="100"
+   omit_from_command_history="y"
+   omit_from_output="y"
+   script="mapper.zoom_in"
+  >
+  </alias>  
+  
+ <alias
+   match="mapper hide"
+   enabled="y"
+   sequence="100"
+   script="mapper.hide"
+  >
+  </alias>  
+  
+   <alias
+   match="mapper show"
+   enabled="y"
+   sequence="100"
+   script="mapper.show"
+  >
+  </alias>  
+    
+ <!--  finding aliases -->
+  
+ <alias
+   match="^mapper find ([\w* %d/&quot;]+)$"
+   enabled="y"
+   sequence="100"
+   script="map_find"
+   regexp="y"
+  >
+  
+  </alias>  
+    
+</aliases>
+  
+<triggers>
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="^\s*[a-zA-Z]"
+   name="got_room_name"
+   script="process_room_name"
+   regexp="y"
+   sequence="110"
+  >
+  </trigger>
+  
+  <trigger
+   enabled="y"
+   match="&lt;*hp *m *mv&gt;*"
+   script="got_prompt"
+   sequence="90"
+  >
+  </trigger>
+  
+  <trigger
+     keep_evaluating="y"
+     match="*"
+     name="got_description_line"
+     script="process_description_line"
+     sequence="100"
+    >
+  </trigger>
+
+  <trigger
+     enabled="y"
+     match="[Exits: *]"
+     name="got_exits"
+     script="process_exits_line"
+     sequence="90"
+    >
+  </trigger>
+
+  <trigger
+   enabled="y"
+   match="You are too exhausted."
+   script="mapper.cancel_speedwalk"
+   sequence="100"
+  > 
+  </trigger>
+  
+</triggers>
+
+<!--  Script  -->
+
+<script>
+
+local show_database_mods = &show_database_mods;
+local speedwalk_prefix = "&speedwalk_prefix;"
+
+
+<![CDATA[
+
+-- mapper module
+require "mapper"
+require "serialize"  -- needed to serialize table to string
+
+-- configuration table
+config = { 
+        OUR_ROOM_COLOUR         = { name = "Our room",  colour =  ColourNameToRGB "black", },
+         }    
+
+-- all the rooms we have come across
+rooms = { }
+
+
+-- -----------------------------------------------------------------
+-- these commands will be considered "room changing" commands
+-- -----------------------------------------------------------------
+local valid_direction = {
+  n = "n",
+  s = "s",
+  e = "e",
+  w = "w",
+  u = "u",
+  d = "d",
+  ne = "ne",
+  sw = "sw",
+  nw = "nw",
+  se = "se",
+  north = "n",
+  south = "s",
+  east = "e",
+  west = "w",
+  up = "u",
+  down = "d",
+  northeast = "ne",
+  northwest = "nw",
+  southeast = "se",
+  southwest = "sw",
+  ['in'] = "in",
+  out = "out",
+  }  -- end of valid_direction
+  
+-- for calculating the way back
+local inverse_direction = {
+  n = "s",
+  s = "n",
+  e = "w",
+  w = "e",
+  u = "d",
+  d = "u",
+  ne = "sw",
+  sw = "ne",
+  nw = "se",
+  se = "nw",
+  ['in'] = "out",
+  out = "in",
+  }  -- end of inverse_direction
+  
+-- -----------------------------------------------------------------
+-- mapper 'get_room' callback - it wants to know about room uid
+-- -----------------------------------------------------------------
+function get_room (uid)
+ 
+  room = rooms [uid]
+  if not room then
+    return nil
+  end -- if not found
+
+
+  -- how to draw this particular room
+  room.bordercolour = config.ROOM_COLOUR.colour
+  room.borderpen = miniwin.pen_solid 
+  room.borderpenwidth = 1
+  room.fillbrush = miniwin.brush_null  -- no fill
+
+  -- draw current room in bolder colour  
+  if uid == current_room then
+    room.bordercolour = config.OUR_ROOM_COLOUR.colour
+    room.borderpenwidth = 2
+  end -- not in this area
+  
+  room.area = "Lands of Redemption"  -- assume every room is in this area
+  
+  -- build hover message
+  
+  local texits = {}
+  for dir in pairs (room.exits) do
+    table.insert (texits, dir)
+  end -- for
+  table.sort (texits)
+
+  room.hovermessage = string.format (
+      "%s\tExits: %s\nRoom: %s\n\n%s",
+      room.name, 
+      table.concat (texits, ", "),
+      uid,
+      room.description
+      )
+      
+        
+  return room
+end -- get_room
+
+-- -----------------------------------------------------------------
+-- Plugin Install
+-- -----------------------------------------------------------------
+function OnPluginInstall ()
+  -- initialize mapper
+  mapper.init { 
+            config     = config,   -- ie. colours, sizes
+            get_room   = get_room, -- info about room (uid)
+            show_help  = OnHelp,   -- to show help
+            speedwalk_prefix = speedwalk_prefix,  -- how to speedwalk
+ --           room_click = room_click,    -- called on RH click on room square
+              }
+               
+  mapper.mapprint (string.format ("MUSHclient mapper installed, version %0.1f", mapper.VERSION))
+  
+-- on plugin install, convert variable into Lua table
+  assert (loadstring (GetVariable ("rooms") or "")) ()
+  
+  assert (rooms, "Uh oh, no rooms table.")
+  
+end -- OnPluginInstall
+
+-- -----------------------------------------------------------------
+-- Plugin Help
+-- -----------------------------------------------------------------
+function OnHelp ()
+  mapper.mapprint (string.format ("[MUSHclient mapper, version %0.1f]", mapper.VERSION))
+  mapper.mapprint (world.GetPluginInfo (world.GetPluginID (), 3))
+end
+
+-- -----------------------------------------------------------------
+-- end_of_description : we believe this is the end of the room description
+-- -----------------------------------------------------------------
+function end_of_description ()
+  EnableTrigger ("got_description_line", false)
+  EnableTrigger ("got_room_name", true)
+  
+  if not current_description or #current_description == 0 then
+    return
+  end -- if
+  
+  if not current_exits then
+    return
+  end -- if
+  
+  room_description = table.concat (current_description, "\n")
+  
+  exits_string = table.concat (current_exits, ",")
+  
+    -- genereate a "room ID" by hashing the room name, description and exits
+    
+  uid = utils.tohex (utils.md5 (room_name .. room_description .. exits_string))
+  uid = uid:sub (1, 25)  
+
+--  ColourNote ("cyan", "", room_description)
+--  ColourNote ("pink", "", "last_direction_moved = " .. (last_direction_moved or "none"))
+--  ColourNote ("pink", "", "current_room = " .. (current_room or "none"))
+  
+  -- assume we know the room name by now
+  -- add to rooms table if not there
+  if not rooms [uid] then
+    rooms [uid] = { name = room_name, exits = current_exits, description = room_description }
+    
+    if show_database_mods then
+      mapper.mapprint ("Added room", uid, "to database. Name:", room_name)
+      for k, v in pairs (current_exits) do
+        mapper.mapprint ("Added exit", k, "from room", uid, "to database.")
+      end -- for
+    end -- if
+        
+  end -- if
+
+  if current_room and rooms [current_room] and not rooms [current_room].exits then
+    rooms [current_room].exits = { }
+  end -- if
+  
+  -- if we changed rooms assume that our last movement sent us here
+  if uid ~= current_room 
+        and current_room
+        and last_direction_moved then
+    -- previous room led here
+    if rooms [current_room] then
+      rooms [current_room].exits [last_direction_moved] = uid 
+    end -- if
+    -- assume inverse direction leads back
+    rooms [uid].exits [inverse_direction [last_direction_moved]] = current_room
+  end -- if
+  
+     -- this is now our current room
+  current_room = uid
+  
+    
+  -- draw this room
+  mapper.draw (current_room)
+
+  current_description = nil
+  current_exits = nil
+  room_name = nil
+  just_got_room_name = false
+  
+end -- end_of_description
+
+-- -----------------------------------------------------------------
+-- Here on prompt
+-- -----------------------------------------------------------------
+function got_prompt (name, line, wildcards)
+
+--  ColourNote ("yellow", "", "got_prompt")
+  
+  end_of_description ()
+ 
+
+end -- got_prompt
+
+-- -----------------------------------------------------------------
+-- Here on room name
+-- -----------------------------------------------------------------
+function process_room_name (name, line, wildcards, styles)
+  local name = line
+  
+  -- ColourNote ("yellow", "", "process_room_name: " .. name .. ", Styles: " .. #styles)
+  
+  -- ignore exits lines
+  if string.match (name, "^%[Exits: ") then
+    return
+  end -- if
+  
+  -- ignore really long lines
+  if #name > 50 then
+    return
+  end -- if
+  
+  room_name = name
+  
+  EnableTrigger ("got_description_line", true)
+  EnableTrigger ("got_room_name", false)
+  
+  current_description = { }
+  just_got_room_name = true
+end -- got_room_name
+
+-- -----------------------------------------------------------------
+-- process_description_line : Here on one line of the description
+-- -----------------------------------------------------------------
+function process_description_line (name, line, wildcards)
+
+  if Trim (line) == "" then
+    return
+  end -- if
+  
+--  ColourNote ("yellow", "", "process_description_line")
+  
+  if just_got_room_name then
+  
+    -- false alarm!
+    if line:sub (1, 2) ~= "  " then
+      just_got_room_name = false
+      EnableTrigger ("got_description_line", false)
+      current_description = nil
+      current_exits = nil
+      room_name = nil
+      return       
+    end -- if
+    
+  end -- if
+  
+  just_got_room_name = false
+  
+  -- add to the current description
+  if Trim (line) ~= "" then
+    table.insert (current_description, line)  
+  end -- if
+  
+end -- process_description_line
+
+-- -----------------------------------------------------------------
+-- process_exits_line : Here on [Exits: north east south west] or similar
+-- -----------------------------------------------------------------
+function process_exits_line (name, line, wildcards)
+
+    current_exits = { }
+    
+    for w in string.gmatch (line, "%a+") do
+      dir = valid_direction [w]
+      if dir and not current_exits [dir] then
+        current_exits [dir] = 0
+      end -- if
+    end -- for
+    
+    end_of_description ()
+end -- process_exits_line
+
+-- -----------------------------------------------------------------
+-- try to detect when we send a movement command
+-- -----------------------------------------------------------------
+function OnPluginSent (sText)
+  last_direction_moved = valid_direction [sText]
+end -- OnPluginSent
+
+-- -----------------------------------------------------------------
+-- OnPluginSaveState - save rooms info
+-- -----------------------------------------------------------------
+function OnPluginSaveState ()
+
+  -- just save the relevant stuff  
+  wanted_keys = { "name", "area", "exits", "description" }
+  
+  saved_rooms = { }
+  for k, v in pairs (rooms) do
+    saved_rooms [k] = { }
+    for i, j in ipairs (wanted_keys) do
+      saved_rooms [k] [j] = v [j]
+    end -- for
+  end -- for
+ 
+  SetVariable ("rooms", "rooms = " .. serialize.save_simple (saved_rooms))
+              
+end -- function OnPluginSaveState
+
+-- -----------------------------------------------------------------
+-- map_find - find stuff
+-- -----------------------------------------------------------------
+function map_find (name, line, wildcards)
+ 
+  local found_rooms = {}
+  local count = 0
+  local wanted = wildcards [1]:lower ()
+  
+  -- find matching rooms
+  for k, v in pairs (rooms) do
+    if string.find (v.description:lower (), wanted, 1, true)
+    or string.find (v.name:lower (), wanted, 1, true) then
+      found_rooms [k] = true
+      count = count + 1
+    end -- if
+  end   -- finding room
+  
+  -- see if nearby
+  mapper.find (
+    function (uid) 
+      local room = found_rooms [uid] 
+      if room then
+        found_rooms [uid] = nil
+      end -- if
+      return room, next (found_rooms) == nil
+    end,  -- function
+    show_vnums,  -- show vnum?
+    count,      -- how many to expect
+    false       -- don't auto-walk
+    )
+  
+end -- map_find
+
+]]>
+</script>
+</muclient>
