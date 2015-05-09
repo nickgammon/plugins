@@ -160,6 +160,7 @@ require "serialize"  -- needed to serialize table to string
 -- configuration table
 config = { 
         OUR_ROOM_COLOUR         = { name = "Our room",  colour =  ColourNameToRGB "black", },
+        SHOP_FILL_COLOUR        = { name = "Shop",      colour =  ColourNameToRGB "darkolivegreen", },
          }    
 
 -- all the rooms we have come across
@@ -227,6 +228,11 @@ function get_room (uid)
   room.borderpenwidth = 1
   room.fillbrush = miniwin.brush_null  -- no fill
 
+  if string.find (room.name:lower (), "%f[%a]shop%f[%A]") then
+      room.fillcolour = config.SHOP_FILL_COLOUR.colour
+      room.fillbrush = 8
+  end -- if
+      
   -- draw current room in bolder colour  
   if uid == current_room then
     room.bordercolour = config.OUR_ROOM_COLOUR.colour
