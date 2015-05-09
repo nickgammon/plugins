@@ -2,6 +2,7 @@
 <!DOCTYPE muclient [
   <!ENTITY show_database_mods "true" > 
   <!ENTITY speedwalk_prefix "" > 
+  <!ENTITY debugging "false" > 
 ]>
 
 <muclient>
@@ -29,6 +30,9 @@ mapper zoom in      --> zoom in    (or use the mouse-wheel)
 mapper hide         --> hide map
 mapper show         --> show map
 mapper find <text>  --> search 
+mapper where <room> --> show directions to a room by ID (can specify part ID)
+mapper goto <room>  --> walk to a room by its room ID
+
 
 ]]>
 </description>
@@ -93,6 +97,36 @@ mapper find <text>  --> search
   
   </alias>  
     
+ <alias
+   match="mapper where *"
+   enabled="y"
+   sequence="100"
+   script="map_where"
+  >
+  
+  </alias>  
+
+ <alias
+   match="mapper goto *"
+   enabled="y"
+   sequence="100"
+   script="map_goto"
+  >
+  
+  </alias>  
+  
+ <alias
+   match="mapper *"
+   enabled="y"
+   sequence="110"
+   send_to="12"
+  >
+  <send>
+    mapper.maperror ("Unknown mapper command: %1")
+    OnHelp ()
+  </send>  
+  </alias>    
+      
 </aliases>
   
 <triggers>
@@ -109,7 +143,8 @@ mapper find <text>  --> search
   
   <trigger
    enabled="y"
-   match="&lt;"
+   keep_evaluating="y"
+   match="&lt;*"
    script="got_prompt"
    sequence="90"
   >
@@ -140,6 +175,64 @@ mapper find <text>  --> search
    sequence="100"
   > 
   </trigger>
+
+  <trigger
+   enabled="y"
+   match="You take a running start and slam head first into a wall."
+   script="cannot_walk"
+   sequence="100"
+  > 
+  </trigger>
+    
+  <trigger
+   enabled="y"
+   match="WHAM! Face first into the wall! Good one spaz."
+   script="cannot_walk"
+   sequence="100"
+  > 
+  </trigger>
+  
+  <trigger
+   enabled="y"
+   match="THUD! Your sore face suggests there wasn't a secret passage there afterall."
+   script="cannot_walk"
+   sequence="100"
+  > 
+  </trigger>
+  
+  <trigger
+   enabled="y"
+   match="You aren't allowed in there."
+   script="cannot_walk"
+   sequence="100"
+  > 
+  </trigger>  
+  
+  <trigger
+   enabled="y"
+   match="Alas, you cannot go that way."
+   script="cannot_walk"
+   sequence="100"
+  > 
+  </trigger>  
+  
+  <trigger
+   enabled="y"
+   match="In your dreams, or what?"
+   script="cannot_walk"
+   sequence="100"
+  > 
+  </trigger>  
+ 
+  
+<trigger
+   enabled="y"
+   match="No way!  You are still fighting!"
+   script="cannot_walk"
+   regexp="y"
+   sequence="100"
+  > 
+  </trigger>  
   
 </triggers>
 
@@ -149,6 +242,7 @@ mapper find <text>  --> search
 
 local show_database_mods = &show_database_mods;
 local speedwalk_prefix = "&speedwalk_prefix;"
+local debugging = &debugging;
 
 
 <![CDATA[
@@ -299,10 +393,16 @@ function end_of_description ()
   EnableTrigger ("got_room_name", true)
   
   if not current_description or #current_description == 0 then
+    if debugging then
+      ColourNote ("yellow", "", "No description")
+    end -- if
     return
   end -- if
   
   if not current_exits then
+    if debugging then
+      ColourNote ("yellow", "", "No exits")
+    end -- if
     return
   end -- if
   
@@ -315,9 +415,11 @@ function end_of_description ()
   uid = utils.tohex (utils.md5 (room_name .. room_description .. exits_string))
   uid = uid:sub (1, 25)  
 
---  ColourNote ("cyan", "", room_description)
---  ColourNote ("pink", "", "last_direction_moved = " .. (last_direction_moved or "none"))
---  ColourNote ("pink", "", "current_room = " .. (current_room or "none"))
+  if debugging then
+    ColourNote ("cyan", "", room_description)
+    ColourNote ("pink", "", "last_direction_moved = " .. (last_direction_moved or "none"))
+    ColourNote ("pink", "", "current_room = " .. (current_room or "none"))
+  end -- if
   
   -- assume we know the room name by now
   -- add to rooms table if not there
@@ -363,6 +465,7 @@ function end_of_description ()
   current_exits = nil
   room_name = nil
   just_got_room_name = false
+  last_direction_moved = nil
   
 end -- end_of_description
 
@@ -371,7 +474,9 @@ end -- end_of_description
 -- -----------------------------------------------------------------
 function got_prompt (name, line, wildcards)
 
---  ColourNote ("yellow", "", "got_prompt")
+  if debugging then
+    ColourNote ("yellow", "", "got_prompt")
+  end -- if
   
   end_of_description ()
  
@@ -384,8 +489,10 @@ end -- got_prompt
 function process_room_name (name, line, wildcards, styles)
   local name = line
   
-  -- ColourNote ("yellow", "", "process_room_name: " .. name .. ", Styles: " .. #styles)
-  
+  if debugging then
+    ColourNote ("yellow", "", "process_room_name: " .. name .. ", Styles: " .. #styles)
+  end -- if
+    
   -- ignore exits lines
   if string.match (name, "^%[Exits: ") then
     return
@@ -414,7 +521,9 @@ function process_description_line (name, line, wildcards)
     return
   end -- if
   
---  ColourNote ("yellow", "", "process_description_line")
+  if debugging then
+    ColourNote ("yellow", "", "process_description_line")
+  end -- if
   
   if just_got_room_name then
   
@@ -516,6 +625,97 @@ function map_find (name, line, wildcards)
     )
   
 end -- map_find
+
+-- -----------------------------------------------------------------
+-- cannot_walk - we tried to walk but failed
+-- -----------------------------------------------------------------
+function cannot_walk (name, line, wildcards)
+  mapper.cancel_speedwalk ()
+  current_description = nil
+  current_exits = nil
+  room_name = nil
+  just_got_room_name = false
+  last_direction_moved = nil
+  if show_database_mods then
+    mapper.mapprint ("Attempt to walk cancelled.")
+  end -- if
+  
+end -- cannot_walk
+
+-- -----------------------------------------------------------------
+-- map_goto - go to a room
+-- -----------------------------------------------------------------
+function map_goto (name, line, wildcards)
+
+  local wanted = wildcards [1]
+  
+  if #wanted < 3 then
+      mapper.mapprint ("Specify at least 3 characters of room ID.")
+      return
+  end -- if
+  
+  if current_room and string.find (current_room:upper (), "^" .. wanted) then
+    mapper.mapprint ("You are already in that room.")
+    return
+  end -- if
+  
+  -- find desired room
+  mapper.find (
+    function (uid) 
+      local found = string.find (uid:upper (), "^" .. wanted)
+      return found,  -- wanted room?
+             found  -- stop searching?
+    end,  -- function
+    show_vnums,  -- show vnum?
+    1,          -- how many to expect
+    true        -- just walk there
+    )
+        
+end -- map_goto
+
+-- -----------------------------------------------------------------
+-- map_where - where is a room
+-- -----------------------------------------------------------------
+function map_where (name, line, wildcards)
+
+  if not mapper.check_we_can_find () then
+    return
+  end -- if
+
+  local wanted = wildcards [1]:upper ()
+  
+  if #wanted < 3 then
+      mapper.mapprint ("Specify at least 3 characters of room ID.")
+      return
+  end -- if
+
+  if current_room and string.find (current_room:upper (), "^" .. wanted) then
+    mapper.mapprint ("You are already in that room.")
+    return
+  end -- if
+  
+  local paths = mapper.find_paths (current_room, 
+           function (uid) 
+             local found = string.find (uid:upper (), "^" .. wanted)
+             return found,  -- wanted room?
+                    found  -- stop searching?
+            end)
+
+  local uid, item = next (paths, nil) -- extract first (only) path
+  
+  -- nothing? room not found
+  if not item then
+    mapper.mapprint (string.format ("Room %s not found", wanted))
+    return
+  end -- if
+  
+  -- turn into speedwalk
+  local path = mapper.build_speedwalk (item.path)
+  
+  -- display it
+  mapper.mapprint (string.format ("Path to %s is: %s", wanted, path))
+  
+end -- map_where
 
 ]]>
 </script>
