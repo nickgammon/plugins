@@ -109,7 +109,7 @@ mapper find <text>  --> search
   
   <trigger
    enabled="y"
-   match="&lt;*hp *m *mv&gt;*"
+   match="&lt;"
    script="got_prompt"
    sequence="90"
   >
@@ -327,7 +327,7 @@ function end_of_description ()
     if show_database_mods then
       mapper.mapprint ("Added room", uid, "to database. Name:", room_name)
       for k, v in pairs (current_exits) do
-        mapper.mapprint ("Added exit", k, "from room", uid, "to database.")
+        mapper.mapprint ("Added exit", k, "to database.")
       end -- for
     end -- if
         
@@ -343,6 +343,9 @@ function end_of_description ()
         and last_direction_moved then
     -- previous room led here
     if rooms [current_room] then
+      if rooms [current_room].exits [last_direction_moved] ~= uid then
+        mapper.mapprint ("Fixed exit ", last_direction_moved, "from", current_room, "to here in database")
+      end -- if
       rooms [current_room].exits [last_direction_moved] = uid 
     end -- if
     -- assume inverse direction leads back
