@@ -341,7 +341,7 @@ function OnPluginInstall ()
                
   mapper.mapprint (string.format ("MUSHclient mapper installed, version %0.1f", mapper.VERSION))
   
--- on plugin install, convert variable into Lua table
+  -- on plugin install, convert variable into Lua table
   assert (loadstring (GetVariable ("rooms") or "")) ()
   
   assert (rooms, "Uh oh, no rooms table.")
@@ -381,7 +381,7 @@ function end_of_description ()
   
   exits_string = table.concat (current_exits, ",")
   
-  -- genereate a "room ID" by hashing the room name, description and exits
+  -- generate a "room ID" by hashing the room name, description and exits
     
   uid = utils.tohex (utils.md5 (room_name .. room_description .. exits_string))
   uid = uid:sub (1, 25)  
@@ -718,7 +718,7 @@ function map_where (name, line, wildcards)
 end -- map_where
 
 -- -----------------------------------------------------------------
--- map_where - where is a room
+-- check_for_cannot_go - look up the line in a table of failure messages
 -- see table: cannot_move_messages
 -- -----------------------------------------------------------------
 function check_for_cannot_go (name, line, wildcards)
