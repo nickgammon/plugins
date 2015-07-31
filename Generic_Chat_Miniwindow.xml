@@ -1,0 +1,774 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<!-- Bits of this plugin and ideas were borrowed and remixed from the MUSHclient community. http://www.gammon.com.au/forum/?id=9385 and others. -->
+<!-- Modifications for Aardwolf and extra awesome sauce added by Fiendish with help from Orogan -->
+<!-- Adapated by Nick Gammon for Smaug and similar MUDs -->
+
+<muclient>
+    <plugin
+    name="Generic_Chat_Miniwindow"
+    author="Fiendish"
+    id="10778718503f0c91106745f5"
+    language="Lua"
+    purpose="Move chats to a miniwindow"
+    date_written="2010-04-04"
+    date_modified="2011-01-05"
+    requires="4.52"
+    version="2.4"
+    save_state="y"
+    >
+    
+<description trim="y">
+USAGE:
+
+  chats echo on    : echo chats in main window
+  chats echo off   : do not echo chats
+  chats echo       : toggle echoing
+  chats timestamps on  : show timestamps
+  chats timestamps off : do not show timestamps
+  chats timestamps     : toggle timestamps
+  chats show       : show chats window
+  chats hide       : hide chats window
+  
+  LH-click a line to copy it to the clipboard
+  RH-click main window to see menu of options
+  
+  Click title bar to drag window.
+  
+  Call this plugin by making as many triggers as you want in your main
+  world file (or other plugins) and then passing the style runs to this 
+  plugin like this:
+  
+  function chattrigger (name, line, wildcards, styles)
+    require "serialize"
+    check (CallPlugin ("10778718503f0c91106745f5", 
+                       "display", serialize.save_simple (styles)))
+  end -- chattrigger
+
+</description>
+  
+</plugin>
+
+<aliases>
+    <alias
+    script="chat_echo"
+    match="^chats echo( on| off)?$"
+    enabled="y"
+    regexp="y"
+    sequence="100"
+    ignore_case="y"
+    ></alias>
+
+    <alias
+    script="chat_timestamps"
+    match="^chats timestamps( on| off)?$"
+    enabled="y"
+    regexp="y"
+    sequence="100"
+    ignore_case="y"
+    ></alias>
+        
+    <alias
+    script="chat_show"
+    match="chats show"
+    enabled="y"
+    sequence="100"
+    ignore_case="y"
+    ></alias>
+
+    <alias
+    script="chat_hide"
+    match="chats hide"
+    enabled="y"
+    sequence="100"
+    ignore_case="y"
+    ></alias>
+        
+</aliases>
+
+<script>
+<![CDATA[
+
+require "movewindow"  -- load the movewindow.lua module
+require "copytable"
+
+BODY_FONT_NAME = "Dina"
+BODY_FONT_SIZE = 8
+SCROLL_BAR_WIDTH = 15
+MAX_LINES = 10000 -- how many lines to store in scrollback
+
+-- date_format = "[%d %b %H:%M:%S] "        -- [30 Aug 13:29:49]   date and time 24 hour
+-- date_format = "[%d %b %I:%M:%S%p] "  -- [30 Aug 01:20:12PM]     date and time 12 hour
+-- date_format = "[%H:%M:%S] "          -- [13:29:08]          time 24 hour
+-- date_format = "[%X] "                  -- [1:22:06 PM]            time 12 hour
+
+TIMESTAMP_TEXT_COLOUR = "white"
+TIMESTAMP_BACK_COLOUR = "black"
+
+-- doing it this way makes them default to true the first time around
+timestamp = not (GetVariable("timestamp") == "false")
+echo = not (GetVariable("echo") == "false")
+
+date_format = GetVariable("date_format")
+WINDOW_WIDTH = tonumber(GetVariable("WINDOW_WIDTH"))
+WINDOW_HEIGHT = tonumber(GetVariable("WINDOW_HEIGHT"))
+
+-- offset of text from edge
+TEXT_INSET = 5
+
+-- where to store the chat line
+lines = {}  -- table of recent chat lines
+rawlines = {}
+
+lineStart = ""
+lineEnd = ""
+WINDOW_COLUMNS = ""
+WINDOW_LINES = ""
+
+theme = {
+    WINDOW_BACKGROUND = ColourNameToRGB ("#000000"), -- for miniwindow body
+    WINDOW_BORDER = ColourNameToRGB("#E8E8E8"), -- for miniwindow body
+    
+    HIGHLIGHT=ColourNameToRGB("#FFFFFF"), -- for 3D surfaces
+    FACE=ColourNameToRGB("#D4D0C8"), -- for 3D surfaces
+    INNERSHADOW=ColourNameToRGB("#808080"), -- for 3D surfaces
+    OUTERSHADOW = ColourNameToRGB("#404040"), -- for 3D surfaces
+   
+    BACK_FACE = ColourNameToRGB ("#E8E8E8"), -- for contrasting details
+    DETAIL = ColourNameToRGB ("#000000"), -- for contrasting details
+
+    TITLE_HEIGHT = 17, -- for miniwindow title area
+    SUBTITLE_HEIGHT = 17, -- for miniwindow title area
+    TITLE_FONT_NAME = "Dina", -- for miniwindow title area
+    TITLE_FONT_SIZE = 8 -- for miniwindow title area
+}  -- end theme table
+
+
+-- replacement for WindowRectOp action 5, which allows for a 3D look while maintaining color theme
+-- Requires global theme.HIGHLIGHT, theme.FACE, theme.INNERSHADOW, and theme.OUTERSHADOW rgb colors to be set.
+function DrawThemed3DRect(Window, left, top, right, bottom)
+    WindowRectOp(Window, miniwin.rect_fill, left, top, right, bottom, theme.FACE)
+    WindowLine(Window, left, top, right, top, theme.HIGHLIGHT, 
+                miniwin.pen_solid + miniwin.pen_endcap_flat, 1)
+    WindowLine(Window, left, top, left, bottom, theme.HIGHLIGHT, 
+                miniwin.pen_solid + miniwin.pen_endcap_flat, 1)
+    WindowLine(Window, left, bottom-2, right, bottom-2, theme.INNERSHADOW, 
+                miniwin.pen_solid + miniwin.pen_endcap_flat, 1)
+    WindowLine(Window, right-2, top, right-2, bottom-2, theme.INNERSHADOW, 
+                miniwin.pen_solid + miniwin.pen_endcap_flat, 1)
+    WindowLine(Window, left, bottom-1, right, bottom-1, theme.OUTERSHADOW, 
+                miniwin.pen_solid + miniwin.pen_endcap_flat, 1)
+    WindowLine(Window, right-1, top, right-1, bottom-1, theme.OUTERSHADOW, 
+                miniwin.pen_solid + miniwin.pen_endcap_flat, 1)    
+end
+
+function DrawThemedResizeTag(Window, x1, y1, size)
+    local x2, y2 = x1+size, y1+size
+    DrawThemed3DRect(Window, x1, y1, x2, y2)
+    local m = 2
+    local n = 2
+    while (x1+m+2 <= x2-3 and y1+n+1 <= y2-4) do
+        WindowLine(Window, x1+m+1, y2-4, x2-3, y1+n, theme.HIGHLIGHT, 
+                    miniwin.pen_solid, 1)
+        WindowLine(Window, x1+m+2, y2-4, x2-3, y1+n+1, theme.INNERSHADOW, 
+                    miniwin.pen_solid, 1)
+        m = m+3
+        n = n+3
+    end
+end  -- function DrawThemedResizeTag
+
+
+Win = GetPluginID()
+font_height = ""
+line_height = ""
+windowinfo = ""
+startx = ""
+starty = ""
+
+function ResizeMoveCallback()
+    posx, posy = WindowInfo (Win, 17), WindowInfo (Win, 18)
+    if (WindowTextWidth(Win, "titlefont"..Win, "WWWCOMMUNICATION")+2*SCROLL_BAR_WIDTH <= WINDOW_WIDTH+posx-startx) then
+        WINDOW_WIDTH = WINDOW_WIDTH+posx-startx
+        startx = posx
+    end  -- if
+    if (3*SCROLL_BAR_WIDTH+10+line_height+theme.TITLE_HEIGHT <= WINDOW_HEIGHT+posy-starty) then
+        WINDOW_HEIGHT = WINDOW_HEIGHT+posy-starty
+        starty = posy
+    end -- if
+    init(false)
+end -- function ResizeMoveCallback
+
+function ResizeReleaseCallback()
+    WINDOW_HEIGHT = theme.TITLE_HEIGHT+(line_height*(WINDOW_LINES-1))+3
+    init(true)
+end  -- ResizeReleaseCallback
+
+function OnPluginInstall()
+    -- Dummy window to get font characteristics
+    check (WindowCreate (Win, 0, 0, 1, 1, 0, 0, theme.WINDOW_BACKGROUND) )
+    check (WindowFont(Win, "bodyfont"..Win, BODY_FONT_NAME, BODY_FONT_SIZE))
+    check (WindowFont(Win, "titlefont"..Win, theme.TITLE_FONT_NAME, theme.TITLE_FONT_SIZE))
+    font_height = WindowFontInfo (Win, "bodyfont"..Win, 1) -  WindowFontInfo (Win, "bodyfont"..Win, 4) + 1
+    line_height = font_height+1
+    font_width = WindowTextWidth (Win, "bodyfont"..Win, "W")
+    
+    -- install the window movement handler, get back the window position
+    windowinfo = movewindow.install (Win, miniwin.pos_top_right, miniwin.create_absolute_location, true)
+
+    -- check for Echo/Timestamp/date_format/window size (in pixels) variables, if not there, set them
+    if date_format == nil then
+        date_format = "[%d %b %H:%M:%S] "
+    end -- if
+    if WINDOW_WIDTH == nil then
+        WINDOW_WIDTH = (font_width*80)+SCROLL_BAR_WIDTH -- 80 columns
+    end
+    if WINDOW_HEIGHT == nil then
+        WINDOW_HEIGHT = theme.TITLE_HEIGHT+(line_height*6)+2 -- 6 lines
+    end -- if
+    init(true)
+    OnPluginEnable ()  -- do initialization stuff
+end -- function OnPluginInstall
+
+function init(firstTime)
+    -- how many lines and columns will fit?
+    WINDOW_LINES = math.ceil((WINDOW_HEIGHT-theme.TITLE_HEIGHT)/line_height)
+    WINDOW_COLUMNS = math.ceil((WINDOW_WIDTH-SCROLL_BAR_WIDTH)/font_width)
+
+    if firstTime then
+        WindowCreate(Win, windowinfo.window_left, windowinfo.window_top, WINDOW_WIDTH, WINDOW_HEIGHT, windowinfo.window_mode, windowinfo.window_flags, theme.WINDOW_BACKGROUND)
+
+        -- catch for right-click menu and line selection
+        WindowAddHotspot(Win, "textarea", 0, theme.TITLE_HEIGHT, WINDOW_WIDTH-SCROLL_BAR_WIDTH,0, 
+            "", "", "MouseDown", "CancelMouseDown", "MouseUp", "", 
+            miniwin.cursor_ibeam, 0)
+        -- add the drag handler so they can move the window around
+        movewindow.add_drag_handler (Win, 0, 0, 0, theme.TITLE_HEIGHT)
+        
+        -- scroll bar up/down buttons
+        WindowAddHotspot(Win, "up", WINDOW_WIDTH-SCROLL_BAR_WIDTH, theme.TITLE_HEIGHT, 0, theme.TITLE_HEIGHT+SCROLL_BAR_WIDTH, 
+            "MouseOver", "CancelMouseOver", "MouseDown", "CancelMouseDown", "MouseUp", "", 
+            miniwin.cursor_hand, 0)
+        WindowAddHotspot(Win, "down", WINDOW_WIDTH-SCROLL_BAR_WIDTH, WINDOW_HEIGHT-(2*SCROLL_BAR_WIDTH), 0, WINDOW_HEIGHT-SCROLL_BAR_WIDTH, 
+            "MouseOver", "CancelMouseOver", "MouseDown", "CancelMouseDown", "MouseUp", "", 
+            miniwin.cursor_hand, 0)
+
+        -- add the resize widget hotspot
+        WindowAddHotspot(Win, "resizer", WINDOW_WIDTH-SCROLL_BAR_WIDTH, WINDOW_HEIGHT-SCROLL_BAR_WIDTH, WINDOW_WIDTH, WINDOW_HEIGHT, 
+            "MouseOver", "CancelMouseOver", "MouseDown", "CancelMouseDown", "MouseUp", "", 
+            miniwin.cursor_nw_se_arrow, 0)
+        WindowDragHandler(Win, "resizer", "ResizeMoveCallback", "ResizeReleaseCallback", 0)    
+    else
+        WindowResize(Win, WINDOW_WIDTH, WINDOW_HEIGHT, theme.WINDOW_BACKGROUND)
+        WindowMoveHotspot(Win, "textarea", 0, theme.TITLE_HEIGHT, WINDOW_WIDTH-SCROLL_BAR_WIDTH, 0)
+        WindowMoveHotspot(Win, "up", WINDOW_WIDTH-SCROLL_BAR_WIDTH, theme.TITLE_HEIGHT, 0, theme.TITLE_HEIGHT+SCROLL_BAR_WIDTH)
+        WindowMoveHotspot(Win, "down", WINDOW_WIDTH-SCROLL_BAR_WIDTH, WINDOW_HEIGHT-(2*SCROLL_BAR_WIDTH), 0, WINDOW_HEIGHT-SCROLL_BAR_WIDTH)
+        WindowMoveHotspot(Win, "resizer", WINDOW_WIDTH-SCROLL_BAR_WIDTH, WINDOW_HEIGHT-SCROLL_BAR_WIDTH, WINDOW_WIDTH, 0)
+    end -- if
+    WindowShow(Win, true)
+    
+    if (firstTime == true) then
+        lines = {}
+        for _,styles in ipairs(rawlines) do 
+            fillBuffer(styles)
+        end  -- for each line
+    end -- if
+
+    lineStart = math.max(1, #lines-WINDOW_LINES+2)
+    lineEnd = math.max(1, #lines)
+    refresh()
+end  -- function init
+
+function OnPluginClose ()
+    -- if enabled
+    if GetPluginInfo (GetPluginID(), 17) then
+        OnPluginDisable()
+    end -- if enabled
+end -- function OnPluginClose
+
+function OnPluginEnable ()
+    WindowShow (Win, true)
+end -- function OnPluginEnable
+
+function OnPluginSaveState ()
+    -- save window current location for next time  
+    SetVariable ("enabled", tostring (GetPluginInfo (GetPluginID(), 17)))
+    movewindow.save_state (Win)
+    -- save echo/timestamp status
+    SetVariable ("echo", tostring (echo))
+    SetVariable ("timestamp", tostring (timestamp))
+    SetVariable("date_format", date_format)
+    SetVariable("WINDOW_WIDTH", WINDOW_WIDTH)
+    SetVariable("WINDOW_HEIGHT", WINDOW_HEIGHT)
+end -- function OnPluginSaveState
+
+function OnPluginDisable ()
+    WindowShow( Win, false )
+end -- function OnPluginDisable
+
+-- display one line
+function Display_Line (line, styles)
+ 
+  local left    = TEXT_INSET
+  local top     = theme.TITLE_HEIGHT + (line * line_height) + 1
+  local bottom  = top + line_height
+  local font    = "bodyfont" .. Win
+
+  if backfill then
+      WindowRectOp (Win, miniwin.rect_fill, 1, top, WINDOW_WIDTH - SCROLL_BAR_WIDTH, bottom, ColourNameToRGB("#333333"))
+  end -- backfill
+  
+  if (styles) then
+    for _, style in ipairs (styles) do
+      local width = WindowTextWidth (Win, font, style.text) -- get width of text
+      local right = left + width
+      WindowRectOp (Win, miniwin.rect_fill, left, top, right, bottom, style.backcolour)  -- draw background
+      WindowText (Win, font, style.text, left, top, 0, 0, style.textcolour)  -- draw text
+      left = left + width  -- advance horizontally
+    end -- for each style run        
+  end -- if  styles
+  
+end -- Display_Line
+
+
+-- display all visible lines
+function writeLines()
+    for count = lineStart, lineEnd do
+        Display_Line( count-lineStart, lines[count][1], false )
+    end  -- for each line
+    Redraw()
+
+end  -- function writeLines
+
+-- clear and redraw
+function refresh()
+    WindowRectOp(Win, miniwin.rect_fill, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, theme.WINDOW_BACKGROUND)
+    drawStuff()
+end  -- function refresh
+
+barPos = ""
+barSize = ""
+totalSteps = ""
+
+function drawStuff()
+    -- draw border
+    WindowRectOp (Win, miniwin.rect_frame, 0, 0, 0, 0, theme.WINDOW_BORDER)
+    
+    -- Title bar
+    DrawThemed3DRect(Win, 0, 0, WINDOW_WIDTH, theme.TITLE_HEIGHT)
+
+    -- Title text
+    WindowText(Win, "titlefont"..Win, "COMMUNICATION", ((WINDOW_WIDTH)-(7.5*line_height))/2, (theme.TITLE_HEIGHT-line_height)/2, WINDOW_WIDTH, theme.TITLE_HEIGHT, theme.DETAIL, false)
+
+    if #lines >= 1 then
+        writeLines()
+    end -- if
+        
+    -- Scrollbar base
+    WindowRectOp(Win, miniwin.rect_fill, WINDOW_WIDTH-SCROLL_BAR_WIDTH, theme.TITLE_HEIGHT, WINDOW_WIDTH, WINDOW_HEIGHT, theme.BACK_FACE) -- scroll bar background
+    WindowRectOp(Win, miniwin.rect_frame, WINDOW_WIDTH-SCROLL_BAR_WIDTH+1, SCROLL_BAR_WIDTH+theme.TITLE_HEIGHT+1, WINDOW_WIDTH-1, WINDOW_HEIGHT-(2*SCROLL_BAR_WIDTH)-1, theme.DETAIL) -- scroll bar background inset rectangle
+    DrawThemed3DRect(Win, WINDOW_WIDTH-SCROLL_BAR_WIDTH, theme.TITLE_HEIGHT, WINDOW_WIDTH, theme.TITLE_HEIGHT+SCROLL_BAR_WIDTH) -- top scroll button
+    DrawThemed3DRect(Win, WINDOW_WIDTH-SCROLL_BAR_WIDTH, WINDOW_HEIGHT-(SCROLL_BAR_WIDTH*2), WINDOW_WIDTH, WINDOW_HEIGHT-SCROLL_BAR_WIDTH) -- bottom scroll button
+    
+    -- draw triangle in up button
+    points = string.format ("%i,%i,%i,%i,%i,%i", (WINDOW_WIDTH-SCROLL_BAR_WIDTH)+2, theme.TITLE_HEIGHT+8,(WINDOW_WIDTH-SCROLL_BAR_WIDTH)+6, theme.TITLE_HEIGHT+4,(WINDOW_WIDTH-SCROLL_BAR_WIDTH)+10, theme.TITLE_HEIGHT+8)
+    WindowPolygon (Win, points,
+        theme.DETAIL, miniwin.pen_solid, 1,   -- pen (solid, width 1)
+        theme.DETAIL, miniwin.brush_solid, --brush (solid)
+        true, --close
+        false)  --alt fill
+
+    -- draw triangle in down button    
+    points = string.format ("%i,%i,%i,%i,%i,%i", (WINDOW_WIDTH-SCROLL_BAR_WIDTH)+2, (WINDOW_HEIGHT-SCROLL_BAR_WIDTH)-10,(WINDOW_WIDTH-SCROLL_BAR_WIDTH)+6, (WINDOW_HEIGHT-SCROLL_BAR_WIDTH)-6, (WINDOW_WIDTH-SCROLL_BAR_WIDTH)+10,(WINDOW_HEIGHT-SCROLL_BAR_WIDTH)-10)
+    WindowPolygon (Win, points,
+        theme.DETAIL, miniwin.pen_solid, 1,   -- pen (solid, width 1)
+        theme.DETAIL, miniwin.brush_solid, --brush (solid)
+        true, --close
+        false) --alt fill
+    
+    -- The scrollbar position indicator
+    totalSteps = #lines
+    if (totalSteps <= WINDOW_LINES-1) then totalSteps = 1 end
+    SCROLL_BAR_HEIGHT = (WINDOW_HEIGHT-(3*SCROLL_BAR_WIDTH)-theme.TITLE_HEIGHT)
+    if (not dragscrolling) then
+        stepNum = lineStart-1
+        barPos = SCROLL_BAR_WIDTH +theme.TITLE_HEIGHT+ ((SCROLL_BAR_HEIGHT/totalSteps) * stepNum)
+        barSize = (SCROLL_BAR_HEIGHT/math.max(WINDOW_LINES-1,totalSteps)) * (WINDOW_LINES-1)
+        if barSize < 10 then
+            barSize = 10
+        end
+        if barPos+barSize > SCROLL_BAR_WIDTH+theme.TITLE_HEIGHT+SCROLL_BAR_HEIGHT then
+            barPos = SCROLL_BAR_WIDTH+theme.TITLE_HEIGHT+SCROLL_BAR_HEIGHT - barSize
+        end
+        WindowAddHotspot(Win, "scroller", (WINDOW_WIDTH-SCROLL_BAR_WIDTH), barPos, WINDOW_WIDTH, barPos+barSize, 
+                        "MouseOver", "CancelMouseOver", "MouseDown", "CancelMouseDown", "MouseUp", "", 
+                        miniwin.cursor_hand, 0)
+        WindowDragHandler(Win, "scroller", "ScrollerMoveCallback", "ScrollerReleaseCallback", 0)
+    end  -- if
+    DrawThemed3DRect(Win, WINDOW_WIDTH-SCROLL_BAR_WIDTH, barPos, WINDOW_WIDTH, barPos+barSize)
+    
+    -- resizer tag
+    DrawThemedResizeTag(Win, WINDOW_WIDTH-SCROLL_BAR_WIDTH, WINDOW_HEIGHT-SCROLL_BAR_WIDTH, SCROLL_BAR_WIDTH)
+    
+    Redraw()
+end  -- function drawStuff
+
+function ScrollerMoveCallback(flags, hotspot_id)
+    mouseposy = WindowInfo(Win, 18)
+    windowtop = WindowInfo(Win, 2)
+    barPos = math.max(mouseposy-windowtop+clickdelta, SCROLL_BAR_WIDTH+theme.TITLE_HEIGHT)
+    if barPos > WINDOW_HEIGHT-(SCROLL_BAR_WIDTH*2)-barSize then
+        barPos = WINDOW_HEIGHT-(SCROLL_BAR_WIDTH*2)-barSize
+        lineStart = math.max(1,#lines-WINDOW_LINES+2)
+        lineEnd = #lines
+    else
+        lineStart = math.floor((barPos-SCROLL_BAR_WIDTH-theme.TITLE_HEIGHT)/(SCROLL_BAR_HEIGHT/totalSteps)+1)
+        lineEnd = math.min(lineStart + WINDOW_LINES-2, #lines)
+    end -- if
+    refresh()
+end  -- function ScrollerMoveCallback
+
+function ScrollerReleaseCallback(flags, hotspot_id)
+    dragscrolling = false
+    refresh()
+end  -- function ScrollerReleaseCallback
+
+function fillBuffer(rawstyles)
+    local avail = 0
+    local line_styles
+    local beginning = true
+    -- keep pulling out styles and trying to fit them on the current line
+    local styles = copytable.deep (rawstyles)
+    local remove = table.remove
+    local insert = table.insert
+    while #styles > 0 do
+        if avail <= 0 then -- no room available? start new line
+            -- remove first line if filled up
+            if #lines >= MAX_LINES then
+                remove (lines, 1)
+            end -- if 
+            avail = WINDOW_WIDTH - (TEXT_INSET * 2) - 9
+            line_styles = {}
+            add_line( line_styles, beginning )
+            beginning = false
+        end -- line full
+
+        -- get next style, work out how long it is
+        local style = remove (styles, 1)
+        local width = WindowTextWidth (Win, "bodyfont"..Win, style.text)
+
+        -- if it fits, copy whole style in
+        if width <= avail then
+            insert (line_styles, style)
+            avail = avail - width
+        else -- otherwise, have to split style   
+            -- look for trailing space (work backwards). remember where space is
+            local col = style.length - 1
+            local split_col
+            -- keep going until out of columns
+            while col > 1 do
+                width = WindowTextWidth (Win, "bodyfont"..Win, style.text:sub (1, col)) 
+                if width <= avail then
+                    if not split_col then
+                        split_col = col  -- in case no space found, this is where we can split
+                    end -- if
+                    -- see if space here
+                    if style.text:sub (col, col) == " " then
+                        split_col = col
+                        break
+                    end -- if space
+                end -- if will now fit
+                col = col - 1
+            end -- while
+          
+            -- if we found a place to split, use old style, and make it shorter. Also make a copy and put the rest in that
+            if split_col then
+                insert (line_styles, style)
+                local style_copy = copytable.shallow (style)
+                style.text = style.text:sub (1, split_col)
+                style.length = split_col 
+                style_copy.text = style_copy.text:sub (split_col + 1)
+                style_copy.length = #style_copy.text
+                insert (styles, 1, style_copy)
+            elseif next (line_styles) == nil then
+                insert (line_styles, style)
+            else
+                insert (styles, 1, style)
+            end -- if    
+            avail = 0  -- now we need to wrap     
+        end -- if could not fit whole thing in
+    end -- while we still have styles over
+end  -- function fillBuffer
+
+-- Main capture routine
+function display (styles_text)
+    
+    assert (loadstring ("styles = " .. styles_text)) ()
+    
+    -- echo in this world as well if the user wants
+    if echo then
+        for _, v in ipairs (styles) do
+            ColourTell (RGBColourToName (v.textcolour),RGBColourToName (v.backcolour),v.text)
+        end -- for each style run
+        Note ("")  -- wrap up line
+    end -- echo wanted
+
+    -- inject timestamp if wanted
+    if timestamp then
+        local tstamp = os.date (date_format)
+        table.insert (styles, 1, {
+          text = tstamp,
+          textcolour  = ColourNameToRGB (TIMESTAMP_TEXT_COLOUR),
+          backcolour = ColourNameToRGB (TIMESTAMP_BACK_COLOUR),
+          length = string.len (tstamp),
+          style = 0,
+        } )
+    end -- if
+    
+    -- store the raw lines for use during resizing
+    if #rawlines >= MAX_LINES then
+        table.remove(rawlines, 1)
+    end
+    table.insert(rawlines, styles)
+    
+    fillBuffer(styles)
+    refresh( )
+end -- function display 
+
+function add_line ( line, is_beginning_of_message )
+    -- add new line
+    table.insert (lines, {line, false} )
+    lines[#lines][2] = is_beginning_of_message
+
+    -- advance the count
+    if #lines >= WINDOW_LINES then
+        lineStart = lineStart + 1
+    end -- if
+        
+    if #lines > 1 then
+        lineEnd = lineEnd + 1
+    end -- if
+end -- function add_line
+
+keepscrolling = false
+require "wait"
+
+function scrollbar(calledBy)
+    wait.make (function()
+        while keepscrolling == true do
+            if calledBy == "up" then
+                if (lineStart > 1) then
+                    lineStart = lineStart - 1
+                    lineEnd = lineEnd - 1
+                    WindowRectOp(Win, miniwin.rect_draw_edge, (WINDOW_WIDTH-SCROLL_BAR_WIDTH), theme.TITLE_HEIGHT, 0, theme.TITLE_HEIGHT+SCROLL_BAR_WIDTH, 
+                        miniwin.rect_edge_sunken,  miniwin.rect_edge_at_all + miniwin.rect_option_fill_middle) -- up arrow pushed
+                    points = string.format ("%i,%i,%i,%i,%i,%i", (WINDOW_WIDTH-SCROLL_BAR_WIDTH)+3, theme.TITLE_HEIGHT+9,(WINDOW_WIDTH-SCROLL_BAR_WIDTH)+7, theme.TITLE_HEIGHT+5,(WINDOW_WIDTH-SCROLL_BAR_WIDTH)+11, theme.TITLE_HEIGHT+9)
+                    WindowPolygon (Win, points,
+                        theme.DETAIL, miniwin.pen_solid, 1, -- pen (solid, width 1)
+                        theme.DETAIL, miniwin.brush_solid, -- brush (solid)
+                        true, -- close
+                        false) -- alt fill
+                else
+                    keepscrolling = false
+                end
+            elseif calledBy == "down" then
+                if (lineEnd < #lines) then
+                    lineStart = lineStart + 1
+                    lineEnd = lineEnd + 1
+                WindowRectOp(Win, miniwin.rect_draw_edge, (WINDOW_WIDTH-SCROLL_BAR_WIDTH), WINDOW_HEIGHT-(SCROLL_BAR_WIDTH*2), 0, WINDOW_HEIGHT-SCROLL_BAR_WIDTH-1, 
+                    miniwin.rect_edge_sunken,  miniwin.rect_edge_at_all + miniwin.rect_option_fill_middle) -- down arrow pushed
+                points = string.format ("%i,%i,%i,%i,%i,%i", (WINDOW_WIDTH-SCROLL_BAR_WIDTH)+3, (WINDOW_HEIGHT-SCROLL_BAR_WIDTH)-11,(WINDOW_WIDTH-SCROLL_BAR_WIDTH)+7, (WINDOW_HEIGHT-SCROLL_BAR_WIDTH)-7, (WINDOW_WIDTH-SCROLL_BAR_WIDTH)+11,(WINDOW_HEIGHT-SCROLL_BAR_WIDTH)-11) -- draw triangle in up button
+                WindowPolygon (Win, points,
+                    theme.DETAIL, miniwin.pen_solid, 1, -- pen (solid, width 1)
+                    theme.DETAIL, miniwin.brush_solid, -- brush (solid)
+                    true, -- close
+                    false) -- alt fill
+                else
+                    keepscrolling = false
+                end
+            end -- if
+            wait.time(0.1)
+            refresh()
+        end -- while keepscrolling
+    end)  -- wait.make
+end  -- function scrollbar
+
+function GetLineText (styles)
+  local t = {}
+  for _, style in ipairs (styles) do
+    table.insert (t, style.text)
+  end -- for
+  return table.concat (t)
+end -- function GetLineText
+
+function GetAllBufferedMessages()
+    local t = {}
+    for _,styles in ipairs(rawlines) do
+      table.insert (t, GetLineText (styles))
+    end -- for
+    SetClipboard(table.concat(t,"\r\n"))
+end -- function GetAllBufferedMessages
+
+function GetBufferedMessage(xpos, ypos)
+    windowline = math.floor(((ypos-theme.TITLE_HEIGHT)/line_height)+1)-1
+    text = ""
+    if (#lines > windowline) then
+        local line = windowline+lineStart
+        -- go to beginning of message
+        while lines[line][2] ~= true and line > 1 do
+            line = line - 1
+        end -- while
+        -- first line
+        local styles = copytable.deep(lines[line][1])
+        if (line-lineStart+1 > 0) then
+            Display_Line (line-lineStart, styles, true)
+        end -- if
+        text = GetLineText (styles)
+        -- remaining lines
+        line = line + 1
+        while line <= #lines and lines[line][2] ~= true do
+            local styles = copytable.deep(lines[line][1])
+            if (line-lineStart+1 > 0 and line-lineStart < WINDOW_LINES) then
+                Display_Line (line-lineStart, styles, true)
+            end
+            text = text.. GetLineText (styles)
+            line = line + 1
+        end -- while
+        SetClipboard(text)
+    end -- if
+    Redraw()
+    
+end  -- function GetBufferedMessage
+
+function MouseOver(flags, hotspot_id)
+    keepscrolling = false
+end  -- function MouseOver
+
+function CancelMouseOver(flags, hotspot_id)
+    keepscrolling = false
+end  -- function CancelMouseOver
+
+function MouseDown(flags, hotspot_id)
+    if (hotspot_id == "resizer") then
+        startx, starty = WindowInfo (Win, 17), WindowInfo (Win, 18)
+    elseif (hotspot_id == "scroller") then
+        clickdelta = WindowHotspotInfo(Win, "scroller", 2)-WindowInfo (Win, 15)
+        dragscrolling = true
+    elseif (hotspot_id == "textarea" and flags == miniwin.hotspot_got_lh_mouse) then
+        GetBufferedMessage(WindowInfo(Win, 14), WindowInfo(Win,15))
+    else
+        keepscrolling = true
+        scrollbar(hotspot_id)
+    end -- if
+end  -- function MouseDown
+
+function CancelMouseDown(flags, hotspot_id)
+    keepscrolling = false
+    refresh()
+end  -- function CancelMouseDown
+
+function MouseUp(flags, hotspot_id)
+    if (hotspot_id == "textarea" and flags == miniwin.hotspot_got_rh_mouse) then
+        -- build menu for current state
+        right_click_menu()
+    else
+        refresh()
+    end -- if
+    keepscrolling = false
+end  -- function MouseUp
+
+function chat_echo (name, line, wildcards)
+    if wildcards [1] == "" then
+      echo = not echo  -- toggle
+    else
+      echo = wildcards [1]:lower () == " on"
+    end -- if
+
+    if echo then
+        ColourNote ("yellow", "", "Echoing chats in main window ENABLED.")
+    else
+        ColourNote ("yellow", "", "Echoing chats in main window DISABLED.")
+    end -- if
+end -- function chat_echo
+
+function chat_timestamps (name, line, wildcards)
+    if wildcards [1] == "" then
+      timestamp = not timestamp  -- toggle
+    else
+      timestamp = wildcards [1]:lower () == " on"
+    end -- if
+
+    if timestamp then
+        ColourNote ("yellow", "", "Time-stamping chats in main window ENABLED.")
+    else
+        ColourNote ("yellow", "", "Time-stampin chats in main window DISABLED.")
+    end -- if
+end -- function chat_timestamps
+
+function chat_show (name, line, wildcards)
+   WindowShow( Win, true )
+   ColourNote ("yellow", "", "Chats window now shown. Type 'chats hide' to hide it.")
+end -- function chat_show
+
+function chat_hide (name, line, wildcards)
+   WindowShow( Win, false )
+   ColourNote ("yellow", "", "Chats window now hidden. Type 'chats show' to see it again.")
+end -- function chat_hide
+
+-- right click menu
+function right_click_menu ()
+    menustring ="Copy All To Clipboard|Change Font|Turn Echo "
+    
+    if echo then
+        menustring = menustring .. "Off"
+    else
+        menustring = menustring .. "On"
+    end -- if
+    
+    menustring = menustring.."|>Timestamp|No Timestamps|30 Aug 13:29:49|30 Aug 01:20:12PM|13:29:08|1:22:06 PM"
+    result = WindowMenu (Win, 
+        WindowInfo (Win, 14),  -- x position
+        WindowInfo (Win, 15),   -- y position
+        menustring) -- content
+    if result == "Copy All To Clipboard" then
+        GetAllBufferedMessages()
+        ColourNote ("yellow", "", "All buffered messages copied to clipboard.")
+    elseif result == "Change Font" then
+        wanted_font = utils.fontpicker (BODY_FONT_NAME, BODY_FONT_SIZE) --font dialog
+        if wanted_font then
+            BODY_FONT_NAME = wanted_font.name
+            BODY_FONT_SIZE = wanted_font.size
+            SetVariable ("bodyfont", BODY_FONT_NAME)
+            SetVariable ("font_size", BODY_FONT_SIZE)
+            OnPluginInstall()
+        end
+    elseif result == "Turn Echo Off" then
+        echo = false
+        ColourNote ("yellow", "", "Echoing chats in main window DISABLED.")
+    elseif result == "Turn Echo On" then
+        echo = true
+        ColourNote ("yellow", "", "Echoing chats in main window ENABLED.")
+    elseif result == "No Timestamps" then
+        timestamp = false
+        ColourNote ("yellow", "", "Timestamps in communication window DISABLED.")
+    elseif result == "30 Aug 13:29:49" then
+        timestamp = true
+        date_format = "[%d %b %H:%M:%S] "
+        ColourNote ("yellow", "", "Timestamps in communication window ENABLED using format like '30 Aug 13:29:49'.")
+    elseif result == "30 Aug 01:20:12PM" then
+        timestamp = true
+        date_format = "[%d %b %I:%M:%S%p] "
+        ColourNote ("yellow", "", "Timestamps in communication window ENABLED using format like '30 Aug 01:20:12PM'.")
+    elseif result == "13:29:08" then
+        timestamp = true
+        date_format = "[%H:%M:%S] "
+        ColourNote ("yellow", "", "Timestamps in communication window ENABLED using format like '13:29:08'.")
+    elseif result == "1:22:06 PM" then
+        timestamp = true
+        date_format = "[%I:%M:%S%p] "
+        ColourNote ("yellow", "", "Timestamps in communication window ENABLED using format like '1:22:06 PM'.")
+    end -- if
+end -- function right_click_menu
+]]>
+</script>
+</muclient>
