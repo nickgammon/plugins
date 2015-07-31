@@ -55,7 +55,7 @@ function count_cycles (name, line, wildcards)
   -- starting line of hyphens
   print (string.rep ("-", 60))
     
-  re = rex.new ("^\\s*[0-9a-f]+:\\s+([0-9a-f]{2}\\s)+\\s+(?P<inst>[a-z]+)")
+  re = rex.new ("^\\s*[0-9a-f]+:\\s+([0-9a-f]{2}\\s)+\\s*(?P<inst>[a-z]+)")
   
   for line in getlines (clip) do
     Tell (line) 
