@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<muclient>
+<plugin
+   name="BatMUD_Analyzer"
+   author="Nick Gammon"
+   id="cff91f04c0d78149c0dd6258"
+   language="Lua"
+   purpose="Detects BatMUD sequences"
+   date_written="2016-11-21 08:20"
+   date_modified="2016-11-22 09:30"
+   requires="4.80"
+   version="1.1"
+   >
+<description trim="y">
+Detects incoming packets in the BatMUD format.
+</description>
+
+</plugin>
+
+<!--  Script  -->
+
+<script>
+<![CDATA[
+
+local ESC = "\027"
+local REGEXP = ESC .. "<(%d%d)(.-)" .. ESC .. ">%1"  -- ESC < nn (args) ESC > nn
+local ARG_DELIMITER = ESC .. "|"
+
+-- breaks up a line into AAAAA ESC| BBBBB
+function splitArgs (args)
+  local a, b = string.match (args, "^(.*)" .. ARG_DELIMITER .. "(.*)$")
+  return a, b
+end -- splitArgs
+
+knownWindows = { }
+
+function showInfoWindow (name, contents, left, top, fgColour, bgColour)
+  local win = GetPluginID () .. "_" .. name
+  local font = "f"
+  WindowCreate (win, left, top, 1, 1, miniwin.pos_top_left, 0, 0)
+  WindowFont (win, font, "Courier", 10, true)
+  height = WindowFontInfo (win, font, 1)  + 10
+  width = WindowTextWidth (win, font, contents) + 10
+  WindowCreate (win, left, top, width, height, miniwin.pos_top_left, miniwin.create_absolute_location, ColourNameToRGB (bgColour))
+  WindowText (win, font, contents, 5, 5, 0, 0, ColourNameToRGB (fgColour))
+  WindowShow (win, true)
+  knownWindows [win] = true  -- remember it exists
+end -- showInfoWindow
+
+function ResetOutput (args)
+end -- ResetOutput
+
+function ConnectedOK (args)
+  ColourNote ("green", "", "Connected to BatMUD OK")
+end -- ConnectedOK
+
+function ConnectionFailed (args)
+  ColourNote ("red", "", "Failed to connect: " .. args)
+end -- ConnectionFailed
+
+function OutputMessage (args)
+  local msgType, message = splitArgs (args)
+  if msgType == 'spec_prompt' then
+    showInfoWindow ("prompt", 
+                  message,
+                  0, 50, "saddlebrown", "papayawhip")
+  else
+    ColourNote ("cyan", "", msgType .. ": " .. message)
+  end -- if
+  
+end -- OutputMessage
+
+function InGameLink (args)
+  local command, where = splitArgs (args)
+  ColourNote ("tomato", "", "Typing " .. command .. " gives " .. where)
+end -- InGameLink
+
+function PlayerHealth (args)
+  local hp, hpmax, sp, spmax, ep, epmax = string.match (args, "^(%d+)%s+(%d+)%s+(%d+)%s+(%d+)%s+(%d+)%s+(%d+)$")
+  if not hp then
+    ColourNote ("white", "red", "Cannot interpret PlayerHealth line: " .. args)
+    return
+  end -- if not recognized 
+  showInfoWindow ("health", 
+                  string.format ("HP: %d, MaxHP: %d, SP: %d, MaxSP: %d, EP: %d, MaxEP: %d",
+                                  hp, hpmax, sp, spmax, ep, epmax),
+                  0, 0, "blue", "bisque")
+                                 
+end -- PlayerHealth
+
+function PlayerName (args)
+  local name, surname, race, level, gender, experience = string.match (args, "^([%a%d]+)%s+([%a%d]+)%s+([%a%d]+)%s+(%d+)%s+(%d+)%s+(%d+)$")
+  if not name then
+    ColourNote ("white", "red", "Cannot interpret PlayerName line: " .. args)
+    return
+  end -- if not recognized 
+  
+  if surname == '0' then
+    surname = "<none>"
+  end -- if
+  
+  if gender == '0' then
+    gender = "Neutral"
+  elseif gender == '1' then
+    gender = "Male"
+  elseif gender == '2' then
+    gender = "Female"
+  end -- if gender 
+
+  showInfoWindow ("name", 
+                string.format ("Name: %s, Surname: %s, Race: %s, Level: %d, Gender: %s, Experience: %d",
+                    name, surname, race, level, gender, experience),
+                0, 25, "darkorange", "papayawhip")
+
+end -- PlayerName
+
+function PlayerStatus (args)
+  unconscious, stunned, dead = string.match (args, "^(%d+)%s+(%d+)%s+(%d+)$")
+  if not unconscious then
+    ColourNote ("white", "red", "Cannot interpret PlayerStatus line: " .. args)
+    return
+  end -- if not recognized 
+  if unconscious ~= '0' then
+    ColourNote ("yellow", "", "Unconscious")
+  end -- if
+  if stunned ~= '0' then
+    ColourNote ("yellow", "", "Stunned")
+  end -- if
+  if dead ~= '0' then
+    ColourNote ("yellow", "", "Dead")
+  end -- if
+end -- PlayerStatus
+
+handlers = {
+  [0] = ResetOutput,
+  [5] = ConnectedOK,
+  [6] = ConnectionFailed,
+  [10] = OutputMessage,
+  [31] = InGameLink,
+  [50] = PlayerHealth,
+  [52] = PlayerName,
+  [54] = PlayerStatus,
+
+} -- end of handlers
+
+-- do something with the message from the MUD
+function handleMessage (code, args)
+  handler = handlers [code]
+  if handler then
+    handler (args)
+  else
+    ColourNote ("yellow", "", "Got code " .. code)
+    ColourNote ("green", "", "Got args " .. args)
+  end -- if
+end -- handleMessage
+
+function processSequence (code, args)
+  -- handle embedded sequence
+  args = string.gsub (args, REGEXP, processSequence)  -- recursive call
+
+  -- put into a table for later processing
+  -- insert at position 1 because the embedded ones will be detected first
+  table.insert (incoming, 1, { code = tonumber (code), args = args } )
+  
+  return ""  -- omit from packet
+end -- processSequence
+
+-- strip BatMUD stuff out of packet, handle it separately
+function OnPluginPacketReceived (s)
+  incoming = { }
+  s, count = string.gsub (s, REGEXP, processSequence)
+  if count > 0 then
+    for k, v in ipairs (incoming) do
+      handleMessage (v.code, v.args)
+    end -- for each one
+  end -- some codes found
+    
+  return s  -- return fixed packet
+end -- function OnPluginPacketReceived
+
+-- when connected, activate the client protocol
+function OnPluginConnect ()
+  SendPkt("\027bc 3\n")   -- enable BatClient stuff
+end -- function
+
+-- hide all miniwindows on disconnect
+function OnPluginDisconnect ()
+  for k, v in pairs (knownWindows) do
+    WindowShow (k, false)
+  end -- for
+end -- OnPluginDisconnect
+
+]]>
+</script>
+
+</muclient>
