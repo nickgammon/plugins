@@ -400,7 +400,7 @@ end -- GetScrollPosition
 -- set the font
 function SetFont (size, name)
   assert (type (size) == "number", "In SetFont, size is not numeric")
-  assert (type (name) == "string", "In SetFont, string is not a string")
+  assert (type (name) == "string", "In SetFont, name is not a string")
   FONT_SIZE = size
   FONT_NAME = name
   OnPluginInstall () -- set everything up again
