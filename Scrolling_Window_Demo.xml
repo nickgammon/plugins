@@ -43,6 +43,15 @@ end -- for
 -- sets the window text (a table of lines)
 CallPlugin (ScrollingPlugin, "SetText", serialize.save_simple (lines))
 
+-- add a new line to the end of the table of lines
+CallPlugin (ScrollingPlugin, "AddLine", "New line")
+
+-- remove "count" lines from the start of the table of lines
+CallPlugin (ScrollingPlugin, "RemoveLines", count)
+
+-- find number of lines in the lines table
+rc, count = CallPlugin (ScrollingPlugin, "GetLineCount")
+
 -- sets the text colour (RGB values)
 CallPlugin (ScrollingPlugin, "SetTextColour", foreground, background)
 
@@ -337,6 +346,34 @@ function SetText (text)
   ShowLines ()
 end -- of SetText
 
+function AddLine (text)
+  assert (type (text) == "string", "In AddLine, text is not a string")
+
+  table.insert (lines, text)  -- insert into existing text
+
+  -- display new line
+  ShowLines ()
+end -- of AddLine
+
+function RemoveLines (count)
+  assert (type (count) == "number", "In RemoveLines, count is not a number")
+
+  if count > #lines then
+    lines = { }
+  else
+    -- remove them individually from the start
+    for i = 1, count do
+      table.remove (lines, 1)
+    end -- for
+  end -- if
+
+  -- display new line
+  ShowLines ()
+end -- of SetText
+
+function GetLineCount ()
+  return #lines
+end -- GetLineCount
 
 function SetTitle (newTitle)
   assert (type (newTitle) == "string", "In SetTitle, title is not a string")
