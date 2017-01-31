@@ -9,8 +9,9 @@
    language="Lua"
    purpose="Implements scrolling text window"
    date_written="2017-01-30 15:34"
+   date_modified="2017-02-01 8:54"
    requires="4.94"
-   version="1.0"
+   version="2.0"
    save_state="y"
    >
 
@@ -28,7 +29,7 @@ ScrollingPlugin = "a160a0dc029b28fc970a935d"
 width = 500
 height = 300
 
--- changes scroll window width and height
+-- changes scroll window width and height (default 400 x 200)
 CallPlugin (ScrollingPlugin, "SetSize" , width, height)
 
 -- set the window title (if an empty string, no title is shown)
@@ -44,7 +45,10 @@ end -- for
 CallPlugin (ScrollingPlugin, "SetText", serialize.save_simple (lines))
 
 -- add a new line to the end of the table of lines
-CallPlugin (ScrollingPlugin, "AddLine", "New line")
+-- if "wrap" is true then long lines are split at the closest space at
+-- the RH side of the window (possibly inserting multiple lines) otherwise
+-- the line is inserted "as is" possibly truncating it
+CallPlugin (ScrollingPlugin, "AddLine", "New line", wrap)
 
 -- remove "count" lines from the start of the table of lines
 CallPlugin (ScrollingPlugin, "RemoveLines", count)
@@ -70,8 +74,11 @@ CallPlugin (ScrollingPlugin, "SetScrollPosition", position)
 -- get the scroll position
 rc, pos = CallPlugin (ScrollingPlugin, "GetScrollPosition")
 
--- sets the window font
+-- sets the window font (default 9 point Lucida Console)
 CallPlugin (ScrollingPlugin, "SetFont", size, name)
+
+-- sets whether to use Unicode or not (default false)
+CallPlugin (ScrollingPlugin, "Unicode", true)
 
 -- RH-click on the window to get a "Copy" menu
 </description>
@@ -90,7 +97,7 @@ require "movewindow"
 
 -- window size in pixels
 WINDOW_WIDTH = 400
-WINDOW_HEIGHT = 200   -- 200 is 16 lines of 9-point Lucida Console
+WINDOW_HEIGHT = 200
 
 SCROLL_BAR_SIZE = 20
 SCROLL_THUMB_HOTSPOT = "thumb"
@@ -99,6 +106,9 @@ SCROLL_WHEEL_HOTSPOT = "ScrollWheelHotspot"
 -- font
 FONT_SIZE = 9
 FONT_NAME = "Lucida Console"
+
+-- Unicode? (UTF-8)
+UTF8 = false
 
 -- where to put the window
 WINDOW_POSITION = miniwin.pos_top_right
@@ -112,6 +122,8 @@ WINDOW_TITLE_BACKGROUND_COLOUR = ColourNameToRGB ("darkgoldenrod")
 -- offset of text from edge
 TEXT_INSET = 5
 
+FONT_ID = "f"
+
 lines = { }
 title = ""  -- default empty title
 scrollPos = 0  -- where scroll bar is (pixels)
@@ -121,7 +133,7 @@ function Display_Line (line, text)
 
   local left = TEXT_INSET
 
-  WindowText (win, "f", text, left, top, WINDOW_WIDTH - TEXT_INSET, 0, WINDOW_TEXT_COLOUR)
+  WindowText (win, FONT_ID, text, left, top, WINDOW_WIDTH - TEXT_INSET, 0, WINDOW_TEXT_COLOUR, UTF8)
   top = top + fontHeight
 
 end -- Display_Line
@@ -166,7 +178,7 @@ function ShowLines ()
   -- draw title
   if #title > 0 then
     WindowRectOp (win, miniwin.rect_fill, 0, 0, 0, titleBoxHeight, WINDOW_TITLE_BACKGROUND_COLOUR)
-    WindowText (win, "f", title, TEXT_INSET, TEXT_INSET, WINDOW_WIDTH - TEXT_INSET, 0, WINDOW_TITLE_TEXT_COLOUR)
+    WindowText (win, FONT_ID, title, TEXT_INSET, TEXT_INSET, WINDOW_WIDTH - TEXT_INSET, 0, WINDOW_TITLE_TEXT_COLOUR)
   end -- if having a title
 
   -- if more lines than will fit, show a scroll bar
@@ -271,10 +283,10 @@ function OnPluginInstall ()
                       WINDOW_BACKGROUND_COLOUR)  -- create window
 
   -- grab a font
-  WindowFont (win, "f", FONT_NAME, FONT_SIZE) -- define font
+  WindowFont (win, FONT_ID, FONT_NAME, FONT_SIZE) -- define font
 
   -- work out how high it is
-  fontHeight = WindowFontInfo (win, "f", 1)   -- height of the font
+  fontHeight = WindowFontInfo (win, FONT_ID, 1)   -- height of the font
 
   -- how big the title box is
   titleBoxHeight = fontHeight + TEXT_INSET * 2
@@ -346,14 +358,60 @@ function SetText (text)
   ShowLines ()
 end -- of SetText
 
-function AddLine (text)
+function AddLine (text, wrap)
   assert (type (text) == "string", "In AddLine, text is not a string")
 
-  table.insert (lines, text)  -- insert into existing text
+  if not wrap then
+    table.insert (lines, text)  -- insert into existing text
+    ShowLines ()
+    return
+  end -- not wrapping
 
-  -- display new line
+  local maxWidth = WINDOW_WIDTH - SCROLL_BAR_SIZE - TEXT_INSET * 2
+
+  -- look for trailing space (work backwards)
+  -- remember where space is, failing that, split at first character inside width
+
+  while #text > 0 do
+
+    local width = WindowTextWidth (win, FONT_ID, text)  -- how long the text is
+
+    -- if it fits, copy whole thing in
+    if width <= maxWidth then
+      table.insert (lines, text)  -- insert into existing text
+      break
+    end -- the whole lot fits
+
+    local col = #text
+    local split_col = nil
+
+    -- keep going until out of columns
+
+    while col > 1 do
+      width = WindowTextWidth (win, FONT_ID, text:sub (1, col))
+      if width <= maxWidth then
+        if not split_col then
+          split_col = col  -- in case no space found, this is where we can split
+        end -- if first time we are smaller than the desired width
+
+        -- see if space here
+        if text:sub (col, col) == " " then
+          split_col = col
+          break
+        end -- if space
+      end -- if will now fit
+      col = col - 1
+    end -- while
+
+    table.insert (lines, text:sub (1, split_col))  -- insert into existing text
+    text = text:sub (split_col + 1)
+  end -- while we still have text
+
+  -- show result
   ShowLines ()
+
 end -- of AddLine
+
 
 function RemoveLines (count)
   assert (type (count) == "number", "In RemoveLines, count is not a number")
@@ -427,6 +485,7 @@ end -- Hide
 function SetScrollPosition (pos)
   assert (type (pos) == "number", "In SetScrollPosition, position is not numeric")
   scrollPos = pos
+  ShowLines ()  -- redisplay
 end -- SetScrollPosition
 
 -- get the scroll position
@@ -442,6 +501,14 @@ function SetFont (size, name)
   FONT_NAME = name
   OnPluginInstall () -- set everything up again
 end -- SetFont
+
+-- set the Unicode flag
+function Unicode (flag)
+  assert (type (flag) == "boolean", "In Unicode, flag is not boolean")
+  UTF8 = flag
+  ShowLines ()  -- redisplay
+end -- Unicode
+
 
 ]]>
 </script>
