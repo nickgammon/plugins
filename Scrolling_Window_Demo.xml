@@ -1,0 +1,400 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<muclient>
+<plugin
+   name="Scrolling_Window"
+   author="Nick Gammon"
+   id="a160a0dc029b28fc970a935d"
+   language="Lua"
+   purpose="Implements scrolling text window"
+   date_written="2017-01-30 15:34"
+   requires="4.94"
+   version="1.0"
+   save_state="y"
+   >
+
+<description trim="y">
+
+Usage
+-----
+
+require "serialize"  -- needed to serialize table to string
+
+-- plugin ID needed to call this plugin
+ScrollingPlugin = "a160a0dc029b28fc970a935d"
+
+-- example sizes (pixels)
+width = 500
+height = 300
+
+-- changes scroll window width and height
+CallPlugin (ScrollingPlugin, "SetSize" , width, height)
+
+-- set the window title (if an empty string, no title is shown)
+CallPlugin (ScrollingPlugin, "SetTitle", "Example title")
+
+-- example table of lines
+lines = { }
+for i = 1, 300 do
+  table.insert (lines, string.format ("Line %03i ", i))
+end -- for
+
+-- sets the window text (a table of lines)
+CallPlugin (ScrollingPlugin, "SetText", serialize.save_simple (lines))
+
+-- sets the text colour (RGB values)
+CallPlugin (ScrollingPlugin, "SetTextColour", foreground, background)
+
+-- sets the title bar colour (RGB values)
+CallPlugin (ScrollingPlugin, "SetTitleColour", foreground, background)
+
+-- show the window
+CallPlugin (ScrollingPlugin, "Show")
+
+-- hide the window
+CallPlugin (ScrollingPlugin, "Hide")
+
+-- set the scroll position
+CallPlugin (ScrollingPlugin, "SetScrollPosition", position)
+
+-- get the scroll position
+rc, pos = CallPlugin (ScrollingPlugin, "GetScrollPosition")
+
+-- RH-click on the window to get a "Copy" menu
+</description>
+
+</plugin>
+
+<!--  Script  -->
+
+
+<script>
+<![CDATA[
+
+require "movewindow"
+
+-- configuration
+
+-- window size in pixels
+WINDOW_WIDTH = 400
+WINDOW_HEIGHT = 200   -- 200 is 16 lines of 9-point Lucida Console
+
+SCROLL_BAR_SIZE = 20
+SCROLL_THUMB_HOTSPOT = "thumb"
+SCROLL_WHEEL_HOTSPOT = "ScrollWheelHotspot"
+
+-- font
+FONT_NAME = "Lucida Console"
+FONT_SIZE = 8
+
+-- where to put the window
+WINDOW_POSITION = miniwin.pos_top_right
+
+-- colours
+WINDOW_TEXT_COLOUR = ColourNameToRGB ("black")
+WINDOW_BACKGROUND_COLOUR = ColourNameToRGB ("khaki")
+WINDOW_TITLE_TEXT_COLOUR = ColourNameToRGB ("white")
+WINDOW_TITLE_BACKGROUND_COLOUR = ColourNameToRGB ("darkgoldenrod")
+
+-- offset of text from edge
+TEXT_INSET = 5
+
+lines = { }
+title = ""  -- default empty title
+scrollPos = 0  -- where scroll bar is (pixels)
+
+-- display one line
+function Display_Line (line, text)
+
+  local left = TEXT_INSET
+
+  WindowText (win, "f", text, left, top, WINDOW_WIDTH - TEXT_INSET, 0, WINDOW_TEXT_COLOUR)
+  top = top + fontHeight
+
+end -- Display_Line
+
+function ShowLines ()
+
+  if #lines == 0 and #title == 0 then
+    WindowShow (win,  false)  -- hide it
+    return -- all done
+  end -- nothing to show
+
+  -- if no title don't use the space for it
+  if #title == 0 then
+    titleBoxHeight = 0
+  else
+    titleBoxHeight = fontHeight + TEXT_INSET * 2
+  end -- if
+
+  -- recalculate how much room for text
+  windowClientHeight = WINDOW_HEIGHT - titleBoxHeight
+  -- how many pixels are in the scroll bar (apart from the thumb)
+  scrollBarPixels = windowClientHeight - SCROLL_BAR_SIZE
+
+  scrollPos = math.max (scrollPos, titleBoxHeight)  -- don't go above top of scroll bar
+  scrollPos = math.min (scrollPos, WINDOW_HEIGHT - SCROLL_BAR_SIZE)  -- don't go below bottom of scroll bar
+
+  -- free pixels are all in the scroll bar except the thumb
+  local amountThrough = (scrollPos - titleBoxHeight) / scrollBarPixels
+
+  top = - ((#lines * fontHeight) - windowClientHeight)
+  top = top * amountThrough
+  top = top + titleBoxHeight  -- allow for title
+
+  -- blank existing window contents
+  WindowRectOp (win, miniwin.rect_fill, 0, 0, 0, 0, WINDOW_BACKGROUND_COLOUR)
+
+  -- display all lines
+  for k, v in ipairs (lines) do
+    Display_Line (k, v)
+  end -- for
+
+  -- draw title
+  if #title > 0 then
+    WindowRectOp (win, miniwin.rect_fill, 0, 0, 0, titleBoxHeight, WINDOW_TITLE_BACKGROUND_COLOUR)
+    WindowText (win, "f", title, TEXT_INSET, TEXT_INSET, WINDOW_WIDTH - TEXT_INSET, 0, WINDOW_TITLE_TEXT_COLOUR)
+  end -- if having a title
+
+  -- if more lines than will fit, show a scroll bar
+
+  if #lines > maxLines then
+    WindowRectOp (win, miniwin.rect_fill, WINDOW_WIDTH - SCROLL_BAR_SIZE, titleBoxHeight, 0, 0, GetSysColor (0))
+    -- now draw the thumb
+    local scrollBarLeft = WINDOW_WIDTH - SCROLL_BAR_SIZE
+    local scrollBarTop = scrollPos
+    local scrollBarRight = 0
+    local scrollBarBottom = scrollBarTop + SCROLL_BAR_SIZE
+    WindowRectOp (win, miniwin.rect_draw_edge,
+                  scrollBarLeft, scrollBarTop, scrollBarRight, scrollBarBottom,
+                  miniwin.rect_edge_raised,
+                  miniwin.rect_edge_at_all +
+                  miniwin.rect_option_softer_buttons)
+    WindowMoveHotspot(win, SCROLL_THUMB_HOTSPOT, scrollBarLeft, scrollBarTop, scrollBarRight, scrollBarBottom)
+  end -- of needing a scroll bar
+
+
+  -- force window redisplay
+  WindowShow (win,  true)  -- show it
+
+end -- end ShowLines
+
+-- hide window on removal
+function OnPluginClose ()
+  WindowShow (win,  false)  -- hide it
+end -- OnPluginClose
+
+-- hide window on disable
+function OnPluginDisable ()
+  WindowShow (win,  false)  -- hide it
+end -- OnPluginDisable
+
+-- show window on enable
+function OnPluginEnable ()
+  WindowShow (win,  true)  -- show it
+end -- OnPluginEnable
+
+function MouseDown ()
+-- get location of cursor relative to the hotspot
+hotSpotAdjust = WindowInfo (win, 15) - WindowHotspotInfo (win, SCROLL_THUMB_HOTSPOT, 2)
+end -- MouseDown
+
+function dragMove ()
+-- get location of cursor relative to the window
+local posy  =  WindowInfo (win, 18) - WindowInfo (win, 11) - hotSpotAdjust
+scrollPos = posy
+-- redisplay the window
+ShowLines ()
+end -- dragMove
+
+function wheelMove (flags, hotspot_id)
+  if bit.band (flags, miniwin.wheel_scroll_back) ~= 0 then
+    -- wheel scrolled down (towards you)
+    scrollPos = scrollPos + 1
+  else
+    -- wheel scrolled up (away from you)
+    scrollPos = scrollPos - 1
+  end -- if
+  -- redisplay the window
+  ShowLines ()
+end -- wheel_move
+
+function MouseUpInClient (flags, hotspotID)
+
+  -- ignore if not RH mouse click
+  if bit.band (flags, miniwin.hotspot_got_rh_mouse) == 0 then
+    return
+  end -- if
+
+  local result = WindowMenu (win,
+          WindowInfo (win, 14),  -- x
+          WindowInfo (win, 15),  -- y
+          "Copy")
+
+  -- concatenate lines together with carriage-return/newline
+  -- add final carriage-return/newline
+  -- put onto clipboard
+  if result ~= "" then
+    SetClipboard(table.concat (lines, "\r\n") .. "\r\n")
+  end -- if
+
+end -- MouseUpInClient
+
+function OnPluginInstall ()
+
+  -- startup stuff
+
+  win = "scroll_" .. GetPluginID ()  -- get a unique name
+
+  windowinfo = movewindow.install (win, WINDOW_POSITION, 0)  -- default position / flags
+
+  -- make the window
+  WindowCreate (win,  windowinfo.window_left,
+                      windowinfo.window_top,
+                      WINDOW_WIDTH,
+                      WINDOW_HEIGHT,
+                      windowinfo.window_mode,
+                      windowinfo.window_flags,
+                      WINDOW_BACKGROUND_COLOUR)  -- create window
+
+  -- grab a font
+  WindowFont (win, "f", FONT_NAME, FONT_SIZE) -- define font
+
+  -- work out how high it is
+  fontHeight = WindowFontInfo (win, "f", 1)   -- height of the font
+
+  -- how big the title box is
+  titleBoxHeight = fontHeight + TEXT_INSET * 2
+  -- useable area for text
+  windowClientHeight = WINDOW_HEIGHT - titleBoxHeight
+
+  movewindow.add_drag_handler (win, 0, 0, 0, titleBoxHeight, miniwin.cursor_both_arrow)
+
+  -- work out how many lines will fit
+  maxLines = math.floor (windowClientHeight / fontHeight)
+
+  -- scroll bar thumb
+  WindowAddHotspot(win, SCROLL_THUMB_HOTSPOT,
+                  0, 0, 0, 0,  -- position will be changed when we draw the window anyway
+                   "", -- MouseOver
+                   "", -- CancelMouseOver
+                   "MouseDown",
+                   "", -- CancelMouseDown
+                   "", -- MouseUp
+                   "",   -- TooltipText
+                   miniwin.cursor_arrow,
+                   0)  -- Flags
+
+  WindowDragHandler(win, SCROLL_THUMB_HOTSPOT, "dragMove", "", 0)
+
+  WindowAddHotspot(win, SCROLL_WHEEL_HOTSPOT,
+                   0, titleBoxHeight, WINDOW_WIDTH - SCROLL_BAR_SIZE, 0,
+                   "", -- MouseOver
+                   "", -- CancelMouseOver
+                   "", -- MouseDown
+                   "", -- CancelMouseDown
+                   "MouseUpInClient", -- MouseUp
+                   "", -- TooltipText
+                   miniwin.cursor_arrow,
+                   0)  -- Flags
+
+  WindowScrollwheelHandler(win, SCROLL_WHEEL_HOTSPOT, "wheelMove");
+
+  ShowLines ()
+
+end -- OnPluginInstall
+
+function OnPluginSaveState ()
+  -- save window current location for next time
+  movewindow.save_state (win)
+end -- function OnPluginSaveState
+
+-- ############################# CALLBACKS ########################
+
+function SetSize (width, height)
+  assert (type (width)  == "number", "In SetSize, width is not numeric")
+  assert (type (height) == "number", "In SetSize, height is not numeric")
+
+  WINDOW_WIDTH = width
+  WINDOW_HEIGHT = height
+
+  OnPluginInstall () -- set everything up again
+end -- SetSize
+
+function SetText (text)
+  assert (type (text) == "string", "In SetText, text is not a string")
+  local t = {}    -- put into local table
+  setfenv (assert (loadstring ("lines = " .. text),
+           "In SetText, text is not serialized correctly"), t) ()
+  assert (type (t.lines) == "table", "In SetText, text does not contain a table")
+  lines = t.lines -- copy to our global variable
+
+  -- display new lines
+  ShowLines ()
+end -- of SetText
+
+
+function SetTitle (newTitle)
+  assert (type (newTitle) == "string", "In SetTitle, title is not a string")
+  title = newTitle
+
+  -- display new title
+  ShowLines ()
+end -- of SetTitle
+
+function SetTextColour (foreground, background)
+  assert (type (foreground) == "number", "In SetTextColour, foreground is not numeric")
+  assert (type (background) == "number", "In SetTextColour, background is not numeric")
+
+  WINDOW_TEXT_COLOUR = foreground
+  WINDOW_BACKGROUND_COLOUR = background
+
+  ShowLines ()  -- redisplay
+end -- SetTextColour
+
+-- for USA spellings
+function SetTextColor (foreground, background)
+  SetTextColour (foreground, background)
+end -- SetTextColor
+
+function SetTitleColour (foreground, background)
+  assert (type (foreground) == "number", "In SetTitleColour, foreground is not numeric")
+  assert (type (background) == "number", "In SetTitleColour, background is not numeric")
+
+  WINDOW_TITLE_TEXT_COLOUR = foreground
+  WINDOW_TITLE_BACKGROUND_COLOUR = background
+
+  ShowLines ()  -- redisplay
+end -- SetTitleColour
+
+-- for USA spellings
+function SetTitleColor (foreground, background)
+  SetTitleColour (foreground, background)
+end -- SetTitleColor
+
+-- show the window
+function Show ()
+  WindowShow (win,  true)  -- show it
+end -- Show
+
+-- hide the window
+function Hide ()
+  WindowShow (win,  false)  -- hide it
+end -- Hide
+
+-- set the scroll position
+function SetScrollPosition (pos)
+  assert (type (pos) == "number", "In SetScrollPosition, position is not numeric")
+  scrollPos = pos
+end -- SetScrollPosition
+
+-- get the scroll position
+function GetScrollPosition ()
+  return scrollPos
+end -- GetScrollPosition
+
+]]>
+</script>
+
+</muclient>
