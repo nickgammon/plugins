@@ -67,15 +67,58 @@ function OutputMessage (args)
                   message,
                   0, 50, "saddlebrown", "papayawhip")
   else
-    ColourNote ("cyan", "", msgType .. ": " .. message)
+    msgs = utils.split (message, "\n")
+    ColourTell ("dodgerblue", "", msgType .. ": ")
+    for k, v in ipairs (msgs) do
+      AnsiNote (v)
+    end -- for each line
+      
   end -- if
   
 end -- OutputMessage
+
+function ClearScreen (args)
+end -- ClearScreen
+
+function ForegroundColour (args)
+  local colour, message = splitArgs (args)
+  ColourTell ("#" .. colour, "", message)
+end -- ForegroundColour
 
 function InGameLink (args)
   local command, where = splitArgs (args)
   ColourNote ("tomato", "", "Typing " .. command .. " gives " .. where)
 end -- InGameLink
+
+function ClearSpellStatus (args)
+  ColourNote ("yellow", "", "Spell/skill status cleared")
+end -- ClearSpellStatus
+
+function SpellStatus (args)
+  local spell, rounds = string.match (args, "^(%S+)%s+(%d+)$")
+  if not spell then
+    ColourNote ("white", "red", "Cannot interpret SpellStatus line: " .. args)
+    return
+  end -- if not recognized 
+  rounds = tonumber (rounds)
+  if rounds == 0 then
+    rounds = "unknown"
+  end -- if
+  ColourNote ("yellow", "", "Spell: " .. spell .. " for " .. rounds .. " round(s)")
+end -- ClearSpellStatus
+
+function SkillStatus (args)
+  local skill, rounds = string.match (args, "^(%S+)%s+(%d+)$")
+  if not skill then
+    ColourNote ("white", "red", "Cannot interpret SkillStatus line: " .. args)
+    return
+  end -- if not recognized 
+  rounds = tonumber (rounds)
+  if rounds == 0 then
+    rounds = "unknown"
+  end -- if
+  ColourNote ("yellow", "", "Skill: " .. skill .. " for " .. rounds .. " round(s)")
+end -- SkillStatus
 
 function PlayerHealth (args)
   local hp, hpmax, sp, spmax, ep, epmax = string.match (args, "^(%d+)%s+(%d+)%s+(%d+)%s+(%d+)%s+(%d+)%s+(%d+)$")
@@ -133,26 +176,46 @@ function PlayerStatus (args)
   end -- if
 end -- PlayerStatus
 
+function TargetInfo (args)
+  local target, health = string.match (args, "^(%S+)%s+(%d+)$")
+  if not target then
+    ColourNote ("white", "red", "Cannot interpret TargetInfo line: " .. args)
+    return
+  end -- if not recognized 
+  health = tonumber (health)
+  if health == 0 and target == '0' then
+    ColourNote ("orange", "", "No targets")
+  else
+    ColourNote ("orange", "", "Target " .. target .. " has " .. health .. "% health")
+  end -- if
+end -- TargetInfo
+
 handlers = {
   [0] = ResetOutput,
   [5] = ConnectedOK,
   [6] = ConnectionFailed,
   [10] = OutputMessage,
+  [11] = ClearScreen,
+  [20] = ForegroundColour,
   [31] = InGameLink,
+  [40] = ClearSpellStatus,
+  [41] = SpellStatus,
+  [42] = SkillStatus,
   [50] = PlayerHealth,
   [52] = PlayerName,
   [54] = PlayerStatus,
+  [70] = TargetInfo,
 
 } -- end of handlers
 
 -- do something with the message from the MUD
 function handleMessage (code, args)
+  --ColourNote ("yellow", "", "Got code " .. code .. ", args " .. args)
   handler = handlers [code]
   if handler then
     handler (args)
   else
-    ColourNote ("yellow", "", "Got code " .. code)
-    ColourNote ("green", "", "Got args " .. args)
+    ColourTell ("yellow", "", "Got code " .. code .. ", args " .. args)
   end -- if
 end -- handleMessage
 

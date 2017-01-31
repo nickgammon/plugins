@@ -61,6 +61,9 @@ CallPlugin (ScrollingPlugin, "SetScrollPosition", position)
 -- get the scroll position
 rc, pos = CallPlugin (ScrollingPlugin, "GetScrollPosition")
 
+-- sets the window font
+CallPlugin (ScrollingPlugin, "SetFont", size, name)
+
 -- RH-click on the window to get a "Copy" menu
 </description>
 
@@ -85,8 +88,8 @@ SCROLL_THUMB_HOTSPOT = "thumb"
 SCROLL_WHEEL_HOTSPOT = "ScrollWheelHotspot"
 
 -- font
+FONT_SIZE = 9
 FONT_NAME = "Lucida Console"
-FONT_SIZE = 8
 
 -- where to put the window
 WINDOW_POSITION = miniwin.pos_top_right
@@ -393,6 +396,15 @@ end -- SetScrollPosition
 function GetScrollPosition ()
   return scrollPos
 end -- GetScrollPosition
+
+-- set the font
+function SetFont (size, name)
+  assert (type (size) == "number", "In SetFont, size is not numeric")
+  assert (type (name) == "string", "In SetFont, string is not a string")
+  FONT_SIZE = size
+  FONT_NAME = name
+  OnPluginInstall () -- set everything up again
+end -- SetFont
 
 ]]>
 </script>
