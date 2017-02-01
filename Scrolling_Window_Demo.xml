@@ -9,9 +9,9 @@
    language="Lua"
    purpose="Implements scrolling text window"
    date_written="2017-01-30 15:34"
-   date_modified="2017-02-01 8:54"
+   date_modified="2017-02-01 14:51"
    requires="4.94"
-   version="2.0"
+   version="2.1"
    save_state="y"
    >
 
@@ -80,7 +80,7 @@ CallPlugin (ScrollingPlugin, "SetFont", size, name)
 -- sets whether to use Unicode or not (default false)
 CallPlugin (ScrollingPlugin, "Unicode", true)
 
--- RH-click on the window to get a "Copy" menu
+-- RH-click on the window to get a "Copy" and "Font" menu
 </description>
 
 </plugin>
@@ -254,13 +254,25 @@ function MouseUpInClient (flags, hotspotID)
   local result = WindowMenu (win,
           WindowInfo (win, 14),  -- x
           WindowInfo (win, 15),  -- y
-          "Copy")
+          "! Copy | Font ...")
 
   -- concatenate lines together with carriage-return/newline
   -- add final carriage-return/newline
   -- put onto clipboard
-  if result ~= "" then
+  if result == "1" then      -- Copy
     SetClipboard(table.concat (lines, "\r\n") .. "\r\n")
+  elseif result == "2"  then -- Font
+    wanted_font = utils.fontpicker (FONT_NAME, FONT_SIZE, WINDOW_TEXT_COLOUR)
+    if not wanted_font then
+      return
+    end -- if nothing chosen
+    FONT_SIZE = wanted_font.size
+    FONT_NAME = wanted_font.name
+    WINDOW_TEXT_COLOUR = wanted_font.colour
+    SetVariable ("FontSize", FONT_SIZE)
+    SetVariable ("FontName", FONT_NAME)
+    SetVariable ("FontColour", WINDOW_TEXT_COLOUR)
+    OnPluginInstall () -- set everything up again
   end -- if
 
 end -- MouseUpInClient
@@ -270,6 +282,11 @@ function OnPluginInstall ()
   -- startup stuff
 
   win = "scroll_" .. GetPluginID ()  -- get a unique name
+
+  -- get the font information they may have saved last time
+  FONT_SIZE = tonumber (GetVariable ("FontSize")) or FONT_SIZE
+  FONT_NAME = GetVariable ("FontName") or FONT_NAME
+  WINDOW_TEXT_COLOUR = tonumber (GetVariable ("FontColour")) or WINDOW_TEXT_COLOUR
 
   windowinfo = movewindow.install (win, WINDOW_POSITION, 0)  -- default position / flags
 
@@ -332,6 +349,11 @@ end -- OnPluginInstall
 function OnPluginSaveState ()
   -- save window current location for next time
   movewindow.save_state (win)
+
+  SetVariable ("FontSize", FONT_SIZE)
+  SetVariable ("FontName", FONT_NAME)
+  SetVariable ("FontColour", WINDOW_TEXT_COLOUR)
+
 end -- function OnPluginSaveState
 
 -- ############################# CALLBACKS ########################
