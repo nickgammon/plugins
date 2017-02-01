@@ -11,7 +11,7 @@
    date_written="2017-01-30 15:34"
    date_modified="2017-02-01 14:51"
    requires="4.94"
-   version="2.1"
+   version="2.2"
    save_state="y"
    >
 
@@ -87,7 +87,6 @@ CallPlugin (ScrollingPlugin, "Unicode", true)
 
 <!--  Script  -->
 
-
 <script>
 <![CDATA[
 
@@ -96,31 +95,31 @@ require "movewindow"
 -- configuration
 
 -- window size in pixels
-WINDOW_WIDTH = 400
-WINDOW_HEIGHT = 200
-
-SCROLL_BAR_SIZE = 20
-SCROLL_THUMB_HOTSPOT = "thumb"
-SCROLL_WHEEL_HOTSPOT = "ScrollWheelHotspot"
+windowWidth = 400
+windowHeight = 200
 
 -- font
-FONT_SIZE = 9
-FONT_NAME = "Lucida Console"
+fontSize = 9
+fontName = "Lucida Console"
 
 -- Unicode? (UTF-8)
-UTF8 = false
+Utf8 = false
 
 -- where to put the window
 WINDOW_POSITION = miniwin.pos_top_right
 
--- colours
-WINDOW_TEXT_COLOUR = ColourNameToRGB ("black")
-WINDOW_BACKGROUND_COLOUR = ColourNameToRGB ("khaki")
-WINDOW_TITLE_TEXT_COLOUR = ColourNameToRGB ("white")
-WINDOW_TITLE_BACKGROUND_COLOUR = ColourNameToRGB ("darkgoldenrod")
+-- default colours
+windowTextColour = ColourNameToRGB ("black")
+windowBackgroundColour = ColourNameToRGB ("khaki")
+windowTitleTextColour = ColourNameToRGB ("white")
+windowTitleBackgroundColour = ColourNameToRGB ("darkgoldenrod")
 
 -- offset of text from edge
 TEXT_INSET = 5
+
+SCROLL_BAR_SIZE = 20
+SCROLL_THUMB_HOTSPOT = "thumb"
+SCROLL_WHEEL_HOTSPOT = "ScrollWheelHotspot"
 
 FONT_ID = "f"
 
@@ -130,12 +129,12 @@ scrollPos = 0  -- where scroll bar is (pixels)
 
 -- display one line
 function Display_Line (line, text)
+  -- don't both drawing if it won't be visible
+  if top + fontHeight >= 0 and top <= windowHeight then
+    WindowText (win, FONT_ID, text, TEXT_INSET, top, windowWidth - TEXT_INSET, 0, windowTextColour, Utf8)
+  end -- if visible
 
-  local left = TEXT_INSET
-
-  WindowText (win, FONT_ID, text, left, top, WINDOW_WIDTH - TEXT_INSET, 0, WINDOW_TEXT_COLOUR, UTF8)
   top = top + fontHeight
-
 end -- Display_Line
 
 function ShowLines ()
@@ -153,12 +152,12 @@ function ShowLines ()
   end -- if
 
   -- recalculate how much room for text
-  windowClientHeight = WINDOW_HEIGHT - titleBoxHeight
+  windowClientHeight = windowHeight - titleBoxHeight
   -- how many pixels are in the scroll bar (apart from the thumb)
   scrollBarPixels = windowClientHeight - SCROLL_BAR_SIZE
 
   scrollPos = math.max (scrollPos, titleBoxHeight)  -- don't go above top of scroll bar
-  scrollPos = math.min (scrollPos, WINDOW_HEIGHT - SCROLL_BAR_SIZE)  -- don't go below bottom of scroll bar
+  scrollPos = math.min (scrollPos, windowHeight - SCROLL_BAR_SIZE)  -- don't go below bottom of scroll bar
 
   -- free pixels are all in the scroll bar except the thumb
   local amountThrough = (scrollPos - titleBoxHeight) / scrollBarPixels
@@ -168,7 +167,7 @@ function ShowLines ()
   top = top + titleBoxHeight  -- allow for title
 
   -- blank existing window contents
-  WindowRectOp (win, miniwin.rect_fill, 0, 0, 0, 0, WINDOW_BACKGROUND_COLOUR)
+  WindowRectOp (win, miniwin.rect_fill, 0, 0, 0, 0, windowBackgroundColour)
 
   -- display all lines
   for k, v in ipairs (lines) do
@@ -177,16 +176,16 @@ function ShowLines ()
 
   -- draw title
   if #title > 0 then
-    WindowRectOp (win, miniwin.rect_fill, 0, 0, 0, titleBoxHeight, WINDOW_TITLE_BACKGROUND_COLOUR)
-    WindowText (win, FONT_ID, title, TEXT_INSET, TEXT_INSET, WINDOW_WIDTH - TEXT_INSET, 0, WINDOW_TITLE_TEXT_COLOUR)
+    WindowRectOp (win, miniwin.rect_fill, 0, 0, 0, titleBoxHeight, windowTitleBackgroundColour)
+    WindowText (win, FONT_ID, title, TEXT_INSET, TEXT_INSET, windowWidth - TEXT_INSET, 0, windowTitleTextColour)
   end -- if having a title
 
   -- if more lines than will fit, show a scroll bar
 
   if #lines > maxLines then
-    WindowRectOp (win, miniwin.rect_fill, WINDOW_WIDTH - SCROLL_BAR_SIZE, titleBoxHeight, 0, 0, GetSysColor (0))
+    WindowRectOp (win, miniwin.rect_fill, windowWidth - SCROLL_BAR_SIZE, titleBoxHeight, 0, 0, GetSysColor (0))
     -- now draw the thumb
-    local scrollBarLeft = WINDOW_WIDTH - SCROLL_BAR_SIZE
+    local scrollBarLeft = windowWidth - SCROLL_BAR_SIZE
     local scrollBarTop = scrollPos
     local scrollBarRight = 0
     local scrollBarBottom = scrollBarTop + SCROLL_BAR_SIZE
@@ -198,10 +197,8 @@ function ShowLines ()
     WindowMoveHotspot(win, SCROLL_THUMB_HOTSPOT, scrollBarLeft, scrollBarTop, scrollBarRight, scrollBarBottom)
   end -- of needing a scroll bar
 
-
   -- force window redisplay
   WindowShow (win,  true)  -- show it
-
 end -- end ShowLines
 
 -- hide window on removal
@@ -216,20 +213,22 @@ end -- OnPluginDisable
 
 -- show window on enable
 function OnPluginEnable ()
-  WindowShow (win,  true)  -- show it
+  if #lines > 0 or #title > 0 then
+    WindowShow (win,  true)  -- show it
+  end -- if something to show
 end -- OnPluginEnable
 
 function MouseDown ()
--- get location of cursor relative to the hotspot
-hotSpotAdjust = WindowInfo (win, 15) - WindowHotspotInfo (win, SCROLL_THUMB_HOTSPOT, 2)
+  -- get location of cursor relative to the hotspot
+  hotSpotAdjust = WindowInfo (win, 15) - WindowHotspotInfo (win, SCROLL_THUMB_HOTSPOT, 2)
 end -- MouseDown
 
 function dragMove ()
--- get location of cursor relative to the window
-local posy  =  WindowInfo (win, 18) - WindowInfo (win, 11) - hotSpotAdjust
-scrollPos = posy
--- redisplay the window
-ShowLines ()
+  -- get location of cursor relative to the window
+  local posy  =  WindowInfo (win, 18) - WindowInfo (win, 11) - hotSpotAdjust
+  scrollPos = posy
+  -- redisplay the window
+  ShowLines ()
 end -- dragMove
 
 function wheelMove (flags, hotspot_id)
@@ -256,23 +255,22 @@ function MouseUpInClient (flags, hotspotID)
           WindowInfo (win, 15),  -- y
           "! Copy | Font ...")
 
-  -- concatenate lines together with carriage-return/newline
-  -- add final carriage-return/newline
-  -- put onto clipboard
   if result == "1" then      -- Copy
+    -- concatenate lines together with carriage-return/newline
+    -- add final carriage-return/newline
+    -- put onto clipboard
     SetClipboard(table.concat (lines, "\r\n") .. "\r\n")
   elseif result == "2"  then -- Font
-    wanted_font = utils.fontpicker (FONT_NAME, FONT_SIZE, WINDOW_TEXT_COLOUR)
-    if not wanted_font then
-      return
-    end -- if nothing chosen
-    FONT_SIZE = wanted_font.size
-    FONT_NAME = wanted_font.name
-    WINDOW_TEXT_COLOUR = wanted_font.colour
-    SetVariable ("FontSize", FONT_SIZE)
-    SetVariable ("FontName", FONT_NAME)
-    SetVariable ("FontColour", WINDOW_TEXT_COLOUR)
-    OnPluginInstall () -- set everything up again
+    wanted_font = utils.fontpicker (fontName, fontSize, windowTextColour)
+    if wanted_font then
+      fontSize = wanted_font.size
+      fontName = wanted_font.name
+      windowTextColour = wanted_font.colour
+      SetVariable ("FontSize", fontSize)
+      SetVariable ("FontName", fontName)
+      SetVariable ("FontColour", windowTextColour)
+      OnPluginInstall () -- set everything up again
+    end -- if font chosen
   end -- if
 
 end -- MouseUpInClient
@@ -284,23 +282,23 @@ function OnPluginInstall ()
   win = "scroll_" .. GetPluginID ()  -- get a unique name
 
   -- get the font information they may have saved last time
-  FONT_SIZE = tonumber (GetVariable ("FontSize")) or FONT_SIZE
-  FONT_NAME = GetVariable ("FontName") or FONT_NAME
-  WINDOW_TEXT_COLOUR = tonumber (GetVariable ("FontColour")) or WINDOW_TEXT_COLOUR
+  fontSize = tonumber (GetVariable ("FontSize")) or fontSize
+  fontName = GetVariable ("FontName") or fontName
+  windowTextColour = tonumber (GetVariable ("FontColour")) or windowTextColour
 
   windowinfo = movewindow.install (win, WINDOW_POSITION, 0)  -- default position / flags
 
   -- make the window
   WindowCreate (win,  windowinfo.window_left,
                       windowinfo.window_top,
-                      WINDOW_WIDTH,
-                      WINDOW_HEIGHT,
+                      windowWidth,
+                      windowHeight,
                       windowinfo.window_mode,
                       windowinfo.window_flags,
-                      WINDOW_BACKGROUND_COLOUR)  -- create window
+                      windowBackgroundColour)  -- create window
 
   -- grab a font
-  WindowFont (win, FONT_ID, FONT_NAME, FONT_SIZE) -- define font
+  WindowFont (win, FONT_ID, fontName, fontSize) -- define font
 
   -- work out how high it is
   fontHeight = WindowFontInfo (win, FONT_ID, 1)   -- height of the font
@@ -308,7 +306,7 @@ function OnPluginInstall ()
   -- how big the title box is
   titleBoxHeight = fontHeight + TEXT_INSET * 2
   -- useable area for text
-  windowClientHeight = WINDOW_HEIGHT - titleBoxHeight
+  windowClientHeight = windowHeight - titleBoxHeight
 
   movewindow.add_drag_handler (win, 0, 0, 0, titleBoxHeight, miniwin.cursor_both_arrow)
 
@@ -330,7 +328,7 @@ function OnPluginInstall ()
   WindowDragHandler(win, SCROLL_THUMB_HOTSPOT, "dragMove", "", 0)
 
   WindowAddHotspot(win, SCROLL_WHEEL_HOTSPOT,
-                   0, titleBoxHeight, WINDOW_WIDTH - SCROLL_BAR_SIZE, 0,
+                   0, titleBoxHeight, windowWidth - SCROLL_BAR_SIZE, 0,
                    "", -- MouseOver
                    "", -- CancelMouseOver
                    "", -- MouseDown
@@ -350,9 +348,9 @@ function OnPluginSaveState ()
   -- save window current location for next time
   movewindow.save_state (win)
 
-  SetVariable ("FontSize", FONT_SIZE)
-  SetVariable ("FontName", FONT_NAME)
-  SetVariable ("FontColour", WINDOW_TEXT_COLOUR)
+  SetVariable ("FontSize", fontSize)
+  SetVariable ("FontName", fontName)
+  SetVariable ("FontColour", windowTextColour)
 
 end -- function OnPluginSaveState
 
@@ -362,8 +360,8 @@ function SetSize (width, height)
   assert (type (width)  == "number", "In SetSize, width is not numeric")
   assert (type (height) == "number", "In SetSize, height is not numeric")
 
-  WINDOW_WIDTH = width
-  WINDOW_HEIGHT = height
+  windowWidth = width
+  windowHeight = height
 
   OnPluginInstall () -- set everything up again
 end -- SetSize
@@ -383,13 +381,19 @@ end -- of SetText
 function AddLine (text, wrap)
   assert (type (text) == "string", "In AddLine, text is not a string")
 
+  text = string.gsub (text, "\r", "") -- get rid of carriage-returns
+
+  -- honour newlines however
   if not wrap then
-    table.insert (lines, text)  -- insert into existing text
+    local t = utils.split (text, "\n")
+    for _, line in ipairs (t) do
+      table.insert (lines, line)  -- insert into existing text
+    end -- for
     ShowLines ()
     return
   end -- not wrapping
 
-  local maxWidth = WINDOW_WIDTH - SCROLL_BAR_SIZE - TEXT_INSET * 2
+  local maxWidth = windowWidth - SCROLL_BAR_SIZE - TEXT_INSET * 2
 
   -- look for trailing space (work backwards)
   -- remember where space is, failing that, split at first character inside width
@@ -398,9 +402,12 @@ function AddLine (text, wrap)
 
     local width = WindowTextWidth (win, FONT_ID, text)  -- how long the text is
 
-    -- if it fits, copy whole thing in
+    -- if it fits, copy whole thing in (splitting at newlines)
     if width <= maxWidth then
-      table.insert (lines, text)  -- insert into existing text
+      local t = utils.split (text, "\n")
+      for _, line in ipairs (t) do
+        table.insert (lines, line)  -- insert into existing text
+      end -- for
       break
     end -- the whole lot fits
 
@@ -425,15 +432,20 @@ function AddLine (text, wrap)
       col = col - 1
     end -- while
 
-    table.insert (lines, text:sub (1, split_col))  -- insert into existing text
-    text = text:sub (split_col + 1)
+    -- now find a newline and see if it comes before the space
+    local newline = string.find (text, "\n")
+    if newline and newline < split_col then
+      split_col = newline
+    end -- if newline found before space
+
+    table.insert (lines, text:sub (1, split_col - 1))  -- exclude the newline or space
+    text = text:sub (split_col + 1)  -- bypass the space or newline
   end -- while we still have text
 
   -- show result
   ShowLines ()
 
 end -- of AddLine
-
 
 function RemoveLines (count)
   assert (type (count) == "number", "In RemoveLines, count is not a number")
@@ -467,8 +479,8 @@ function SetTextColour (foreground, background)
   assert (type (foreground) == "number", "In SetTextColour, foreground is not numeric")
   assert (type (background) == "number", "In SetTextColour, background is not numeric")
 
-  WINDOW_TEXT_COLOUR = foreground
-  WINDOW_BACKGROUND_COLOUR = background
+  windowTextColour = foreground
+  windowBackgroundColour = background
 
   ShowLines ()  -- redisplay
 end -- SetTextColour
@@ -482,8 +494,8 @@ function SetTitleColour (foreground, background)
   assert (type (foreground) == "number", "In SetTitleColour, foreground is not numeric")
   assert (type (background) == "number", "In SetTitleColour, background is not numeric")
 
-  WINDOW_TITLE_TEXT_COLOUR = foreground
-  WINDOW_TITLE_BACKGROUND_COLOUR = background
+  windowTitleTextColour = foreground
+  windowTitleBackgroundColour = background
 
   ShowLines ()  -- redisplay
 end -- SetTitleColour
@@ -519,15 +531,15 @@ end -- GetScrollPosition
 function SetFont (size, name)
   assert (type (size) == "number", "In SetFont, size is not numeric")
   assert (type (name) == "string", "In SetFont, name is not a string")
-  FONT_SIZE = size
-  FONT_NAME = name
+  fontSize = size
+  fontName = name
   OnPluginInstall () -- set everything up again
 end -- SetFont
 
 -- set the Unicode flag
 function Unicode (flag)
   assert (type (flag) == "boolean", "In Unicode, flag is not boolean")
-  UTF8 = flag
+  Utf8 = flag
   ShowLines ()  -- redisplay
 end -- Unicode
 
