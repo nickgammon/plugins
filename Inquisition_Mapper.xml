@@ -9,9 +9,8 @@
    purpose="Mapper for The Inquisition"
    save_state="y"
    date_written="2018-01-15"
-   date_modified="2018-01-15 13:57"
    requires="5.00"
-   version="1.1"
+   version="1.0"
    >
 
 <description trim="y">
@@ -163,7 +162,6 @@ function get_room (uid)
     return nil
   end -- if not found
 
-
   -- how to draw this particular room
   room.bordercolour = config.ROOM_COLOUR.colour
   room.borderpen = miniwin.pen_solid
@@ -197,7 +195,7 @@ function OnPluginInstall ()
               }
 
   mapper.mapprint (string.format ("MUSHclient mapper installed, version %0.1f", mapper.VERSION))
-  ColourTell ("orange", "", "Mapper plugin 'save state' file name is: ")
+  ColourNote ("orange", "", "Mapper plugin 'save state' file name is:")
   ColourNote ("yellow", "",  (string.format ("%s%s-%s-state.xml",
                     GetInfo (85), GetWorldID (), GetPluginID ())))
   mapper.mapprint ("Consider backing up the above file regularly as it has the mapper database in it.")
@@ -217,7 +215,7 @@ end
 -- -----------------------------------------------------------------
 function got_prompt (name, line, wildcards)
 
-  uid = wildcards [6]
+  uid = wildcards [6]  -- change this if you change the prompt trigger
 
   -- assume we know the room name by now
   -- add to rooms table if not there
@@ -232,8 +230,7 @@ function got_prompt (name, line, wildcards)
       if direction then
         rooms [uid].exits [direction] = 0  -- dummy non-existent room
       end -- if a known exit direction
-    end -- for
-
+    end -- for each exit word
   end -- if no exits known
 
   -- if we changed rooms assume that our last movement sent us here
@@ -276,7 +273,6 @@ end -- got_room_name
 -- Here on "exits" line
 -- -----------------------------------------------------------------
 function got_exits (name, line, wildcards)
-
   -- remember the exits
   current_exits = wildcards [1]
 end -- got_exits
@@ -344,6 +340,7 @@ function map_find (name, line, wildcards)
     nil         -- show find snippet
     )
 end -- map_find
+
 
 ]]>
 </script>
