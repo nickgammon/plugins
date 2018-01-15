@@ -1,4 +1,3 @@
-
 <?xml version="1.0" encoding="iso-8859-1"?>
 <!DOCTYPE muclient>
 <muclient>
@@ -290,7 +289,19 @@ end -- OnPluginSent
 -- -----------------------------------------------------------------
 function OnPluginSaveState ()
   SetVariable ("config", "config = " .. serialize.save_simple (config))
-  SetVariable ("rooms", "rooms = " .. serialize.save_simple (rooms))
+
+    -- just save the relevant stuff  - you may need to update this if you add more things
+  local wanted_keys = { "name", "exits", "description" }
+
+  local saved_rooms = { }
+  for k, v in pairs (rooms) do
+    saved_rooms [k] = { }
+    for i, j in ipairs (wanted_keys) do
+      saved_rooms [k] [j] = v [j]
+    end -- for
+  end -- for
+
+  SetVariable ("rooms", "rooms = " .. serialize.save_simple (saved_rooms))
 end -- function OnPluginSaveState
 
 -- -----------------------------------------------------------------
