@@ -9,8 +9,9 @@
    purpose="Mapper for The Inquisition"
    save_state="y"
    date_written="2018-01-15"
+   date_modified="2018-01-15 13:57"
    requires="5.00"
-   version="1.0"
+   version="1.1"
    >
 
 <description trim="y">
@@ -196,7 +197,10 @@ function OnPluginInstall ()
               }
 
   mapper.mapprint (string.format ("MUSHclient mapper installed, version %0.1f", mapper.VERSION))
-
+  ColourTell ("orange", "", "Mapper plugin 'save state' file name is: ")
+  ColourNote ("yellow", "",  (string.format ("%s%s-%s-state.xml",
+                    GetInfo (85), GetWorldID (), GetPluginID ())))
+  mapper.mapprint ("Consider backing up the above file regularly as it has the mapper database in it.")
 
 end -- OnPluginInstall
 
@@ -205,7 +209,7 @@ end -- OnPluginInstall
 -- -----------------------------------------------------------------
 function OnHelp ()
   mapper.mapprint (string.format ("[MUSHclient mapper, version %0.1f]", mapper.VERSION))
-  mapper.mapprint (world.GetPluginInfo (world.GetPluginID (), 3))
+  mapper.mapprint (GetPluginInfo (GetPluginID (), 3))
 end
 
 -- -----------------------------------------------------------------
