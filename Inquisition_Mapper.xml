@@ -1,0 +1,335 @@
+
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+<muclient>
+<plugin
+   name="Inquisition_Mapper"
+   author="Nick Gammon"
+   id="2a5655924080806ca252f1e6"
+   language="Lua"
+   purpose="Mapper for The Inquisition"
+   save_state="y"
+   date_written="2018-01-15"
+   requires="5.00"
+   version="1.0"
+   >
+
+<description trim="y">
+<![CDATA[
+THE INQUISITION MAPPER ...  by Nick Gammon
+
+ACTIONS
+
+mapper help         --> this help  (or click the "?" button on the bottom right)
+mapper find xxxx    --> find a room by name (not case-sensitive)
+]]>
+</description>
+
+</plugin>
+
+<aliases>
+  <alias
+   match="mapper help"
+   script="OnHelp"
+   enabled="y"
+  >
+  </alias>
+
+  <alias
+   match="^mapper find (\\w+)$"
+   enabled="y"
+   sequence="100"
+   script="map_find"
+   regexp="y"
+  >
+  </alias>
+
+</aliases>
+
+<triggers>
+  <trigger
+   enabled="y"
+   match="[RPXP Gain: *] [HP:* MV:* P:*] * (vnum *)*"
+   script="got_prompt"
+   sequence="100"
+   name="prompt"
+  >
+  </trigger>
+
+<trigger
+   back_colour="8"
+   enabled="y"
+   match="^([^\\[].*)$"
+   match_back_colour="y"
+   match_text_colour="y"
+   script="got_room_name"
+   text_colour="9"
+   keep_evaluating="y"
+   sequence="90"
+   regexp="y"
+   bold="y"
+   match_bold="y"
+   name="room_name"
+  >
+  </trigger>
+
+<trigger
+   back_colour="8"
+   enabled="y"
+   match="[ Exits: * ]"
+   match_back_colour="y"
+   match_bold="y"
+   match_inverse="y"
+   match_italic="y"
+   match_text_colour="y"
+   script="got_exits"
+   sequence="100"
+   text_colour="14"
+  >
+  </trigger>
+
+</triggers>
+
+<!--  Script  -->
+
+<script>
+<![CDATA[
+
+-- mapper module
+require "mapper"
+
+-- configuration table
+config = {
+        OUR_ROOM_COLOUR         = { name = "Our room",  colour =  ColourNameToRGB "black", },
+         }
+
+-- all the rooms we have come across
+rooms = { }
+
+-- for serialization
+require "serialize"
+
+-- -----------------------------------------------------------------
+-- these commands will be considered "room changing" commands
+-- -----------------------------------------------------------------
+local valid_direction = {
+  n = "n",
+  s = "s",
+  e = "e",
+  w = "w",
+  u = "u",
+  d = "d",
+  ne = "ne",
+  sw = "sw",
+  nw = "nw",
+  se = "se",
+  north = "n",
+  south = "s",
+  east = "e",
+  west = "w",
+  up = "u",
+  down = "d",
+  northeast = "ne",
+  northwest = "nw",
+  southeast = "se",
+  southwest = "sw",
+  ['in'] = "in",
+  out = "out",
+  }  -- end of valid_direction
+
+-- for calculating the way back
+local inverse_direction = {
+  n = "s",
+  s = "n",
+  e = "w",
+  w = "e",
+  u = "d",
+  d = "u",
+  ne = "sw",
+  sw = "ne",
+  nw = "se",
+  se = "nw",
+  ['in'] = "out",
+  out = "in",
+  }  -- end of inverse_direction
+
+-- -----------------------------------------------------------------
+-- mapper 'get_room' callback - it wants to know about room uid
+-- -----------------------------------------------------------------
+function get_room (uid)
+
+  room = rooms [uid]
+  if not room then
+    return nil
+  end -- if not found
+
+
+  -- how to draw this particular room
+  room.bordercolour = config.ROOM_COLOUR.colour
+  room.borderpen = miniwin.pen_solid
+  room.borderpenwidth = 1
+  room.fillbrush = miniwin.brush_null  -- no fill
+
+  -- draw current room in bolder colour
+  if uid == current_room then
+    room.bordercolour = config.OUR_ROOM_COLOUR.colour
+    room.borderpenwidth = 2
+  end -- not in this area
+
+  room.area = "The Inquisition"  -- assume every room is in this area
+  room.hovermessage = room.name
+  return room
+end -- get_room
+
+-- -----------------------------------------------------------------
+-- Plugin Install
+-- -----------------------------------------------------------------
+function OnPluginInstall ()
+
+  assert (loadstring (GetVariable ("config") or "")) ()
+  assert (loadstring (GetVariable ("rooms") or "")) ()
+
+  -- initialize mapper
+  mapper.init {
+            config     = config,   -- ie. colours, sizes
+            get_room   = get_room, -- info about room (uid)
+            show_help  = OnHelp,   -- to show help
+              }
+
+  mapper.mapprint (string.format ("MUSHclient mapper installed, version %0.1f", mapper.VERSION))
+
+
+end -- OnPluginInstall
+
+-- -----------------------------------------------------------------
+-- Plugin Help
+-- -----------------------------------------------------------------
+function OnHelp ()
+  mapper.mapprint (string.format ("[MUSHclient mapper, version %0.1f]", mapper.VERSION))
+  mapper.mapprint (world.GetPluginInfo (world.GetPluginID (), 3))
+end
+
+-- -----------------------------------------------------------------
+-- Here on prompt
+-- -----------------------------------------------------------------
+function got_prompt (name, line, wildcards)
+
+  uid = wildcards [6]
+
+  -- assume we know the room name by now
+  -- add to rooms table if not there
+  if not rooms [uid] then
+    rooms [uid] = { name = room_name, exits = {} }
+  end -- if
+
+  -- add stub entries for known exits
+  if next (rooms [uid].exits) == nil and current_exits then
+    for exit in string.gmatch (current_exits, "%a+") do
+      local direction = valid_direction [exit]
+      if direction then
+        rooms [uid].exits [direction] = 0  -- dummy non-existent room
+      end -- if a known exit direction
+    end -- for
+
+  end -- if no exits known
+
+  -- if we changed rooms assume that our last movement sent us here
+  if uid ~= current_room
+        and current_room
+        and last_direction_moved then
+    -- previous room led here
+    rooms [current_room].exits [last_direction_moved] = uid
+    -- assume inverse direction leads back
+    rooms [uid].exits [inverse_direction [last_direction_moved]] = current_room
+  end -- if
+
+  -- this is now our current room
+  current_room = uid
+
+  -- draw this room
+  mapper.draw (current_room)
+
+  -- await more exits
+  current_exits = nil
+
+end -- got_prompt
+
+-- -----------------------------------------------------------------
+-- Here on room name
+-- -----------------------------------------------------------------
+function got_room_name (name, line, wildcards)
+  local name = wildcards [1]
+
+  -- ignore really long lines
+  if #name > 60 then
+    return
+  end -- if
+
+  room_name = name
+  current_exits = nil
+end -- got_room_name
+
+-- -----------------------------------------------------------------
+-- Here on "exits" line
+-- -----------------------------------------------------------------
+function got_exits (name, line, wildcards)
+
+  -- remember the exits
+  current_exits = wildcards [1]
+end -- got_exits
+
+-- -----------------------------------------------------------------
+-- try to detect when we send a movement command
+-- -----------------------------------------------------------------
+function OnPluginSent (sText)
+  last_direction_moved = valid_direction [sText]
+end -- OnPluginSent
+
+-- -----------------------------------------------------------------
+-- on saving state, serialize the rooms and configuration
+-- -----------------------------------------------------------------
+function OnPluginSaveState ()
+  SetVariable ("config", "config = " .. serialize.save_simple (config))
+  SetVariable ("rooms", "rooms = " .. serialize.save_simple (rooms))
+end -- function OnPluginSaveState
+
+-- -----------------------------------------------------------------
+-- for: mapper find xxx
+-- -----------------------------------------------------------------
+function map_find (name, line, wildcards)
+
+  local matches = { }
+  local count = 0
+  wildcards [1] = wildcards [1]:lower ()
+
+  if not mapper.check_we_can_find () then
+    return
+  end -- if find not OK
+
+  -- do a simple string search to find matching rooms
+  for k, v in pairs (rooms) do
+    if string.find (v.name:lower (), wildcards [1], 1, true) then
+      matches [k] = true
+      count = count + 1
+    end -- if match
+  end -- for each room
+
+  -- see if nearby
+  mapper.find (
+    function (uid)
+      local room = matches [uid]
+      if room then
+        matches [uid] = nil
+      end -- if
+      return room, next (matches) == nil
+    end,  -- function
+    show_vnums,  -- show vnum?
+    count,      -- how many to expect
+    false,      -- don't auto-walk
+    nil         -- show find snippet
+    )
+end -- map_find
+
+]]>
+</script>
+</muclient>
