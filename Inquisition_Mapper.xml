@@ -1,3 +1,4 @@
+
 <?xml version="1.0" encoding="iso-8859-1"?>
 <!DOCTYPE muclient>
 <muclient>
@@ -9,8 +10,9 @@
    purpose="Mapper for The Inquisition"
    save_state="y"
    date_written="2018-01-15"
+   date_modified="2018-01-15 15:41"
    requires="5.00"
-   version="1.0"
+   version="1.3"
    >
 
 <description trim="y">
@@ -20,7 +22,22 @@ THE INQUISITION MAPPER ...  by Nick Gammon
 ACTIONS
 
 mapper help         --> this help  (or click the "?" button on the bottom right)
-mapper find xxxx    --> find a room by name (not case-sensitive)
+mapper zoom out     --> zoom out
+mapper zoom in      --> zoom in
+mapper hide         --> hide map
+mapper show         --> show map
+
+FINDING
+
+mapper find  <word> --> find a room matching part of a name / description
+mapper where <vnum> --> show directions to a room
+
+MOVING
+
+mapper goto <room>  --> walk to a room by its room number (vnum)
+mapper stop         --> cancel any current speedwalk
+
+
 ]]>
 </description>
 
@@ -34,14 +51,82 @@ mapper find xxxx    --> find a room by name (not case-sensitive)
   >
   </alias>
 
+  <!--  finding stuff -->
+
   <alias
-   match="^mapper find (\\w+)$"
+   match="mapper find *"
    enabled="y"
    sequence="100"
    script="map_find"
-   regexp="y"
   >
   </alias>
+
+  <alias
+   match="mapper where *"
+   enabled="y"
+   sequence="100"
+   script="map_where"
+  >
+  </alias>
+
+  <!--  zooming aliases -->
+
+ <alias
+   match="mapper zoom out"
+   enabled="y"
+   sequence="100"
+   omit_from_command_history="y"
+   omit_from_output="y"
+   script="mapper.zoom_out"
+  >
+  </alias>
+
+<alias
+   match="mapper zoom in"
+   enabled="y"
+   sequence="100"
+   omit_from_command_history="y"
+   omit_from_output="y"
+   script="mapper.zoom_in"
+  >
+  </alias>
+
+
+ <alias
+   match="mapper goto *"
+   enabled="y"
+   sequence="100"
+   script="map_goto"
+  >
+  </alias>
+
+  <!--  cancel speedwalking -->
+
+ <alias
+   match="mapper stop"
+   enabled="y"
+   sequence="100"
+   script="mapper.cancel_speedwalk"
+  >
+  </alias>
+
+  <!--  show/hide mapper -->
+
+  <alias
+   match="mapper hide"
+   enabled="y"
+   sequence="100"
+   script="mapper.hide"
+  >
+  </alias>
+
+   <alias
+   match="mapper show"
+   enabled="y"
+   sequence="100"
+   script="mapper.show"
+  >
+</alias>
 
 </aliases>
 
@@ -52,13 +137,14 @@ mapper find xxxx    --> find a room by name (not case-sensitive)
    script="got_prompt"
    sequence="100"
    name="prompt"
+   keep_evaluating="y"
   >
   </trigger>
 
 <trigger
    back_colour="8"
    enabled="y"
-   match="^([^\\[].*)$"
+   match="^([^\[].*)$"
    match_back_colour="y"
    match_text_colour="y"
    script="got_room_name"
@@ -75,6 +161,23 @@ mapper find xxxx    --> find a room by name (not case-sensitive)
 <trigger
    back_colour="8"
    enabled="y"
+   match="^\["
+   match_back_colour="y"
+   match_text_colour="y"
+   script="got_weather_line"
+   text_colour="9"
+   keep_evaluating="y"
+   sequence="90"
+   regexp="y"
+   bold="y"
+   match_bold="y"
+   name="weather_line"
+  >
+  </trigger>
+
+<trigger
+   back_colour="8"
+   enabled="y"
    match="[ Exits: * ]"
    match_back_colour="y"
    match_bold="y"
@@ -84,6 +187,43 @@ mapper find xxxx    --> find a room by name (not case-sensitive)
    script="got_exits"
    sequence="100"
    text_colour="14"
+  >
+  </trigger>
+
+  <trigger
+   enabled="n"
+   match="*"
+   script="got_description_line"
+   sequence="200"
+   name="description_line"
+  >
+  </trigger>
+
+  <trigger
+   enabled="y"
+   match="Nah... * feels too relaxed..."
+   script="mapper.cancel_speedwalk"
+   sequence="100"
+   back_colour="8"
+   match_back_colour="y"
+   match_bold="y"
+   bold="y"
+   match_text_colour="y"
+   text_colour="3"
+  >
+  </trigger>
+
+  <trigger
+   enabled="y"
+   match="In * dreams, or what?"
+   script="mapper.cancel_speedwalk"
+   sequence="100"
+   back_colour="8"
+   match_back_colour="y"
+   match_bold="y"
+   bold="y"
+   match_text_colour="y"
+   text_colour="3"
   >
   </trigger>
 
@@ -175,7 +315,21 @@ function get_room (uid)
   end -- not in this area
 
   room.area = "The Inquisition"  -- assume every room is in this area
-  room.hovermessage = room.name
+
+  local texits = {}
+  for dir in pairs (room.exits) do
+    table.insert (texits, dir)
+  end -- for
+  table.sort (texits)
+
+  room.hovermessage = string.format (
+      "%s\tExits: %s\nVnum: %s\n\n%s",
+      room.name,
+      table.concat (texits, ", "),
+      uid,
+      room.description or ""
+      )
+
   return room
 end -- get_room
 
@@ -217,11 +371,17 @@ function got_prompt (name, line, wildcards)
 
   uid = wildcards [6]  -- change this if you change the prompt trigger
 
-  -- assume we know the room name by now
+  -- assume we know the room name and description by now
   -- add to rooms table if not there
   if not rooms [uid] then
-    rooms [uid] = { name = room_name, exits = {} }
+    rooms [uid] = { name = room_name, exits = {}, description = room_description or ""}
+    mapper.mapprint (string.format ("Added room <%s> (vnum %s) to the mapper database", room_name, uid))
   end -- if
+
+  if rooms [uid].description ~= room_description then
+    rooms [uid].description = room_description
+   --    mapper.mapprint ("Updating room description to be: " .. room_description)
+  end -- if description not previously found
 
   -- add stub entries for known exits
   if next (rooms [uid].exits) == nil and current_exits then
@@ -267,6 +427,9 @@ function got_room_name (name, line, wildcards)
 
   room_name = name
   current_exits = nil
+  description = { }
+  room_description = nil
+
 end -- got_room_name
 
 -- -----------------------------------------------------------------
@@ -275,6 +438,9 @@ end -- got_room_name
 function got_exits (name, line, wildcards)
   -- remember the exits
   current_exits = wildcards [1]
+  EnableTrigger ("description_line", false)
+  room_description = Trim (table.concat (description, "\n"))
+  description = { }
 end -- got_exits
 
 -- -----------------------------------------------------------------
@@ -305,25 +471,68 @@ function OnPluginSaveState ()
 end -- function OnPluginSaveState
 
 -- -----------------------------------------------------------------
--- for: mapper find xxx
+-- map_find: mapper find xxx
 -- -----------------------------------------------------------------
 function map_find (name, line, wildcards)
 
+  mapper.mapprint (string.rep ("-", 25) .. " Mapper search " .. string.rep ("-", 25))
+
+  local reset = ANSI (0)
+  local bold = ANSI (1)
+  local unbold = ANSI (22)
+
   local matches = { }
   local count = 0
-  wildcards [1] = wildcards [1]:lower ()
+  local target = Trim (wildcards [1]:lower ())
+
+  if target == "" then
+    mapper.maperror ("No search string specified")
+    return
+  end -- if
 
   if not mapper.check_we_can_find () then
     return
   end -- if find not OK
 
+  -- fix up any regular expression "magic" letters to be escaped by a %
+  local fixed_target = string.gsub (target, "[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%1")
+
+  -- fix up for caseless searches in the room description (eg. "a" becomes "[aA]")
+  local caseless_target = string.gsub (fixed_target, "(%a)", function (a)
+      return "[" .. a:lower () .. a:upper () .. "]"
+      end -- function
+      )
+
   -- do a simple string search to find matching rooms
   for k, v in pairs (rooms) do
-    if string.find (v.name:lower (), wildcards [1], 1, true) then
+
+    -- don't want nil descriptions
+    if not v.description then
+      v.description = ""
+    end -- if no description
+
+    if string.find (v.name:lower (), fixed_target) or
+       string.find (v.description:lower (), fixed_target) then
       matches [k] = true
       count = count + 1
     end -- if match
   end -- for each room
+
+  local function show_snippet (uid)
+    local room = rooms [uid]
+     if not room then
+       return
+     end -- if
+
+    -- don't bother if the wanted words was in the room name
+    if string.find (room.name:lower (), fixed_target) then
+      return
+    end -- if
+
+    -- otherwise show the wanted word in the description, in bold
+    AnsiNote (reset .. string.gsub (room.description, caseless_target, bold .. "%1" .. unbold))
+
+  end -- show_snippet
 
   -- see if nearby
   mapper.find (
@@ -337,11 +546,90 @@ function map_find (name, line, wildcards)
     show_vnums,  -- show vnum?
     count,      -- how many to expect
     false,      -- don't auto-walk
-    nil         -- show find snippet
+    show_snippet  -- show find snippet
     )
 end -- map_find
 
+-- -----------------------------------------------------------------
+-- map_goto for: mapper goto xxx
+-- -----------------------------------------------------------------
+function map_goto (name, line, wildcards)
+  local wanted = wildcards [1]
+  -- check valid string
+  if string.match (wanted, "%D") then
+    mapper.maperror ("Room number must be numeric, you entered: " .. wanted)
+    return
+  end -- if
+
+  -- see if already there
+  if current_room and string.match (current_room, "^" .. wanted) then
+    mapper.mapprint ("You are already in that room.")
+    return
+  end -- if
+  -- find desired room
+  mapper.find (
+    function (uid)
+      local found = string.match (uid, "^" .. wanted)
+      return found, found
+    end,  -- function
+    show_vnums,  -- show vnum?
+    1,          -- how many to expect
+    true        -- just walk there
+    )
+end -- map_goto
+
+-- -----------------------------------------------------------------
+-- got_weather_line: Called when we get the weather line (the description follows)
+-- -----------------------------------------------------------------
+function got_weather_line (name, line, wildcards)
+  EnableTrigger ("description_line", true)
+  description = { }
+end -- got_weather_line
+
+-- -----------------------------------------------------------------
+-- got_description_line: Called for each line of the room description
+-- -----------------------------------------------------------------
+function got_description_line (name, line, wildcards)
+
+  -- stop collecting descriptions after a blank line
+  if Trim (line) == "" then
+    EnableTrigger ("description_line", false)
+  end -- if blank line
+
+  table.insert (description, line)  -- build up the description
+end -- got_description_line
+
+-- -----------------------------------------------------------------
+-- map_where: Show where a room is
+-- -----------------------------------------------------------------
+function map_where (name, line, wildcards)
+  if not mapper.check_we_can_find () then
+    return
+  end -- if
+  local wanted = wildcards [1]
+  if current_room and wanted == current_room then
+    mapper.mapprint ("You are already in that room.")
+    return
+  end -- if
+  local paths = mapper.find_paths (current_room,
+           function (uid)
+             return uid == wanted,  -- wanted room?
+                    uid == wanted   -- stop searching?
+            end)
+  local uid, item = next (paths, nil) -- extract first (only) path
+  -- nothing? room not found
+  if not item then
+    mapper.mapprint (string.format ("Room %s not found", wanted))
+    return
+  end -- if
+  -- turn into speedwalk
+  local path = mapper.build_speedwalk (item.path)
+  -- display it
+  mapper.mapprint (string.format ("Path to %s is: %s", wanted, path))
+end -- map_where
+
 
 ]]>
+
 </script>
 </muclient>
