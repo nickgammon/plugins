@@ -23,6 +23,14 @@ type to enable connection checking.
 4. Change the entity above "noconnect_command" to be the command you
 type to disable connection checking.
 
+ 
+  <alias
+   script="OnQuit"
+   match="&quit_command;"
+   enabled="y"
+  >
+  </alias>
+   
 -->
 
 <muclient>
@@ -65,12 +73,7 @@ Reconnecter:help - this help screen
 <!--  Aliases  -->
 
 <aliases>
-  <alias
-   script="OnQuit"
-   match="&quit_command;"
-   enabled="y"
-  >
-  </alias>
+
 
   <alias
    script="OnConnect"
