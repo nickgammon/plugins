@@ -446,7 +446,10 @@ end -- got_exits
 -- try to detect when we send a movement command
 -- -----------------------------------------------------------------
 function OnPluginSent (sText)
-  last_direction_moved = valid_direction [sText]
+  local direction = valid_direction [sText]
+  if direction then
+    last_direction_moved = direction
+  end -- if
 end -- OnPluginSent
 
 -- -----------------------------------------------------------------
