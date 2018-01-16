@@ -9,9 +9,9 @@
    purpose="Mapper for The Inquisition"
    save_state="y"
    date_written="2018-01-15"
-   date_modified="2018-01-15 15:41"
+   date_modified="2018-01-16 13:09"
    requires="5.00"
-   version="1.3"
+   version="1.4"
    >
 
 <description trim="y">
@@ -198,31 +198,33 @@ mapper stop         --> cancel any current speedwalk
   >
   </trigger>
 
-  <trigger
-   enabled="y"
-   match="Nah... * feels too relaxed..."
-   script="mapper.cancel_speedwalk"
-   sequence="100"
-   back_colour="8"
-   match_back_colour="y"
-   match_bold="y"
-   bold="y"
-   match_text_colour="y"
-   text_colour="3"
-  >
-  </trigger>
+
+ <!--
+  Things which prevent us moving.
+
+  Right now we assume they are yellow on black in bold. If this isn't (always) the case
+  change match_text_colour, match_back_colour and match_bold to be "n" (as appropriate).
+
+  See "cannot_move_messages" table further down for the exact messages that are matched on.
+
+ -->
 
   <trigger
+   match="*"
+
    enabled="y"
-   match="In * dreams, or what?"
-   script="mapper.cancel_speedwalk"
-   sequence="100"
-   back_colour="8"
    match_back_colour="y"
+   match_text_colour="y"
+
    match_bold="y"
    bold="y"
-   match_text_colour="y"
+
    text_colour="3"
+   back_colour="8"
+
+   script="check_for_cannot_go"
+   keep_evaluating="y"
+   sequence="1"
   >
   </trigger>
 
@@ -271,7 +273,7 @@ local valid_direction = {
   northwest = "nw",
   southeast = "se",
   southwest = "sw",
-  ['in'] = "in",
+  ["in"] = "in",
   out = "out",
   }  -- end of valid_direction
 
@@ -287,9 +289,27 @@ local inverse_direction = {
   sw = "ne",
   nw = "se",
   se = "nw",
-  ['in'] = "out",
+  ["in"] = "out",
   out = "in",
   }  -- end of inverse_direction
+
+-- put messages from the MUD which stop you moving here ...
+-- Use * for wildcards, everything else matches literally.
+
+local cannot_move_messages = {
+    "Nah... * feels too relaxed...",
+    "In * dreams, or what?",
+
+-- add more here
+
+    }
+
+-- -----------------------------------------------------------------
+-- for converting things like ^ $ * etc. into "escaped" sequences
+-- -----------------------------------------------------------------
+function fix_regexp_magic_characters (r)
+    return string.gsub (r, "[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%1")
+end -- fix_regexp_magic_characters
 
 -- -----------------------------------------------------------------
 -- mapper 'get_room' callback - it wants to know about room uid
@@ -353,6 +373,16 @@ function OnPluginInstall ()
                     GetInfo (85), GetWorldID (), GetPluginID ())))
   mapper.mapprint ("Consider backing up the above file regularly as it has the mapper database in it.")
 
+  -- fix up wildcards in "cannot_move_messages" table
+  for k, v in ipairs (cannot_move_messages) do
+    -- replace wildcard (asterisk) by 0x00
+    v = string.gsub (v, '%*', string.char (0))
+    -- fix all other characters like periods
+    v = fix_regexp_magic_characters (v)
+    -- put the wildcards back (convert 0x00 to ".*")
+    cannot_move_messages [k] = string.gsub (v, string.char (0), '.*' )
+  end -- for each message
+
 end -- OnPluginInstall
 
 -- -----------------------------------------------------------------
@@ -400,6 +430,7 @@ function got_prompt (name, line, wildcards)
     rooms [current_room].exits [last_direction_moved] = uid
     -- assume inverse direction leads back
     rooms [uid].exits [inverse_direction [last_direction_moved]] = current_room
+    last_direction_moved = nil -- we have to move again now
   end -- if
 
   -- this is now our current room
@@ -497,7 +528,7 @@ function map_find (name, line, wildcards)
   end -- if find not OK
 
   -- fix up any regular expression "magic" letters to be escaped by a %
-  local fixed_target = string.gsub (target, "[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%1")
+  local fixed_target = fix_regexp_magic_characters (target)
 
   -- fix up for caseless searches in the room description (eg. "a" becomes "[aA]")
   local caseless_target = string.gsub (fixed_target, "(%a)", function (a)
@@ -630,6 +661,32 @@ function map_where (name, line, wildcards)
   mapper.mapprint (string.format ("Path to %s is: %s", wanted, path))
 end -- map_where
 
+-- -----------------------------------------------------------------
+-- cannot_walk - we tried to walk but failed
+-- -----------------------------------------------------------------
+function cannot_walk (name, line, wildcards)
+  mapper.cancel_speedwalk ()
+  room_description = nil
+  current_exits = nil
+  room_name = nil
+  last_direction_moved = nil
+--  mapper.mapprint ("Attempt to walk cancelled.")
+
+end -- cannot_walk
+
+-- -----------------------------------------------------------------
+-- check_for_cannot_go - look up the line in a table of failure messages
+-- see table: cannot_move_messages
+-- -----------------------------------------------------------------
+function check_for_cannot_go (name, line, wildcards)
+
+  for _, v in ipairs (cannot_move_messages) do
+    if string.find (line, v) then
+      cannot_walk ()
+      break
+    end -- if match
+  end -- for each message
+end -- check_for_cannot_go
 
 ]]>
 
