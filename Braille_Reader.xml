@@ -14,7 +14,20 @@
    >
 <description trim="y">
 <![CDATA[
-Description here
+Outputs in chunks for Braille-readers. See "CONFIGURATION" in plugin for how to change various parameters.
+
+Each line from the MUD is output in up to (default) 40 characters at a time, up to the end of the last word (the most-recent space). Press the "resume" function key to view the next 40 characters.
+To skip the rest of the current line press the "skip" function key.
+To discard all output press the "clear" function key.
+
+Default keys:
+
+F6 - resume
+F7 - skip rest of line
+F8 - clear all output
+
+If the display is blank then there is no pending output. Blank lines from the MUD are automatically ignored.
+
 ]]>
 </description>
 
