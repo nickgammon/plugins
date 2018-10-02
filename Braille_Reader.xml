@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<muclient>
+<plugin
+   name="Braille_Reader"
+   author="Nick Gammon"
+   id="9142cc3c8b300ae5faf113c4"
+   language="Lua"
+   purpose="Outputs chunks of text for use with a Braille reader"
+   date_written="2018-10-03 05:50:10"
+   requires="5.00"
+   version="1.0"
+   >
+<description trim="y">
+<![CDATA[
+Description here
+]]>
+</description>
+
+</plugin>
+
+<script>
+<![CDATA[
+
+-- CONFIGURATION
+
+chars = 40  -- how many to display at a time
+unicode = false
+text_colour = ColourNameToRGB("white")
+background_colour = ColourNameToRGB("black")
+resume_fkey = "F6"
+skip_fkey   = "F7"
+clear_fkey  = "F8"
+
+-- INTERNAL STUFF
+
+win = "test_" .. GetPluginID ()  -- get a unique name, ensure not empty if outside plugin
+font = "f"
+
+lines = { }  -- table of lines from MUD
+last_output = ""
+
+function Resume ()
+  
+  -- clear previous text initially
+  WindowRectOp(win, miniwin.rect_fill, 0, 0, 0, 0, background_colour, 0)
+  last_output = ""
+
+  -- if nothing to show, a blank output will indicate that
+  if #lines == 0 then
+    Redraw ()  
+    return
+  end -- if
+  
+  local text = lines [1]  -- what needs to be shown
+  
+  if #text > chars then
+    local last_space = 0
+    -- stop at last word
+    for i = 1, #text do
+      if i > chars then
+        break
+      end -- if past wanted width
+      if string.sub (text, i, i) == " " then
+        last_space = i
+      end -- if found a space
+    end -- for
+    
+    if last_space == 0 then
+      last_space = chars + 1  -- assume space just afterwards
+    end -- if
+    lines [1] = Trim (string.sub (text, last_space))  -- rest of line
+    text = string.sub (text, 1, last_space - 1)  -- take all 'chars' characters
+    partial_line = true
+  else
+    table.remove (lines, 1)   -- not too long, just remove it
+    partial_line = false
+  end -- if too long
+
+  WindowText (win, font, text, 
+                  5, 5, 0, 0,   -- rectangle
+                  text_colour,  -- colour
+                  unicode)      -- Unicode?
+  Redraw ()  
+  last_output = text              
+end -- Resume
+
+function Skip_Line ()
+  if partial_line then
+    table.remove (lines, 1)
+    partial_line = false
+  end -- if
+  Resume () -- now show next line
+end -- Skip_Line
+
+function Clear_Output ()
+  lines = {}
+  partial_line = false
+  Resume ()
+end -- Clear_Output
+
+function OnPluginInstall ()
+
+  -- set up key bindings
+  AcceleratorTo(resume_fkey,  'Resume()', sendto.script)
+  AcceleratorTo(skip_fkey,    'Skip_Line()', sendto.script)
+  AcceleratorTo(clear_fkey,   'Clear_Output()', sendto.script)
+  
+  -- leave room at the bottom for the miniwindow
+  TextRectangle(0,   -- left
+                0,  -- top
+                0,  -- width
+              -50,  -- 50 pixels from the bottom
+              10,  -- BorderOffset, 
+              ColourNameToRGB ("gray"),    -- BorderColour, 
+              2,  -- BorderWidth, 
+              ColourNameToRGB ("silver"),  -- OutsideFillColour, 
+              miniwin.brush_solid) -- OutsideFillStyle
+  
+  -- make miniwindow to find text size                           
+  WindowCreate (win, 0, 0, 0, 0, miniwin.pos_bottom_left, 0, background_colour)  -- create window
+  
+  -- set up font
+  WindowFont (win, font, "Courier", 14) -- define font
+  
+  -- get font information
+  width   = WindowTextWidth (win, font, string.rep ("M", chars))
+  height  = WindowFontInfo (win, font, 1)   -- height of the font 
+
+  -- recreate window to have correct width
+  WindowCreate (win, 0, 0, width + 10, height + 10, miniwin.pos_bottom_left, 0, background_colour)  -- create window
+  
+  WindowShow (win,  true)  -- show it 
+
+  lines [1] = "Braille Reader installed"
+  Resume ()
+        
+end -- OnPluginInstall
+
+-- Type: 0 = output line, 1 = note, 2 = command
+
+function OnPluginScreendraw (type, log, line)
+
+  -- if output line, add to buffer of lines to be shown
+  if type ~= 2 and Trim (line) ~= "" then
+    table.insert (lines, Trim (line))
+    
+    -- if nothing currently shown, start showing stuff
+    if last_output == "" then
+      Resume ()
+    end -- if
+  end -- if
+end -- function OnPluginScreendraw
+
+]]>
+</script> 
+
+</muclient>
