@@ -10,8 +10,9 @@
    purpose="Mapper for SW MUD"
    save_state="y"
    date_written="2020-01-18"
+   date_modified="2020-01-19"
    requires="4.51"
-   version="1.0"
+   version="1.1"
    >
 
 </plugin>
@@ -20,6 +21,9 @@
 <!--  Triggers  -->
 
 <triggers>
+
+  <!--  Single-line exit (more than one) -->
+
   <trigger
    back_colour="8"
    enabled="y"
@@ -34,6 +38,8 @@
   >
   </trigger>
 
+  <!--  Single-line exit (one exit) -->
+
   <trigger
    back_colour="8"
    enabled="y"
@@ -47,6 +53,8 @@
    regexp="y"
   >
   </trigger>
+
+  <!--  Multi-line exit (2-line trigger) -->
 
  <trigger
    enabled="y"
@@ -64,6 +72,9 @@
 </triggers>
 
 <aliases>
+
+  <!--  mapper find interface, eg. "mapper find shop" -->
+
 <alias
    match="^mapper find ([\w* %d/&quot;]+)$"
    enabled="y"
@@ -71,8 +82,18 @@
    script="map_find"
    regexp="y"
   >
-
   </alias>
+
+  <!--  mapper goto interface, eg. "mapper goto 43052FEF" -->
+
+ <alias
+   match="mapper goto *"
+   enabled="y"
+   sequence="100"
+   script="map_goto"
+  >
+  </alias>
+
   </aliases>
 
 
@@ -158,21 +179,39 @@ valid_direction = {
   out = "out",
   }  -- end of valid_direction
 
+-- -----------------------------------------------------------------
+-- INFO helper function for debugging the plugin (information messages)
+-- -----------------------------------------------------------------
 
-function DEBUG (...)
+function INFO (...)
 
-  -- comment out this line to remove debugging prints
---   ColourNote ("orange", "", table.concat ( { ... }, " "))
+  -- uncomment the line below to add debugging prints for information
 
-end -- DEBUG
+  -- ColourNote ("orange", "", table.concat ( { ... }, " "))
+
+end -- INFO
 
 -- -----------------------------------------------------------------
--- We have a room name and room exits
+-- WARNING helper function for debugging the plugin (warning/error messages)
+-- -----------------------------------------------------------------
+
+function WARNING (...)
+
+  -- uncomment the line below to add debugging prints for warnings
+
+  ColourNote ("red", "", table.concat ( { ... }, " "))
+
+end -- WARNING
+
+
+-- -----------------------------------------------------------------
+-- process_exit_line_multiple - called when a multi-line exits message is found
 -- -----------------------------------------------------------------
 
 function process_exit_line_multiple (name, line, wildcards)
   local line_count = GetLinesInBufferCount()
 
+  -- Work backwards in the output buffer to find the line with "There are .+ obvious exits" in it
   local exits_line = nil
   for i = line_count, line_count - 20, -1 do
     if i < 1 then
@@ -184,8 +223,9 @@ function process_exit_line_multiple (name, line, wildcards)
     end -- if found the exits line
   end -- for
 
+  -- oops, can't find it (should have been nearby)
   if not exits_line then
-    DEBUG "Couldn't find the exits line"
+    WARNING "Couldn't find the exits line"
     return
   end -- if
 
@@ -194,29 +234,34 @@ function process_exit_line_multiple (name, line, wildcards)
     return
   end -- if
 
+  -- find the foreground/background colour of that line
   local fore = GetStyleInfo(exits_line, 1, 14)  -- second last line, first line of the pair
   local back = GetStyleInfo(exits_line, 1, 15)  -- second last line, first line of the pair
 
-  -- must be teal on black
+  -- must be teal on black or it is some sort of bogus line
   if (fore ~= ColourNameToRGB ('teal') or back ~= 0) then
-    DEBUG ("wrong colour for line", GetLineInfo (exits_line, 1), "got", RGBColourToName (fore), "on", RGBColourToName (back))
+    WARNING ("wrong colour for line", GetLineInfo (exits_line, 1), "got", RGBColourToName (fore), "on", RGBColourToName (back))
     return
   end
 
+  -- now do normal exits processing
   process_exit_line (name, line, wildcards)
 
 end -- process_exit_line_multiple
+
+-- -----------------------------------------------------------------
+-- process_exit_line - called when we see an "exits" line - find the room info from the recent packet
+-- -----------------------------------------------------------------
 
 function process_exit_line (name, line, wildcards, styles)
 
   local exits_str = trim (wildcards.exits)
 
-  DEBUG ("exits: " .. exits_str)  -- debug
-
+  INFO ("exits: " .. exits_str)  -- debug
 
   last_packet = recent_packets [#recent_packets]
 
-  DEBUG ("Size of last packet is " .. #last_packet)
+  INFO ("Size of last packet is " .. #last_packet)
 
   last_packet = string.gsub (last_packet, "\r\n", "\n") -- get rid of carriage returns
 
@@ -233,28 +278,32 @@ function process_exit_line (name, line, wildcards, styles)
   -- break into lines
   local lines = utils.split (last_packet, "\n")
 
+  -- look for a line starting with (space)ANSI_RESET - that should be the end of the description
   local last_line = 0
   for k, v in ipairs (lines) do
-    -- ColourNote ("white", "blue", string.format ("Line %d = '%s'", k, v))
+    -- INFO (string.format ("Line %d = '%s'", k, v))
     if v == " \027[0m" then -- end of description
       last_line = k
     end -- for
   end -- for
 
   if last_line == 0 then
-    DEBUG ("Cannot find end of description")
+    WARNING ("Cannot find end of description")
     return
   end -- if
 
+  -- remove all lines past the end of the description
   while #lines > last_line do
     table.remove (lines)
   end -- while
 
+  -- put them back as a string
   description = table.concat (lines, "\n")
 
   -- get rid of ANSI codes
   description = StripANSI (description)
-  -- DEBUG ("Description = " .. description)
+
+  -- INFO ("Description = " .. description)
 
   -- generate a "room ID" by hashing the room description and exits
   uid = utils.tohex (utils.md5 (description .. exits_str))
@@ -263,6 +312,7 @@ function process_exit_line (name, line, wildcards, styles)
   -- break up exits into individual directions
   exits = {}
 
+  -- for each word in the exits line, which happens to be an exit name (eg. "north") add to the table
   for exit in string.gmatch (exits_str, "%w+") do
     local ex = valid_direction [exit]
     if ex then
@@ -270,27 +320,28 @@ function process_exit_line (name, line, wildcards, styles)
     end -- if
   end -- for
 
+  -- show what we found
   for k, v in pairs (exits) do
-    DEBUG ("Exit:", k)
+    INFO ("Exit:", k)
   end -- for
 
-  -- add to table if not known
+  -- add room to rooms table if not already known
   if not rooms [uid] then
-    DEBUG ("Mapper adding room " .. uid)
+    INFO ("Mapper adding room " .. uid)
     rooms [uid] = { desc = description, exits = exits, area = "SW Mud", name = uid:sub (1, 8) }
   end -- if
 
-
-  DEBUG ("We are now in room " .. uid)
+  INFO ("We are now in room " .. uid)
 
   -- save so we know current room later on
   current_room = uid
 
+  -- show what we believe the current exits to be
   for k, v in pairs (rooms [uid].exits) do
-    DEBUG ("Exit: " .. k .. " -> " .. v)
+    INFO ("Exit: " .. k .. " -> " .. v)
   end -- for
 
-  -- call mapper to draw this rom
+  -- call mapper to draw this room
   mapper.draw (uid)
 
   -- try to work out where previous room's exit led
@@ -298,8 +349,7 @@ function process_exit_line (name, line, wildcards, styles)
     fix_up_exit ()
   end -- exit was wrong
 
-
-end -- Name_Or_Exits
+end -- process_exit_line
 
 
 -- -----------------------------------------------------------------
@@ -320,11 +370,14 @@ function get_room (uid)
   end -- for
   table.sort (texits)
 
+  local desc = string.gsub (room.desc, "%. .*", ".")
+
   room.hovermessage = string.format (
-       "%s\tExits: %s\nRoom: %s",
+       "%s\tExits: %s\nRoom: %s\n%s",
         room.name or "unknown",
         table.concat (texits, ", "),
-      uid
+        uid,
+        desc
       )
 
   if uid == current_room then
@@ -348,7 +401,7 @@ function fix_up_exit ()
   -- leads to here
   room.exits [last_direction_moved] = current_room
 
-  DEBUG ("Exit from " .. from_room .. " in the direction " .. last_direction_moved .. " is now " .. current_room)
+  INFO ("Exit from " .. from_room .. " in the direction " .. last_direction_moved .. " is now " .. current_room)
   -- clear for next time
   last_direction_moved = nil
   from_room = nil
@@ -362,14 +415,14 @@ end -- fix_up_exit
 function OnPluginSent (sText)
   if valid_direction [sText] then
     last_direction_moved = valid_direction [sText]
-    DEBUG ("current_room =", current_room)
-    DEBUG ("Just moving", last_direction_moved)
+    INFO ("current_room =", current_room)
+    INFO ("Just moving", last_direction_moved)
     if current_room and rooms [current_room] then
       expected_exit = rooms [current_room].exits [last_direction_moved]
       if expected_exit then
         from_room = current_room
       end -- if
-    DEBUG ("expected exit for this in direction " .. last_direction_moved .. " is to room", expected_exit)
+    INFO ("Expected exit for this in direction " .. last_direction_moved .. " is to room", expected_exit)
     end -- if
   end -- if
 end -- function
@@ -420,6 +473,59 @@ function OnPluginConnect ()
 end -- OnPluginConnect
 
 -- -----------------------------------------------------------------
+-- Callback to show part of the room description, used by map_find
+-- -----------------------------------------------------------------
+
+FIND_OFFSET = 33
+
+function show_find_details (uid)
+  local this_room = rooms [uid]
+  local desc = this_room.desc:lower ()
+  local st, en = string.find (desc, wanted, 1, true)
+  if not st then
+    return
+  end -- can't find the description, odd
+
+  desc = this_room.desc
+
+  local first, last
+  local first_dots = ""
+  local last_dots = ""
+
+  for i = 1, #desc do
+
+    -- find a space before the wanted match string, within the FIND_OFFSET range
+    if not first and
+       desc:sub (i, i) == ' ' and
+       i < st and
+       st - i <= FIND_OFFSET then
+      first = i
+      first_dots = "... "
+    end -- if
+
+    -- find a space after the wanted match string, within the FIND_OFFSET range
+    if not last and
+      desc:sub (i, i) == ' ' and
+      i > en and
+      i - en >= FIND_OFFSET then
+      last = i
+      last_dots = " ..."
+    end -- if
+
+  end -- for
+
+  if not first then
+    first = 1
+  end -- if
+  if not last then
+    last = #desc
+  end -- if
+
+  mapper.mapprint (first_dots .. Trim (string.gsub (desc:sub (first, last), "\n", " ")) .. last_dots)
+
+end -- show_find_details
+
+-- -----------------------------------------------------------------
 -- Find a room
 -- -----------------------------------------------------------------
 
@@ -427,7 +533,7 @@ function map_find (name, line, wildcards)
 
   local room_ids = {}
   local count = 0
-  local wanted = (wildcards [1]):lower ()
+  wanted = (wildcards [1]):lower ()     -- NOT local
 
   -- scan all rooms looking for a simple match
   for k, v in pairs (rooms) do
@@ -449,15 +555,66 @@ function map_find (name, line, wildcards)
     end,  -- function
     show_vnums,  -- show vnum?
     count,      -- how many to expect
-    false       -- don't auto-walk
+    false,      -- don't auto-walk
+    show_find_details -- callback function
     )
 
 end -- map_find
 
+-- -----------------------------------------------------------------
+-- Go to a room
+-- -----------------------------------------------------------------
+
+function map_goto (name, line, wildcards)
+
+  local wanted = wildcards [1]
+
+  if current_room and wanted == current_room then
+    mapper.mapprint ("You are already in that room.")
+    return
+  end -- if
+
+  if not string.match (wanted, "^%x+$") then
+    mapper.mapprint ("Room IDs are hex strings (eg. FC758) - you can specify a partial string")
+    return
+  end -- if
+
+  -- they are stored as upper-case
+  wanted = wanted:upper ()
+
+  -- find desired room
+  mapper.find (
+    function (uid)
+      return string.match (uid, wanted), string.match (uid, wanted)
+    end,  -- function
+    show_vnums,  -- show vnum?
+    1,          -- how many to expect
+    true        -- just walk there
+    )
+
+end -- map_goto
+
+-- -----------------------------------------------------------------
+-- OnPluginPacketReceived - maintains a sliding window of the 20 most recent packets received
+-- -----------------------------------------------------------------
+
 recent_packets = {}
+last_packet_number = 0
 
 function OnPluginPacketReceived (pkt)
-  table.insert (recent_packets, pkt)
+
+  -- see if *same* packet number
+  -- if so, add to the same (most recent) packet
+
+  if GetInfo (204) == last_packet_number then
+    recent_packets [#recent_packets] = recent_packets [#recent_packets] .. pkt
+    return
+  end -- if same packet number
+
+  table.insert (recent_packets, pkt)  -- add the latest
+  last_packet_number = GetInfo (204)  -- remember packet number
+
+  -- remove the first packet if we now have more than 20 of them
   if #recent_packets > 20 then
      table.remove (recent_packets, 1)
   end -- if
