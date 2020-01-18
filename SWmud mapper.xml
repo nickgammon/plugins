@@ -1,0 +1,471 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<muclient>
+<plugin
+   name="SWmud_Mapper"
+   author="Nick Gammon"
+   id="dae080546b036889b56266b3"
+   language="Lua"
+   purpose="Mapper for SW MUD"
+   save_state="y"
+   date_written="2020-01-18"
+   requires="4.51"
+   version="1.0"
+   >
+
+</plugin>
+
+
+<!--  Triggers  -->
+
+<triggers>
+  <trigger
+   back_colour="8"
+   enabled="y"
+   match="^There (is|are) (.*?) obvious exits\: (?P<exits>.*?)\.$"
+   match_back_colour="y"
+   match_text_colour="y"
+   send_to="1"
+   sequence="100"
+   text_colour="14"
+   script="process_exit_line"
+   regexp="y"
+  >
+  </trigger>
+
+  <trigger
+   back_colour="8"
+   enabled="y"
+   match="^The only obvious exit is (?P<exits>.*?)\.$"
+   match_back_colour="y"
+   match_text_colour="y"
+   send_to="1"
+   sequence="100"
+   text_colour="14"
+   script="process_exit_line"
+   regexp="y"
+  >
+  </trigger>
+
+ <trigger
+   enabled="y"
+   match="(?s)^There are (.*?) obvious exits\: (?P<exits>.+?)\.$"
+   send_to="1"
+   sequence="110"
+   script="process_exit_line_multiple"
+   regexp="y"
+   lines_to_match="2"
+   multi_line="y"
+  >
+  </trigger>
+
+
+</triggers>
+
+<aliases>
+<alias
+   match="^mapper find ([\w* %d/&quot;]+)$"
+   enabled="y"
+   sequence="100"
+   script="map_find"
+   regexp="y"
+  >
+
+  </alias>
+  </aliases>
+
+
+<!--  Script  -->
+
+
+<script>
+<![CDATA[
+
+local MAX_NAME_LENGTH = 60
+
+require "mapper"
+require "serialize"
+require "copytable"
+require "commas"
+
+default_config = {
+  -- assorted colours
+  BACKGROUND_COLOUR       = { name = "Background",        colour =  ColourNameToRGB "lightseagreen", },
+  ROOM_COLOUR             = { name = "Room",              colour =  ColourNameToRGB "cyan", },
+  EXIT_COLOUR             = { name = "Exit",              colour =  ColourNameToRGB "darkgreen", },
+  EXIT_COLOUR_UP_DOWN     = { name = "Exit up/down",      colour =  ColourNameToRGB "darkmagenta", },
+  EXIT_COLOUR_IN_OUT      = { name = "Exit in/out",       colour =  ColourNameToRGB "#3775E8", },
+  OUR_ROOM_COLOUR         = { name = "Our room",          colour =  ColourNameToRGB "black", },
+  UNKNOWN_ROOM_COLOUR     = { name = "Unknown room",      colour =  ColourNameToRGB "#00CACA", },
+  DIFFERENT_AREA_COLOUR   = { name = "Another area",      colour =  ColourNameToRGB "#009393", },
+  SHOP_FILL_COLOUR        = { name = "Shop",              colour =  ColourNameToRGB "darkolivegreen", },
+  POSTOFFICE_FILL_COLOUR  = { name = "Post Office",       colour =  ColourNameToRGB "yellowgreen", },
+  BANK_FILL_COLOUR        = { name = "Bank",              colour =  ColourNameToRGB "gold", },
+  NEWSROOM_FILL_COLOUR    = { name = "Newsroom",          colour =  ColourNameToRGB "lightblue", },
+  MAPPER_NOTE_COLOUR      = { name = "Messages",          colour =  ColourNameToRGB "lightgreen" },
+
+  ROOM_NAME_TEXT          = { name = "Room name text",    colour = ColourNameToRGB "#BEF3F1", },
+  ROOM_NAME_FILL          = { name = "Room name fill",    colour = ColourNameToRGB "#105653", },
+  ROOM_NAME_BORDER        = { name = "Room name box",     colour = ColourNameToRGB "black", },
+
+  AREA_NAME_TEXT          = { name = "Area name text",    colour = ColourNameToRGB "#BEF3F1",},
+  AREA_NAME_FILL          = { name = "Area name fill",    colour = ColourNameToRGB "#105653", },
+  AREA_NAME_BORDER        = { name = "Area name box",     colour = ColourNameToRGB "black", },
+
+  FONT = { name =  get_preferred_font {"Dina",  "Lucida Console",  "Fixedsys", "Courier", "Sylfaen",} ,
+           size = 8
+         } ,
+
+  -- size of map window
+  WINDOW = { width = 400, height = 400 },
+
+  -- how far from where we are standing to draw (rooms)
+  SCAN = { depth = 30 },
+
+  -- speedwalk delay
+  DELAY = { time = 0.3 },
+
+  -- how many seconds to show "recent visit" lines (default 3 minutes)
+  LAST_VISIT_TIME = { time = 60 * 3 },
+
+  }
+
+rooms = {}
+
+valid_direction = {
+  n = "n",
+  s = "s",
+  e = "e",
+  w = "w",
+  u = "u",
+  d = "d",
+  ne = "ne",
+  sw = "sw",
+  nw = "nw",
+  se = "se",
+  north = "n",
+  south = "s",
+  east = "e",
+  west = "w",
+  up = "u",
+  down = "d",
+  northeast = "ne",
+  northwest = "nw",
+  southeast = "se",
+  southwest = "sw",
+  ['in'] = "in",
+  out = "out",
+  }  -- end of valid_direction
+
+
+function DEBUG (...)
+
+  -- comment out this line to remove debugging prints
+--   ColourNote ("orange", "", table.concat ( { ... }, " "))
+
+end -- DEBUG
+
+-- -----------------------------------------------------------------
+-- We have a room name and room exits
+-- -----------------------------------------------------------------
+
+function process_exit_line_multiple (name, line, wildcards)
+  local line_count = GetLinesInBufferCount()
+
+  local exits_line = nil
+  for i = line_count, line_count - 20, -1 do
+    if i < 1 then
+      break
+    end -- if
+    if string.match (GetLineInfo (i, 1), "^There are .+ obvious exits:") then
+      exits_line = i
+      break
+    end -- if found the exits line
+  end -- for
+
+  if not exits_line then
+    DEBUG "Couldn't find the exits line"
+    return
+  end -- if
+
+  -- do nothing if we see a period because the normal exits line trigger should have handled it
+  if string.match (GetLineInfo (exits_line, 1), '%.$') then
+    return
+  end -- if
+
+  local fore = GetStyleInfo(exits_line, 1, 14)  -- second last line, first line of the pair
+  local back = GetStyleInfo(exits_line, 1, 15)  -- second last line, first line of the pair
+
+  -- must be teal on black
+  if (fore ~= ColourNameToRGB ('teal') or back ~= 0) then
+    DEBUG ("wrong colour for line", GetLineInfo (exits_line, 1), "got", RGBColourToName (fore), "on", RGBColourToName (back))
+    return
+  end
+
+  process_exit_line (name, line, wildcards)
+
+end -- process_exit_line_multiple
+
+function process_exit_line (name, line, wildcards, styles)
+
+  local exits_str = trim (wildcards.exits)
+
+  DEBUG ("exits: " .. exits_str)  -- debug
+
+
+  last_packet = recent_packets [#recent_packets]
+
+  DEBUG ("Size of last packet is " .. #last_packet)
+
+  last_packet = string.gsub (last_packet, "\r\n", "\n") -- get rid of carriage returns
+
+  -- get rid of stuff which looks like "you moved east to foo"
+
+  -- that should be:
+  --   match start of packet
+  --   skip past everything up to the first newline
+  --   verify that the second line starts with ANSI_RESET
+  --   if so, omit that part
+
+  last_packet = string.gsub (last_packet, "^[^\n]+\n\027%[0m", "")
+
+  -- break into lines
+  local lines = utils.split (last_packet, "\n")
+
+  local last_line = 0
+  for k, v in ipairs (lines) do
+    -- ColourNote ("white", "blue", string.format ("Line %d = '%s'", k, v))
+    if v == " \027[0m" then -- end of description
+      last_line = k
+    end -- for
+  end -- for
+
+  if last_line == 0 then
+    DEBUG ("Cannot find end of description")
+    return
+  end -- if
+
+  while #lines > last_line do
+    table.remove (lines)
+  end -- while
+
+  description = table.concat (lines, "\n")
+
+  -- get rid of ANSI codes
+  description = StripANSI (description)
+  -- DEBUG ("Description = " .. description)
+
+  -- generate a "room ID" by hashing the room description and exits
+  uid = utils.tohex (utils.md5 (description .. exits_str))
+  uid = uid:sub (1, 25)
+
+  -- break up exits into individual directions
+  exits = {}
+
+  for exit in string.gmatch (exits_str, "%w+") do
+    local ex = valid_direction [exit]
+    if ex then
+      exits [ex] = "0"  -- don't know where it goes yet
+    end -- if
+  end -- for
+
+  for k, v in pairs (exits) do
+    DEBUG ("Exit:", k)
+  end -- for
+
+  -- add to table if not known
+  if not rooms [uid] then
+    DEBUG ("Mapper adding room " .. uid)
+    rooms [uid] = { desc = description, exits = exits, area = "SW Mud", name = uid:sub (1, 8) }
+  end -- if
+
+
+  DEBUG ("We are now in room " .. uid)
+
+  -- save so we know current room later on
+  current_room = uid
+
+  for k, v in pairs (rooms [uid].exits) do
+    DEBUG ("Exit: " .. k .. " -> " .. v)
+  end -- for
+
+  -- call mapper to draw this rom
+  mapper.draw (uid)
+
+  -- try to work out where previous room's exit led
+  if expected_exit == "0" and from_room then
+    fix_up_exit ()
+  end -- exit was wrong
+
+
+end -- Name_Or_Exits
+
+
+-- -----------------------------------------------------------------
+-- mapper 'get_room' callback - it wants to know about room uid
+-- -----------------------------------------------------------------
+
+function get_room (uid)
+
+  if not rooms [uid] then
+   return nil
+  end -- if
+
+  local room = copytable.deep (rooms [uid])
+
+  local texits = {}
+  for dir in pairs (room.exits) do
+    table.insert (texits, dir)
+  end -- for
+  table.sort (texits)
+
+  room.hovermessage = string.format (
+       "%s\tExits: %s\nRoom: %s",
+        room.name or "unknown",
+        table.concat (texits, ", "),
+      uid
+      )
+
+  if uid == current_room then
+    room.bordercolour = config.OUR_ROOM_COLOUR.colour
+    room.borderpenwidth = 2
+  end -- not in this area
+
+  return room
+
+end -- get_room
+
+-- -----------------------------------------------------------------
+-- We have changed rooms - work out where the previous room led to
+-- -----------------------------------------------------------------
+
+function fix_up_exit ()
+
+  -- where we were before
+  local room = rooms [from_room]
+
+  -- leads to here
+  room.exits [last_direction_moved] = current_room
+
+  DEBUG ("Exit from " .. from_room .. " in the direction " .. last_direction_moved .. " is now " .. current_room)
+  -- clear for next time
+  last_direction_moved = nil
+  from_room = nil
+
+end -- fix_up_exit
+
+-- -----------------------------------------------------------------
+-- try to detect when we send a movement command
+-- -----------------------------------------------------------------
+
+function OnPluginSent (sText)
+  if valid_direction [sText] then
+    last_direction_moved = valid_direction [sText]
+    DEBUG ("current_room =", current_room)
+    DEBUG ("Just moving", last_direction_moved)
+    if current_room and rooms [current_room] then
+      expected_exit = rooms [current_room].exits [last_direction_moved]
+      if expected_exit then
+        from_room = current_room
+      end -- if
+    DEBUG ("expected exit for this in direction " .. last_direction_moved .. " is to room", expected_exit)
+    end -- if
+  end -- if
+end -- function
+
+-- -----------------------------------------------------------------
+-- Plugin Install
+-- -----------------------------------------------------------------
+
+function OnPluginInstall ()
+
+  config = {}  -- in case not found
+
+  -- get saved configuration
+  assert (loadstring (GetVariable ("config") or "")) ()
+
+  -- allow for additions to config
+  for k, v in pairs (default_config) do
+    config [k] = config [k] or v
+  end -- for
+
+  -- and rooms
+  assert (loadstring (GetVariable ("rooms") or "")) ()
+
+  -- initialize mapper
+
+  mapper.init { config = config, get_room = get_room  }
+  mapper.mapprint (string.format ("MUSHclient mapper installed, version %0.1f", mapper.VERSION))
+
+end -- OnPluginInstall
+
+-- -----------------------------------------------------------------
+-- Plugin Save State
+-- -----------------------------------------------------------------
+
+function OnPluginSaveState ()
+  mapper.save_state ()
+  SetVariable ("config", "config = " .. serialize.save_simple (config))
+  SetVariable ("rooms", "rooms = " .. serialize.save_simple (rooms))
+end -- OnPluginSaveState
+
+-- -----------------------------------------------------------------
+-- Plugin just connected to world
+-- -----------------------------------------------------------------
+
+function OnPluginConnect ()
+  from_room = nil
+  last_direction_moved = nil
+end -- OnPluginConnect
+
+-- -----------------------------------------------------------------
+-- Find a room
+-- -----------------------------------------------------------------
+
+function map_find (name, line, wildcards)
+
+  local room_ids = {}
+  local count = 0
+  local wanted = (wildcards [1]):lower ()
+
+  -- scan all rooms looking for a simple match
+  for k, v in pairs (rooms) do
+     local desc = v.desc:lower ()
+     if string.find (desc, wanted, 1, true) then
+       room_ids [k] = true
+       count = count + 1
+     end -- if
+  end   -- finding room
+
+  -- see if nearby
+  mapper.find (
+    function (uid)
+      local room = room_ids [uid]
+      if room then
+        room_ids [uid] = nil
+      end -- if
+      return room, next (room_ids) == nil
+    end,  -- function
+    show_vnums,  -- show vnum?
+    count,      -- how many to expect
+    false       -- don't auto-walk
+    )
+
+end -- map_find
+
+recent_packets = {}
+
+function OnPluginPacketReceived (pkt)
+  table.insert (recent_packets, pkt)
+  if #recent_packets > 20 then
+     table.remove (recent_packets, 1)
+  end -- if
+end -- OnPluginPacketReceived
+
+
+]]>
+</script>
+
+
+</muclient>
