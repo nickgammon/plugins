@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE muclient>
+
+<muclient>
+<plugin
+   name="Learning_Mapper"
+   author="Nick Gammon"
+   id="99c74b2685e425d3b6ed6a7d"
+   language="Lua"
+   purpose="AI interface to mapper to learn descriptions etc."
+   save_state="y"
+   date_written="2020-01-23 11:29:22"
+   requires="5.06"
+   version="1.0"
+   >
+<description trim="y">
+<![CDATA[
+blah blah
+]]>
+</description>
+
+</plugin>
+
+<!--  Aliases  -->
+
+<aliases>
+
+ <alias
+   match="is_room_name"
+   enabled="y"
+   omit_from_command_history="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>learn_line_type ("room_name", true)</send>
+  </alias>
+
+  <alias
+   match="not_room_name"
+   enabled="y"
+   omit_from_command_history="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>learn_line_type ("room_name", false)</send>
+  </alias>
+
+
+  <alias
+   match="is_description"
+   enabled="y"
+   omit_from_command_history="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>learn_line_type ("description", true)</send>
+  </alias>
+
+  <alias
+   match="not_description"
+   enabled="y"
+   omit_from_command_history="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>learn_line_type ("description", false)</send>
+  </alias>
+
+ <alias
+   match="is_exits"
+   enabled="y"
+   omit_from_command_history="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>learn_line_type ("exits", true)</send>
+  </alias>
+
+  <alias
+   match="not_exits"
+   enabled="y"
+   omit_from_command_history="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>learn_line_type ("exits", false)</send>
+  </alias>
+
+<alias
+   match="is_prompt"
+   enabled="y"
+   omit_from_command_history="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>learn_line_type ("prompt", true)</send>
+  </alias>
+
+  <alias
+   match="not_prompt"
+   enabled="y"
+   omit_from_command_history="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>learn_line_type ("prompt", false)</send>
+  </alias>
+
+
+</aliases>
+
+
+<!--  Script  -->
+
+<script>
+    dofile (GetPluginInfo (GetPluginID (), 20) .. "Learning_Mapper.lua")
+</script>
+
+</muclient>
