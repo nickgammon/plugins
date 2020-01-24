@@ -21,6 +21,20 @@ blah blah
 
 </plugin>
 
+<!--  Triggers  -->
+
+<triggers>
+  <trigger
+   enabled="y"
+   keep_evaluating="y"
+   match="*"
+   script="line_received"
+   sequence="1"
+  >
+  </trigger>
+</triggers>
+
+
 <!--  Aliases  -->
 
 <aliases>
@@ -104,6 +118,16 @@ blah blah
    sequence="100"
   >
   <send>learn_line_type ("prompt", false)</send>
+  </alias>
+
+
+  <alias
+   match="corpus"
+   enabled="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>tprint (corpus)</send>
   </alias>
 
 
