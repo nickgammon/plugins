@@ -33,25 +33,26 @@ Date:   24th January 2020
 
 --STATUS_BACKGROUND_COLOUR = "#333333"
 STATUS_BACKGROUND_COLOUR = "black"
-
+UID_SIZE = 3  -- how many characters of the UID to show
 
 -- black is true (ham) and red is false (spam)
 
 -- in other words, a marker assigned black IS the sort of line, and one assigned red IS NOT the sort of line
 
 
-function f_handle_description ()
+function f_handle_description (saved_lines)
   local lines = { }
-  for line = last_deduced_start_line, last_deduced_end_line do
-    table.insert (lines, GetLineInfo (line, 1)) -- get text of line
+  for _, line_info in ipairs (saved_lines) do
+    table.insert (lines, line_info.line) -- get text of line
   end -- for each line
   description = table.concat (lines, "\n")
+  -- INFO ("Description: " .. description)
 end -- f_handle_description
 
 function f_handle_exits ()
   local lines = { }
-  for line = last_deduced_start_line, last_deduced_end_line do
-    table.insert (lines, GetLineInfo (line, 1)) -- get text of line
+  for _, line_info in ipairs (saved_lines) do
+    table.insert (lines, line_info.line) -- get text of line
   end -- for each line
   exits_str = table.concat (lines, " ")
   process_exit_line ()
@@ -59,16 +60,16 @@ end -- f_handle_exits
 
 function f_handle_name ()
   local lines = { }
-  for line = last_deduced_start_line, last_deduced_end_line do
-    table.insert (lines, GetLineInfo (line, 1)) -- get text of line
+  for _, line_info in ipairs (saved_lines) do
+    table.insert (lines, line_info.line) -- get text of line
   end -- for each line
   room_name = table.concat (lines, " ")
 end -- f_handle_name
 
 function f_handle_prompt ()
   local lines = { }
-  for line = last_deduced_start_line, last_deduced_end_line do
-    table.insert (lines, GetLineInfo (line, 1)) -- get text of line
+  for _, line_info in ipairs (saved_lines) do
+    table.insert (lines, line_info.line) -- get text of line
   end -- for each line
   prompt = table.concat (lines, " ")
 end -- f_handle_prompt
@@ -76,28 +77,39 @@ end -- f_handle_prompt
 
 -- these are the types of lines we are trying to classify as a certain line IS or IS NOT that type
 line_types = {
-  description = { short = "Desc", handler = f_handle_description },
-  exits = { short = "Ex", handler = f_handle_exits },
-  room_name = { short =  "Name", handler = f_handle_name },
-  prompt = { short = "Prompt", handler = f_handle_prompt },
+  description = { short = "Desc",   handler = f_handle_description },
+  exits       = { short = "Ex",     handler = f_handle_exits },
+  room_name   = { short = "Name",   handler = f_handle_name },
+  prompt      = { short = "Prompt", handler = f_handle_prompt },
 }  -- end of line_types table
 
 function f_first_style_run_foreground (line)
-  return GetStyleInfo(line, 1, 14) or -1
+  return { GetStyleInfo(line, 1, 14) or -1 }
 end -- f_first_style_run_foreground
 
 function f_first_word (line)
   if not GetLineInfo(line, 1) then
-    return ""
+    return {}
   end -- no line available
-  return string.match (GetLineInfo(line, 1), "^%a+") or ""
+  return { string.match (GetLineInfo(line, 1), "^%a+") or "" }
 end -- f_first_word
+
+function f_all_words (line)
+  if not GetLineInfo(line, 1) then
+    return {}
+  end -- no line available
+  local words = { }
+  for w in string.gmatch (GetLineInfo(line, 1), "%a+") do
+    table.insert (words, w)
+  end -- for
+  return words
+end -- f_all_words
 
 function f_first_character (line)
   if not GetLineInfo(line, 1) then
-    return ""
+    return {}
   end -- no line available
-  return string.match (GetLineInfo(line, 1), "^.") or ""
+  return { string.match (GetLineInfo(line, 1), "^.") or "" }
 end -- f_first_character
 
 -- things we are looking for, like colour of first style run
@@ -117,6 +129,13 @@ markers = {
 
   },
 
+  {
+  desc = "All words in the line",
+  func = f_all_words,
+  marker = "m_all_words",
+
+  },
+
 --[[
 
  {
@@ -131,11 +150,9 @@ markers = {
   } -- end of markers
 
 -- this table has the counters
-corpus = {
-
-
-} -- end of corpus table
-
+corpus = { }
+-- stats
+stats = { }
 
 local MAX_NAME_LENGTH = 60
 
@@ -213,6 +230,21 @@ valid_direction = {
   ['in'] = "in",
   out = "out",
   }  -- end of valid_direction
+
+inverse_direction = {
+  n = "s",
+  s = "n",
+  e = "w",
+  w = "e",
+  u = "d",
+  d = "u",
+  ne = "sw",
+  sw = "ne",
+  nw = "se",
+  se = "nw",
+  ['in'] = "out",
+  out = "in",
+  }  -- end of inverse_direction
 
 -- -----------------------------------------------------------------
 -- OnPluginDrawOutputWindow
@@ -295,7 +327,7 @@ end -- OnPluginWorldOutputResized
 -- INFO helper function for debugging the plugin (information messages)
 -- -----------------------------------------------------------------
 function INFO (...)
-  ColourNote ("orange", "", table.concat ( { ... }, " "))
+  -- ColourNote ("orange", "", table.concat ( { ... }, " "))
 end -- INFO
 
 -- -----------------------------------------------------------------
@@ -318,6 +350,32 @@ function DEBUG (...)
 
   AppendToNotepad ("Debug", table.concat ( { ... }, " ") .. "\r\n")
 end -- DEBUG
+
+function corpus_reset (empty)
+  if empty then
+    corpus = { }
+    stats  = { }
+  end -- if
+
+  -- make sure each line type is in the corpus
+
+  for k, v in pairs (line_types) do
+    if not corpus [k] then
+      corpus [k] = {}
+    end -- not there yet
+
+    if not stats [k] then
+      stats [k] = { is = 0, isnot = 0 }
+    end -- not there yet
+
+    for k2, v2 in ipairs (markers) do
+      if not corpus [k] [v2.marker] then  -- if that marker not there, add it
+         corpus [k] [v2.marker] = { } -- table of values for this marker
+      end -- marker not there yet
+
+    end -- for each marker type
+  end -- for each line type
+end -- corpus_reset
 
 -- -----------------------------------------------------------------
 -- Plugin Install
@@ -344,21 +402,10 @@ function OnPluginInstall ()
 
   -- load corpus
   assert (loadstring (GetVariable ("corpus") or "")) ()
+  -- load stats
+  assert (loadstring (GetVariable ("stats") or "")) ()
 
-  -- make sure each line type is in the corpus
-
-  for k, v in pairs (line_types) do
-    if not corpus [k] then
-      corpus [k] = {}
-    end -- not there yet
-
-    for k2, v2 in ipairs (markers) do
-      if not corpus [k] [v2.marker] then  -- if that marker not there, add it
-         corpus [k] [v2.marker] = { } -- table of values for this marker
-      end -- marker not there ;yet
-
-    end -- for each marker type
-  end -- for each line type
+  corpus_reset ()
 
 --  tprint (corpus)
 
@@ -376,6 +423,7 @@ end -- OnPluginInstall
 function OnPluginSaveState ()
   mapper.save_state ()
   SetVariable ("corpus", "corpus = " .. serialize.save_simple (corpus))
+  SetVariable ("stats", "stats = " .. serialize.save_simple (stats))
   SetVariable ("config", "config = " .. serialize.save_simple (config))
   SetVariable ("rooms",  "rooms = "  .. serialize.save_simple (rooms))
 end -- OnPluginSaveState
@@ -427,12 +475,20 @@ function learn_line_type (which, black)
      return
   end -- if
 
+  if black then
+    stats [which].is = stats [which].is + 1
+  else
+    stats [which].isnot = stats [which].isnot + 1
+  end -- if
+
   -- do all lines in the selection
   for line = start_line, end_line do
     -- process all the marker types, and add 1 to the red/black counter for that particular marker
     for k, v in ipairs (markers) do
-      local value = v.func (line) -- call handler to get value
-      update_corpus (which, v.marker, value, black)
+      local values = v.func (line) -- call handler to get values
+      for _, value in ipairs (values) do
+        update_corpus (which, v.marker, value, black)
+      end -- for each value
 
 --[[
       -- other line types do NOT match this, if it was black
@@ -484,9 +540,13 @@ function analyse_line (line)
   local line_type_probs = {}
   local marker_values = { }
 
+  if Trim (GetLineInfo (line, 1)) == "" then
+    return nil
+  end -- if blank line
+
   -- get the values first, they will stay the same for all line types
   for _, m in ipairs (markers) do
-    marker_values [m.marker] = m.func (line) -- call handler to get value
+    marker_values [m.marker] = m.func (line) -- call handler to get values
   end -- for each type of marker
 
   DEBUG ("Debugging line", line, ":", GetLineInfo (line, 1))
@@ -495,14 +555,16 @@ function analyse_line (line)
     local probs = { }
     for _, m in ipairs (markers) do
       DEBUG ("    Marker", m.marker)
-      local value = marker_values [m.marker] -- get previously-retrieved value
+      local values = marker_values [m.marker] -- get previously-retrieved values
       DEBUG ("      Value", value)
-      local corpus_value = corpus [line_type] [m.marker] [value]
-      if corpus_value then
-        assert (type (corpus_value) == 'table', 'corpus_value not a table')
-        DEBUG ("        Score", tostring (corpus_value.score))
-        table.insert (probs, corpus_value.score)
-      end -- of having a value
+      for _, value in ipairs (values) do
+        local corpus_value = corpus [line_type] [m.marker] [value]
+        if corpus_value then
+          assert (type (corpus_value) == 'table', 'corpus_value not a table')
+          DEBUG ("        Score", tostring (corpus_value.score))
+          table.insert (probs, corpus_value.score)
+        end -- of having a value
+      end -- for each value
     end -- for each type of marker
     local score = SetProbability (probs)
     table.insert (result, string.format ("%s: %3.2f", line_type_info.short, score))
@@ -515,6 +577,13 @@ function analyse_line (line)
     return nil
   end -- if
 end -- analyse_line
+
+function fixuid (uid)
+  if not uid then
+    return "NO_UID"
+  end -- if nil
+  return uid:sub (1, UID_SIZE)
+end -- fixuid
 
 function process_exit_line ()
 
@@ -540,13 +609,13 @@ function process_exit_line ()
 
   -- show what we found
   for k, v in pairs (exits) do
-    INFO ("Exit:", k)
+    -- INFO ("Exit:", k)
   end -- for
 
   -- add room to rooms table if not already known
   if not rooms [uid] then
-    INFO ("Mapper adding room " .. uid)
-    rooms [uid] = { desc = description, exits = exits, area = "MUD", name = room_name or uid:sub (1, 8) }
+    INFO ("Mapper adding room " .. fixuid (uid))
+    rooms [uid] = { desc = description, exits = exits, area = "MUD", name = room_name or fixuid (uid) }
   end -- if
 
   -- update room name if possible
@@ -554,23 +623,24 @@ function process_exit_line ()
     rooms [uid].name = room_name
   end -- if
 
-  INFO ("We are now in room " .. uid)
+  INFO ("We are now in room " .. fixuid (uid))
+  -- INFO ("Description: ", description)
 
   -- save so we know current room later on
   current_room = uid
 
   -- show what we believe the current exits to be
   for k, v in pairs (rooms [uid].exits) do
-    INFO ("Exit: " .. k .. " -> " .. v)
+    INFO ("Exit: " .. k .. " -> " .. fixuid (v))
   end -- for
-
-  -- call mapper to draw this room
-  mapper.draw (uid)
 
   -- try to work out where previous room's exit led
   if expected_exit ~= uid and from_room then
     fix_up_exit ()
   end -- exit was wrong
+
+  -- call mapper to draw this room
+  mapper.draw (uid)
 
   room_name = nil
   exits_str = nil
@@ -591,8 +661,8 @@ function get_room (uid)
   local room = copytable.deep (rooms [uid])
 
   local texits = {}
-  for dir in pairs (room.exits) do
-    table.insert (texits, dir)
+  for dir,dest in pairs (room.exits) do
+    table.insert (texits, dir .. " -> " .. fixuid (dest))
   end -- for
   table.sort (texits)
 
@@ -605,7 +675,7 @@ function get_room (uid)
        "%s\tExits: %s\nRoom: %s\n%s",
         room.name or "unknown",
         table.concat (texits, ", "),
-        uid,
+        fixuid (uid),
         desc
       )
 
@@ -627,11 +697,26 @@ function fix_up_exit ()
   -- where we were before
   local room = rooms [from_room]
 
-  INFO ("Exit from " .. from_room .. " in the direction " .. last_direction_moved .. " was previously " .. (room.exits [last_direction_moved] or "nowhere"))
+  INFO ("Exit from " .. fixuid (from_room) .. " in the direction " .. last_direction_moved .. " was previously " .. (fixuid (room.exits [last_direction_moved]) or "nowhere"))
   -- leads to here
-  room.exits [last_direction_moved] = current_room
 
-  INFO ("Exit from " .. from_room .. " in the direction " .. last_direction_moved .. " is now " .. current_room)
+  if from_room == current_room then
+    WARNING ("Declining to set the exit " .. last_direction_moved .. " from this room to be itself")
+  else
+    room.exits [last_direction_moved] = current_room
+    INFO ("Exit from " .. fixuid (from_room) .. " in the direction " .. last_direction_moved .. " is now " .. fixuid (current_room))
+  end -- if
+
+  -- do inverse direction as a guess
+  local inverse = inverse_direction [last_direction_moved]
+  if inverse and current_room then
+    if rooms [current_room].exits [inverse] == '0' then
+      rooms [current_room].exits [inverse] = from_room
+      INFO ("Added inverse direction from " .. fixuid (current_room) .. " in the direction " .. inverse .. " to be " .. fixuid (from_room))
+    end -- if
+  end -- of having an inverse
+
+
   -- clear for next time
   last_direction_moved = nil
   from_room = nil
@@ -645,14 +730,14 @@ end -- fix_up_exit
 function OnPluginSent (sText)
   if valid_direction [sText] then
     last_direction_moved = valid_direction [sText]
-    INFO ("current_room =", current_room)
+    INFO ("current_room =", fixuid (current_room))
     INFO ("Just moving", last_direction_moved)
     if current_room and rooms [current_room] then
       expected_exit = rooms [current_room].exits [last_direction_moved]
       if expected_exit then
         from_room = current_room
       end -- if
-    INFO ("Expected exit for this in direction " .. last_direction_moved .. " is to room", expected_exit)
+    INFO ("Expected exit for this in direction " .. last_direction_moved .. " is to room", fixuid (expected_exit))
     end -- if
   end -- if
 end -- function
@@ -790,11 +875,19 @@ function map_goto (name, line, wildcards)
 
 end -- map_goto
 
+-- -----------------------------------------------------------------
+-- line_received - called by a trigger on all lines
+--   work out its line type, and then handle a line-type change
+-- -----------------------------------------------------------------
+
 last_deduced_type = nil
-last_deduced_start_line = nil
-last_deduced_end_line = nil
+saved_lines = { }
 
 function line_received (name, line, wildcards, styles)
+  if Trim (line) == "" then
+    return
+  end -- if empty line
+
   local this_line = GetLinesInBufferCount()
   local deduced_type = analyse_line (this_line)
 
@@ -804,15 +897,26 @@ function line_received (name, line, wildcards, styles)
     -- INFO ("Now handling", last_deduced_type)
 
     if last_deduced_type then
-      line_types [last_deduced_type].handler ()  -- handle the line(s)
+      line_types [last_deduced_type].handler (saved_lines)  -- handle the line(s)
     end -- if we have a type
 
     last_deduced_type = deduced_type
-    last_deduced_start_line = this_line
-    last_deduced_end_line = this_line
+    saved_lines = { }
   end -- if line type has changed
 
   -- INFO ("This line is", deduced_type)
-  last_deduced_end_line = this_line
 
+  table.insert (saved_lines, { line = line, styles = styles } )
 end -- line_received
+
+-- -----------------------------------------------------------------
+-- corpus_info - show how many times we trained the corpus
+-- -----------------------------------------------------------------
+
+function corpus_info ()
+  mapper.mapprint  (string.format ("%15s %5s %5s", "Line type", "is", "not"))
+  mapper.mapprint  (string.format ("%15s %5s %5s", string.rep ("-", 15), string.rep ("-", 5), string.rep ("-", 5)))
+  for k, v in pairs (stats) do
+    mapper.mapprint  (string.format ("%15s %5d %5d", k, v.is, v.isnot))
+  end -- for each line type
+end -- corpus_info

@@ -130,6 +130,40 @@ blah blah
   <send>tprint (corpus)</send>
   </alias>
 
+ <alias
+   match="corpus reset"
+   enabled="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>
+    corpus_reset (true)
+    ColourNote ("red", "", "Corpus reset")
+  </send>
+  </alias>
+
+ <alias
+   match="corpus info"
+   enabled="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>
+    corpus_info ()
+  </send>
+  </alias>
+
+  <alias
+   match="mapper reset database"
+   enabled="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>
+    rooms = { }
+    ColourNote ("red", "", "Mapper database reset")
+  </send>
+  </alias>
 
 </aliases>
 
