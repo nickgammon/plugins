@@ -77,10 +77,10 @@ end -- f_handle_prompt
 
 -- these are the types of lines we are trying to classify as a certain line IS or IS NOT that type
 line_types = {
-  description = { short = "Desc",   handler = f_handle_description },
-  exits       = { short = "Ex",     handler = f_handle_exits },
-  room_name   = { short = "Name",   handler = f_handle_name },
-  prompt      = { short = "Prompt", handler = f_handle_prompt },
+  description = { short = "Description",  handler = f_handle_description },
+  exits       = { short = "Exits",        handler = f_handle_exits },
+  room_name   = { short = "Room name",    handler = f_handle_name },
+  prompt      = { short = "Prompt",       handler = f_handle_prompt },
 }  -- end of line_types table
 
 function f_first_style_run_foreground (line)
@@ -271,9 +271,9 @@ function OnPluginDrawOutputWindow (firstline, offset, notused)
       if GetLineInfo (line, 4) or GetLineInfo (line, 5) then
         -- note or input line, ignore it
       else
-        local linetype = analyse_line (line)
+        local linetype, probability = analyse_line (line)
         if linetype then
-          line_type_info = "<- " .. linetype
+          line_type_info = string.format ("<- %s (%0.0f%%)", linetype, probability * 100)
         else
           line_type_info = ""
         end -- if
@@ -291,9 +291,6 @@ end -- OnPluginDrawOutputWindow
 --  On world window resize, remake the miniwindow to fit the size correctly
 -- -----------------------------------------------------------------
 function OnPluginWorldOutputResized ()
-
-  win = "A" .. GetPluginID ()
-  font_id = "f"
 
   font_name = GetInfo (20) -- output window font
   font_size = GetOption "output_font_height"
@@ -351,6 +348,9 @@ function DEBUG (...)
   AppendToNotepad ("Debug", table.concat ( { ... }, " ") .. "\r\n")
 end -- DEBUG
 
+-- -----------------------------------------------------------------
+-- corpus_reset - throw away the learned corpus
+-- -----------------------------------------------------------------
 function corpus_reset (empty)
   if empty then
     corpus = { }
@@ -377,10 +377,188 @@ function corpus_reset (empty)
   end -- for each line type
 end -- corpus_reset
 
+LEARN_WINDOW_WIDTH = 300
+LEARN_WINDOW_HEIGHT = 200
+LEARN_BUTTON_WIDTH = 80
+LEARN_BUTTON_HEIGHT = 30
+
+hotspots = { }
+button_down = false
+
+-- -----------------------------------------------------------------
+-- button_mouse_down - generic mouse-down handler
+-- -----------------------------------------------------------------
+function button_mouse_down (flags, hotspot_id)
+  local hotspot_info = hotspots [hotspot_id]
+  if not hotspot_info then
+    WARNING ("No info found for hotspot", hotspot_id)
+    return
+  end
+
+  -- no button state change if no selection
+  if GetSelectionStartLine () == 0 then
+    return
+  end -- if
+
+  button_down = true
+  WindowRectOp (hotspot_info.window, miniwin.rect_draw_edge,
+                hotspot_info.x1, hotspot_info.y1, hotspot_info.x2, hotspot_info.y2,
+                miniwin.rect_edge_sunken,
+                miniwin.rect_edge_at_all + miniwin.rect_option_fill_middle)  -- sunken, filled
+  WindowText   (hotspot_info.window, hotspot_info.font, hotspot_info.text, hotspot_info.text_x + 1, hotspot_info.y1 + 8 + 1, 0, 0, ColourNameToRGB "black", true)
+  Redraw ()
+
+end -- button_mouse_down
+
+-- -----------------------------------------------------------------
+-- button_cancel_mouse_down - generic cancel-mouse-down handler
+-- -----------------------------------------------------------------
+function button_cancel_mouse_down (flags, hotspot_id)
+  local hotspot_info = hotspots [hotspot_id]
+  if not hotspot_info then
+    WARNING ("No info found for hotspot", hotspot_id)
+    return
+  end
+
+  button_down = false
+  buttons_active = nil
+
+  WindowRectOp (hotspot_info.window, miniwin.rect_draw_edge,
+                hotspot_info.x1, hotspot_info.y1, hotspot_info.x2, hotspot_info.y2,
+                miniwin.rect_edge_raised,
+                miniwin.rect_edge_at_all + miniwin.rect_option_fill_middle)  -- raised, filled
+  WindowText   (hotspot_info.window, hotspot_info.font, hotspot_info.text, hotspot_info.text_x, hotspot_info.y1 + 8, 0, 0, ColourNameToRGB "black", true)
+
+  Redraw ()
+end -- button_cancel_mouse_down
+
+-- -----------------------------------------------------------------
+-- button_mouse_up - generic mouse-up handler
+-- -----------------------------------------------------------------
+function button_mouse_up (flags, hotspot_id)
+  local hotspot_info = hotspots [hotspot_id]
+  if not hotspot_info then
+    WARNING ("No info found for hotspot", hotspot_id)
+    return
+  end
+
+  button_down = false
+  buttons_active = nil
+
+  -- call the handler
+  hotspot_info.handler ()
+
+  WindowRectOp (hotspot_info.window, miniwin.rect_draw_edge,
+                hotspot_info.x1, hotspot_info.y1, hotspot_info.x2, hotspot_info.y2,
+                miniwin.rect_edge_raised,
+                miniwin.rect_edge_at_all + miniwin.rect_option_fill_middle)  -- raised, filled
+  WindowText   (hotspot_info.window, hotspot_info.font, hotspot_info.text, hotspot_info.text_x, hotspot_info.y1 + 8, 0, 0, ColourNameToRGB "black", true)
+
+  Redraw ()
+end -- button_mouse_up
+
+-- -----------------------------------------------------------------
+-- make_button - make a button for the dialog window and remember its handler
+-- -----------------------------------------------------------------
+function make_button (window, font, x, y, text, tooltip, handler)
+
+  WindowRectOp (window, miniwin.rect_draw_edge, x, y, x + LEARN_BUTTON_WIDTH, y + LEARN_BUTTON_HEIGHT,
+            miniwin.rect_edge_raised,
+            miniwin.rect_edge_at_all + miniwin.rect_option_fill_middle)  -- raised, filled
+
+  local width = WindowTextWidth (window, font, text, true)
+  local text_x = x + (LEARN_BUTTON_WIDTH - width) / 2
+
+  WindowText   (window, font, text, text_x, y + 8, 0, 0, ColourNameToRGB "black", true)
+
+  local hotspot_id = string.format ("HS_learn_%d,%d", x, y)
+  -- remember handler function
+  hotspots [hotspot_id] = { handler = handler,
+                            window = window,
+                            x1 = x, y1 = y,
+                            x2 = x + LEARN_BUTTON_WIDTH, y2 = y + LEARN_BUTTON_HEIGHT,
+                            font = font,
+                            text = text,
+                            text_x = text_x }
+
+  WindowAddHotspot(window,
+                  hotspot_id,
+                   x, y, x + LEARN_BUTTON_WIDTH, y + LEARN_BUTTON_HEIGHT,
+                   "",                          -- MouseOver
+                   "",                          -- CancelMouseOver
+                   "button_mouse_down",         -- MouseDown
+                   "button_cancel_mouse_down",  -- CancelMouseDown
+                   "button_mouse_up",           -- MouseUp
+                   tooltip,                     -- tooltip text
+                   miniwin.cursor_hand,         -- mouse cursor shape
+                   0)                           -- flags
+
+
+end -- make_button
+
+-- -----------------------------------------------------------------
+-- update_buttons - grey-out buttons if nothing selected
+-- -----------------------------------------------------------------
+
+buttons_active = nil
+
+function update_buttons (name)
+
+  -- do nothing if button pressed
+  if button_down then
+    return
+  end -- if
+
+  local have_selection = GetSelectionStartLine () ~= 0
+
+  -- do nothing if the state hasn't changed
+  if have_selection == buttons_active then
+    return
+  end -- if
+
+  buttons_active = have_selection
+
+  for hotspot_id, hotspot_info in pairs (hotspots) do
+    if string.match (hotspot_id, "^HS_learn_") then
+      local wanted_colour = ColourNameToRGB "black"
+      if not buttons_active then
+        wanted_colour = ColourNameToRGB "silver"
+      end -- if
+      WindowText   (hotspot_info.window, hotspot_info.font, hotspot_info.text, hotspot_info.text_x, hotspot_info.y1 + 8, 0, 0, wanted_colour, true)
+    end -- if a learning button
+  end -- for
+
+  Redraw ()
+
+end -- update_buttons
+
+-- -----------------------------------------------------------------
+-- mouseup_close_configure - they hit the close box in the learning window
+-- -----------------------------------------------------------------
+function mouseup_close_configure  (flags, hotspot_id)
+  WindowShow (learn_window, false)
+  mapper.mapprint ('Type: "mapper learn" to show the training window again')
+end -- mouseup_close_configure
+
+-- -----------------------------------------------------------------
+-- toggle_learn_window - toggle the window: called from "mapper learn"
+-- -----------------------------------------------------------------
+function toggle_learn_window (name, line, wildcards)
+  if WindowInfo (learn_window, 5) then
+    WindowShow (learn_window, false)
+  else
+    WindowShow (learn_window, true)
+  end -- if
+end -- toggle_learn_window
+
 -- -----------------------------------------------------------------
 -- Plugin Install
 -- -----------------------------------------------------------------
 function OnPluginInstall ()
+
+  win = "window_type_info_" .. GetPluginID ()
+  learn_window = "learn_dialog_" .. GetPluginID ()
+  font_id = "f"
 
   config = {}  -- in case not found
 
@@ -397,7 +575,7 @@ function OnPluginInstall ()
 
   -- initialize mapper
 
-  mapper.init { config = config, get_room = get_room  }
+  mapper.init { config = config, get_room = get_room, show_other_areas = true  }
   mapper.mapprint (string.format ("MUSHclient mapper installed, version %0.1f", mapper.VERSION))
 
   -- load corpus
@@ -415,6 +593,99 @@ function OnPluginInstall ()
   if GetNotepadLength("Debug") > 0 then
     SendToNotepad ("Debug", "")
   end -- if
+
+ -- find where window was last time
+
+  windowinfo = movewindow.install (learn_window, miniwin.pos_center_right)
+
+  learnFontName = get_preferred_font {"Dina",  "Lucida Console",  "Fixedsys", "Courier", "Sylfaen",}
+  learnFontId = "f"
+  learnFontSize = 9
+
+  WindowCreate (learn_window,
+                 windowinfo.window_left,
+                 windowinfo.window_top,
+                 LEARN_WINDOW_WIDTH,
+                 LEARN_WINDOW_HEIGHT,
+                 windowinfo.window_mode,   -- top right
+                 windowinfo.window_flags,
+                 ColourNameToRGB "lightcyan")
+
+  WindowFont (learn_window, learnFontId, learnFontName, learnFontSize,
+              true, false, false, false,  -- bold
+              miniwin.font_charset_ansi, miniwin.font_family_any)
+
+  -- find height of font for future calculations
+  learn_font_height = WindowFontInfo (learn_window, font_id, 1)  -- height
+
+  -- let them move it around
+  movewindow.add_drag_handler (learn_window, 0, 0, 0, font_height + 5)
+  WindowRectOp (learn_window, miniwin.rect_fill, 0, 0, 0, font_height + 5, ColourNameToRGB "darkblue", 0)
+  draw_3d_box  (learn_window, 0, 0, LEARN_WINDOW_WIDTH, LEARN_WINDOW_HEIGHT)
+  DIALOG_TITLE = "Learn line type"
+  local width = WindowTextWidth (learn_window, learnFontId, DIALOG_TITLE, true)
+  local x = (LEARN_WINDOW_WIDTH - width) / 2
+  WindowText   (learn_window, learnFontId, DIALOG_TITLE, x, 3, 0, 0, ColourNameToRGB "white", true)
+
+ -- close box
+  local box_size = font_height - 2
+  local GAP = 5
+  local y = 3
+  local x = 1
+
+  WindowRectOp (learn_window,
+                miniwin.rect_frame,
+                x + LEARN_WINDOW_WIDTH - box_size - GAP * 2,
+                y + 1,
+                x + LEARN_WINDOW_WIDTH - GAP * 2,
+                y + 1 + box_size,
+                0x808080)
+  WindowLine (learn_window,
+              x + LEARN_WINDOW_WIDTH - box_size - GAP * 2 + 3,
+              y + 4,
+              x + LEARN_WINDOW_WIDTH - GAP * 2 - 3,
+              y - 2 + box_size,
+              0x808080,
+              miniwin.pen_solid, 1)
+  WindowLine (learn_window,
+              x - 4 + LEARN_WINDOW_WIDTH - GAP * 2,
+              y + 4,
+              x - 1 + LEARN_WINDOW_WIDTH - box_size - GAP * 2 + 3,
+              y - 2 + box_size,
+              0x808080,
+              miniwin.pen_solid, 1)
+
+  -- close configuration hotspot
+  WindowAddHotspot(learn_window, "close_learn_dialog",
+                   x + LEARN_WINDOW_WIDTH - box_size - GAP * 2,
+                   y + 1,
+                   x + LEARN_WINDOW_WIDTH - GAP * 2,
+                   y + 1 + box_size,   -- rectangle
+                   "", "", "", "", "mouseup_close_configure",  -- mouseup
+                   "Click to close",
+                   miniwin.cursor_hand, 0)  -- hand cursor
+
+
+  -- the buttons for learning
+  local LABEL_LEFT = 10
+  local YES_BUTTON_LEFT = 100
+  local NO_BUTTON_LEFT = YES_BUTTON_LEFT + LEARN_BUTTON_WIDTH + 20
+
+  local y = font_height + 10
+  for type_name, type_info in pairs (line_types) do
+    WindowText   (learn_window, learnFontId, type_info.short, LABEL_LEFT, y + 8, 0, 0, ColourNameToRGB "black", true)
+
+    make_button (learn_window, learnFontId, YES_BUTTON_LEFT, y, "Yes", "Learn selection IS " .. type_info.short,
+                  function () learn_line_type (type_name, true) end)
+    make_button (learn_window, learnFontId, NO_BUTTON_LEFT,  y, "No",  "Learn selection is NOT " .. type_info.short,
+                  function () learn_line_type (type_name, false) end)
+
+    y = y + LEARN_BUTTON_HEIGHT + 10
+
+  end -- for
+
+  WindowShow (learn_window)
+
 end -- OnPluginInstall
 
 -- -----------------------------------------------------------------
@@ -426,6 +697,7 @@ function OnPluginSaveState ()
   SetVariable ("stats", "stats = " .. serialize.save_simple (stats))
   SetVariable ("config", "config = " .. serialize.save_simple (config))
   SetVariable ("rooms",  "rooms = "  .. serialize.save_simple (rooms))
+  movewindow.save_state (learn_window)
 end -- OnPluginSaveState
 
 local C1 = 2   -- weightings
@@ -471,7 +743,7 @@ function learn_line_type (which, black)
   end_line = GetSelectionEndLine ()
 
   if start_line == 0 then
-     WARNING ("No lines selected")
+     WARNING ("No line(s) selected - select one or more lines (or part lines)")
      return
   end -- if
 
@@ -515,6 +787,8 @@ function learn_line_type (which, black)
 
   -- tprint (corpus)
 
+  Pause (false)
+
 end -- learn_line_type
 
 --   See:
@@ -522,7 +796,11 @@ end -- learn_line_type
 --   For a good explanation of the background, see:
 --     http://www.mathpages.com/home/kmath267.htm.
 
+-- -----------------------------------------------------------------
+-- SetProbability
 -- calculate the probability a bunch of markers are ham (black)
+--  using an array of probabilities, get an overall one
+-- -----------------------------------------------------------------
 function SetProbability (probs)
   local n, inv = 1, 1
   local i = 0
@@ -535,6 +813,10 @@ function SetProbability (probs)
 end -- SetProbability
 
 -- DO NOT DEBUG TO THE OUTPUT WINDOW IN THIS FUNCTION!
+-- -----------------------------------------------------------------
+-- analyse_line
+-- work out type of line by comparing its markers to the corpus
+-- -----------------------------------------------------------------
 function analyse_line (line)
   local result = {}
   local line_type_probs = {}
@@ -572,12 +854,16 @@ function analyse_line (line)
   end -- for each line type
   table.sort (line_type_probs, function (a, b) return a.score > b.score end)
   if line_type_probs [1].score > 0.7 then
-    return line_type_probs [1].line_type
+    return line_type_probs [1].line_type, line_type_probs [1].score
   else
     return nil
   end -- if
 end -- analyse_line
 
+-- -----------------------------------------------------------------
+-- fixuid
+-- shorten a UID for display purposes
+-- -----------------------------------------------------------------
 function fixuid (uid)
   if not uid then
     return "NO_UID"
@@ -585,6 +871,10 @@ function fixuid (uid)
   return uid:sub (1, UID_SIZE)
 end -- fixuid
 
+-- -----------------------------------------------------------------
+-- process_exit_line
+-- we have an exit line - work out where we are and what the exits are
+-- -----------------------------------------------------------------
 function process_exit_line ()
 
   if not description then
@@ -615,7 +905,7 @@ function process_exit_line ()
   -- add room to rooms table if not already known
   if not rooms [uid] then
     INFO ("Mapper adding room " .. fixuid (uid))
-    rooms [uid] = { desc = description, exits = exits, area = "MUD", name = room_name or fixuid (uid) }
+    rooms [uid] = { desc = description, exits = exits, area = WorldName (), name = room_name or fixuid (uid) }
   end -- if
 
   -- update room name if possible

@@ -40,7 +40,7 @@ blah blah
 <aliases>
 
  <alias
-   match="is_room_name"
+   match="mapper is_room_name"
    enabled="y"
    omit_from_command_history="y"
    send_to="12"
@@ -50,7 +50,7 @@ blah blah
   </alias>
 
   <alias
-   match="not_room_name"
+   match="mapper not_room_name"
    enabled="y"
    omit_from_command_history="y"
    send_to="12"
@@ -61,7 +61,7 @@ blah blah
 
 
   <alias
-   match="is_description"
+   match="mapper is_description"
    enabled="y"
    omit_from_command_history="y"
    send_to="12"
@@ -71,7 +71,7 @@ blah blah
   </alias>
 
   <alias
-   match="not_description"
+   match="mapper not_description"
    enabled="y"
    omit_from_command_history="y"
    send_to="12"
@@ -81,7 +81,7 @@ blah blah
   </alias>
 
  <alias
-   match="is_exits"
+   match="mapper is_exits"
    enabled="y"
    omit_from_command_history="y"
    send_to="12"
@@ -91,7 +91,7 @@ blah blah
   </alias>
 
   <alias
-   match="not_exits"
+   match="mapper not_exits"
    enabled="y"
    omit_from_command_history="y"
    send_to="12"
@@ -101,7 +101,7 @@ blah blah
   </alias>
 
 <alias
-   match="is_prompt"
+   match="mapper is_prompt"
    enabled="y"
    omit_from_command_history="y"
    send_to="12"
@@ -111,7 +111,7 @@ blah blah
   </alias>
 
   <alias
-   match="not_prompt"
+   match="mapper not_prompt"
    enabled="y"
    omit_from_command_history="y"
    send_to="12"
@@ -120,9 +120,18 @@ blah blah
   <send>learn_line_type ("prompt", false)</send>
   </alias>
 
+ <alias
+   match="mapper learn"
+   enabled="y"
+   send_to="12"
+   sequence="100"
+  >
+  <send>toggle_learn_window ()</send>
+  </alias>
+
 
   <alias
-   match="corpus"
+   match="mapper corpus"
    enabled="y"
    send_to="12"
    sequence="100"
@@ -131,19 +140,22 @@ blah blah
   </alias>
 
  <alias
-   match="corpus reset"
+   match="mapper corpus reset"
    enabled="y"
    send_to="12"
    sequence="100"
   >
   <send>
-    corpus_reset (true)
-    ColourNote ("red", "", "Corpus reset")
+    if utils.msgbox ("Throw away the entire learning corpus and start from scratch?",
+                     "Confirmation", "yesno", "?", 2) == 'yes' then
+      corpus_reset (true)
+      ColourNote ("red", "", "Corpus reset")
+    end -- if they really want to
   </send>
   </alias>
 
  <alias
-   match="corpus info"
+   match="mapper corpus info"
    enabled="y"
    send_to="12"
    sequence="100"
@@ -160,12 +172,49 @@ blah blah
    sequence="100"
   >
   <send>
-    rooms = { }
-    ColourNote ("red", "", "Mapper database reset")
+    if utils.msgbox ("Throw away the entire mapping database (rooms and exits) and start from scratch?",
+                     "Confirmation", "yesno", "?", 2) == 'yes' then
+      rooms = { }
+      ColourNote ("red", "", "Mapper database reset")
+    end -- if they really want to
   </send>
   </alias>
 
+
+ <!--  mapper find interface, eg. "mapper find shop" -->
+
+<alias
+   match="^mapper find ([\w* %d/&quot;]+)$"
+   enabled="y"
+   sequence="100"
+   script="map_find"
+   regexp="y"
+  >
+  </alias>
+
+  <!--  mapper goto interface, eg. "mapper goto 43052FEF" -->
+
+ <alias
+   match="mapper goto *"
+   enabled="y"
+   sequence="100"
+   script="map_goto"
+  >
+  </alias>
+
+
 </aliases>
+
+<!--  Timers  -->
+
+<timers>
+  <timer script="update_buttons"
+         enabled="y"
+         second="0.2"
+   >
+
+  </timer>
+</timers>
 
 
 <!--  Script  -->
