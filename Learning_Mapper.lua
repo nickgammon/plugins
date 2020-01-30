@@ -26,19 +26,17 @@ Date:   24th January 2020
  tort or otherwise, arising from, out of or in connection with the software
  or the use or other dealings in the software.
 
-
 --]]
 
-
-
---STATUS_BACKGROUND_COLOUR = "#333333"
-STATUS_BACKGROUND_COLOUR = "black"
-UID_SIZE = 3  -- how many characters of the UID to show
-
 -- black is true (ham) and red is false (spam)
-
 -- in other words, a marker assigned black IS the sort of line, and one assigned red IS NOT the sort of line
 
+require "mapper"
+require "serialize"
+require "copytable"
+require "commas"
+require "tprint"
+require "pairsbykeys"
 
 function f_handle_description (saved_lines)
   local lines = { }
@@ -46,7 +44,17 @@ function f_handle_description (saved_lines)
     table.insert (lines, line_info.line) -- get text of line
   end -- for each line
   description = table.concat (lines, "\n")
-  -- INFO ("Description: " .. description)
+
+  -- if the description follows the exits, then ignore descriptions that don't follow exits
+  if config.ACTIVATE_DESCRIPTION_AFTER_EXITS then
+    if not exits_str then
+      return
+    end -- if
+  end -- if
+
+  if config.WHEN_TO_DRAW_MAP == DRAW_MAP_ON_DESCRIPTION then
+    process_new_room ()
+  end -- if
 end -- f_handle_description
 
 function f_handle_exits ()
@@ -54,8 +62,10 @@ function f_handle_exits ()
   for _, line_info in ipairs (saved_lines) do
     table.insert (lines, line_info.line) -- get text of line
   end -- for each line
-  exits_str = table.concat (lines, " ")
-  process_exit_line ()
+  exits_str = table.concat (lines, " "):lower ()
+  if config.WHEN_TO_DRAW_MAP == DRAW_MAP_ON_EXITS then
+    process_new_room ()
+  end -- if
 end -- f_handle_exits
 
 function f_handle_name ()
@@ -64,6 +74,9 @@ function f_handle_name ()
     table.insert (lines, line_info.line) -- get text of line
   end -- for each line
   room_name = table.concat (lines, " ")
+  if config.WHEN_TO_DRAW_MAP == DRAW_MAP_ON_ROOM_NAME then
+    process_new_room ()
+  end -- if
 end -- f_handle_name
 
 function f_handle_prompt ()
@@ -72,6 +85,9 @@ function f_handle_prompt ()
     table.insert (lines, line_info.line) -- get text of line
   end -- for each line
   prompt = table.concat (lines, " ")
+  if config.WHEN_TO_DRAW_MAP == DRAW_MAP_ON_PROMPT then
+    process_new_room ()
+  end -- if
 end -- f_handle_prompt
 
 
@@ -87,11 +103,19 @@ function f_first_style_run_foreground (line)
   return { GetStyleInfo(line, 1, 14) or -1 }
 end -- f_first_style_run_foreground
 
+function f_show_colour (which, value)
+  mapper.mapprint (string.format ("    %20s %5d %5d %7.2f", RGBColourToName (which), value.black, value.red, value.score))
+end -- f_show_colour
+
+function f_show_word (which, value)
+  mapper.mapprint (string.format ("    %20s %5d %5d %7.2f", which, value.black, value.red, value.score))
+end -- f_show_colour
+
 function f_first_word (line)
   if not GetLineInfo(line, 1) then
     return {}
   end -- no line available
-  return { string.match (GetLineInfo(line, 1), "^%a+") or "" }
+  return { (string.match (GetLineInfo(line, 1), "^%s*(%a+)") or ""):lower () }
 end -- f_first_word
 
 function f_all_words (line)
@@ -100,7 +124,7 @@ function f_all_words (line)
   end -- no line available
   local words = { }
   for w in string.gmatch (GetLineInfo(line, 1), "%a+") do
-    table.insert (words, w)
+    table.insert (words, w:lower ())
   end -- for
   return words
 end -- f_all_words
@@ -119,13 +143,16 @@ markers = {
   desc = "Foreground colour of first style run",
   func = f_first_style_run_foreground,
   marker = "m_first_style_run_foreground",
-
+  show = f_show_colour,
+  accessing_function = pairs,
   },
 
   {
   desc = "First word in the line",
   func = f_first_word,
   marker = "m_first_word",
+  show = f_show_word,
+  accessing_function = pairsByKeys,
 
   },
 
@@ -133,6 +160,8 @@ markers = {
   desc = "All words in the line",
   func = f_all_words,
   marker = "m_all_words",
+  show = f_show_word,
+  accessing_function = pairsByKeys,
 
   },
 
@@ -142,6 +171,7 @@ markers = {
   desc = "First character in the line",
   func = f_first_character,
   marker = "m_first_character",
+  show = f_show_word,
 
   },
 
@@ -156,11 +186,12 @@ stats = { }
 
 local MAX_NAME_LENGTH = 60
 
-require "mapper"
-require "serialize"
-require "copytable"
-require "commas"
-require "tprint"
+-- when to update the map
+DRAW_MAP_ON_ROOM_NAME = 1
+DRAW_MAP_ON_DESCRIPTION = 2
+DRAW_MAP_ON_EXITS = 3
+DRAW_MAP_ON_PROMPT = 4
+
 
 default_config = {
   -- assorted colours
@@ -202,6 +233,20 @@ default_config = {
   -- how many seconds to show "recent visit" lines (default 3 minutes)
   LAST_VISIT_TIME = { time = 60 * 3 },
 
+  -- config for learning mapper
+
+  STATUS_BACKGROUND_COLOUR  = "black",       -- the background colour of the status window
+  STATUS_FRAME_COLOUR       = "#1B1B1B",     -- the frame colour of the status window
+  STATUS_TEXT_COLOUR        = "lightgreen",   -- palegreen is more visible
+
+  UID_SIZE = 4,  -- how many characters of the UID to show
+
+  -- learning configuration
+  WHEN_TO_DRAW_MAP = DRAW_MAP_ON_EXITS,        -- we need to have name/description/exits to draw the map
+  ACTIVATE_DESCRIPTION_AFTER_EXITS = false,    -- descriptions are activated *after* an exit line (used for MUDs with exits then descriptions)
+  BLANK_LINE_TERMINATES_LINE_TYPE = false,     -- if true, a blank line terminates the previous line type
+  ADD_NEWLINE_TO_PROMPT = false,               -- if true, attempts to add a newline to a prompt at the end of a packet
+  SHOW_LEARNING_WINDOW = true,                 -- if true, show the learning status and training windows on startup
   }
 
 rooms = {}
@@ -251,13 +296,17 @@ inverse_direction = {
 --  Update our debugging info
 -- -----------------------------------------------------------------
 function OnPluginDrawOutputWindow (firstline, offset, notused)
-  local background_colour = ColourNameToRGB (STATUS_BACKGROUND_COLOUR)
-  local text_colour = ColourNameToRGB ("palegreen")
+  local background_colour = ColourNameToRGB (config.STATUS_BACKGROUND_COLOUR)
+  local frame_colour = ColourNameToRGB (config.STATUS_FRAME_COLOUR)
+  local text_colour = ColourNameToRGB (config.STATUS_TEXT_COLOUR)
   local main_height = GetInfo (263)
   local font_height = GetInfo (212)
 
   -- clear window
   WindowRectOp (win, miniwin.rect_fill, 0, 0, 0, 0, background_colour)
+
+  -- frame it
+  WindowRectOp(win, miniwin.rect_frame, 0, 0, 0, 0, frame_colour)
 
   -- allow for scrolling position
   local top =  (((firstline - 1) * font_height) - offset) - 2
@@ -277,7 +326,7 @@ function OnPluginDrawOutputWindow (firstline, offset, notused)
         else
           line_type_info = ""
         end -- if
-        WindowText (win, font_id, line_type_info, 0, top,
+        WindowText (win, font_id, line_type_info, 1, top,
                     0, 0, text_colour)
       end -- if
       top = top + font_height
@@ -295,15 +344,19 @@ function OnPluginWorldOutputResized ()
   font_name = GetInfo (20) -- output window font
   font_size = GetOption "output_font_height"
 
+  local output_width  = GetInfo (240)  -- average width of pixels per character
+  local wrap_column   = GetOption ('wrap_column')
+  local pixel_offset  = GetOption ('pixel_offset')
+
   -- make window so I can grab the font info
   WindowCreate (win,
-                650, -- left
+                (output_width * wrap_column) + pixel_offset + 10, -- left
                 0,  -- top
                 500, -- width
                 GetInfo (263),   -- world window client height
                 miniwin.pos_top_left,   -- position (irrelevant)
                 miniwin.create_absolute_location,   -- flags
-                ColourNameToRGB (STATUS_BACKGROUND_COLOUR))   -- background colour
+                ColourNameToRGB (config.STATUS_BACKGROUND_COLOUR))   -- background colour
 
   -- add font
   WindowFont (win, font_id, font_name, font_size,
@@ -315,8 +368,9 @@ function OnPluginWorldOutputResized ()
 
   WindowSetZOrder(win, -5)
 
-  WindowShow (win)
-
+   if WindowInfo (learn_window, 5) then
+     WindowShow (win)
+   end -- if
 
 end -- OnPluginWorldOutputResized
 
@@ -324,7 +378,7 @@ end -- OnPluginWorldOutputResized
 -- INFO helper function for debugging the plugin (information messages)
 -- -----------------------------------------------------------------
 function INFO (...)
-  -- ColourNote ("orange", "", table.concat ( { ... }, " "))
+   -- ColourNote ("orange", "", table.concat ( { ... }, " "))
 end -- INFO
 
 -- -----------------------------------------------------------------
@@ -339,7 +393,7 @@ end -- WARNING
 -- -----------------------------------------------------------------
 function DEBUG (...)
 
-  do return end
+  do return end  -- forget it for now
 
   if GetNotepadLength("Debug") > 5000 then
     return
@@ -537,7 +591,9 @@ end -- update_buttons
 -- -----------------------------------------------------------------
 function mouseup_close_configure  (flags, hotspot_id)
   WindowShow (learn_window, false)
+  WindowShow (win, false)
   mapper.mapprint ('Type: "mapper learn" to show the training window again')
+  config.SHOW_LEARNING_WINDOW = false
 end -- mouseup_close_configure
 
 -- -----------------------------------------------------------------
@@ -545,9 +601,13 @@ end -- mouseup_close_configure
 -- -----------------------------------------------------------------
 function toggle_learn_window (name, line, wildcards)
   if WindowInfo (learn_window, 5) then
+    WindowShow (win, false)
     WindowShow (learn_window, false)
+    config.SHOW_LEARNING_WINDOW = false
   else
+    WindowShow (win, true)
     WindowShow (learn_window, true)
+    config.SHOW_LEARNING_WINDOW = true
   end -- if
 end -- toggle_learn_window
 
@@ -559,6 +619,13 @@ function OnPluginInstall ()
   win = "window_type_info_" .. GetPluginID ()
   learn_window = "learn_dialog_" .. GetPluginID ()
   font_id = "f"
+
+  -- load corpus
+  assert (loadstring (GetVariable ("corpus") or "")) ()
+  -- load stats
+  assert (loadstring (GetVariable ("stats") or "")) ()
+
+  corpus_reset ()
 
   config = {}  -- in case not found
 
@@ -575,24 +642,24 @@ function OnPluginInstall ()
 
   -- initialize mapper
 
-  mapper.init { config = config, get_room = get_room, show_other_areas = true  }
+  mapper.init {
+              config = config,            -- our configuration table
+              get_room = get_room,        -- get info about a room
+              show_other_areas = true,    -- show all areas
+              show_help = OnHelp,         -- to show help
+  }
   mapper.mapprint (string.format ("MUSHclient mapper installed, version %0.1f", mapper.VERSION))
 
-  -- load corpus
-  assert (loadstring (GetVariable ("corpus") or "")) ()
-  -- load stats
-  assert (loadstring (GetVariable ("stats") or "")) ()
-
-  corpus_reset ()
-
---  tprint (corpus)
-
   OnPluginWorldOutputResized ()
+
+--[[
 
   -- clear debugging window
   if GetNotepadLength("Debug") > 0 then
     SendToNotepad ("Debug", "")
   end -- if
+
+--]]
 
  -- find where window was last time
 
@@ -619,8 +686,8 @@ function OnPluginInstall ()
   learn_font_height = WindowFontInfo (learn_window, font_id, 1)  -- height
 
   -- let them move it around
-  movewindow.add_drag_handler (learn_window, 0, 0, 0, font_height + 5)
-  WindowRectOp (learn_window, miniwin.rect_fill, 0, 0, 0, font_height + 5, ColourNameToRGB "darkblue", 0)
+  movewindow.add_drag_handler (learn_window, 0, 0, 0, learn_font_height + 5)
+  WindowRectOp (learn_window, miniwin.rect_fill, 0, 0, 0, learn_font_height + 5, ColourNameToRGB "darkblue", 0)
   draw_3d_box  (learn_window, 0, 0, LEARN_WINDOW_WIDTH, LEARN_WINDOW_HEIGHT)
   DIALOG_TITLE = "Learn line type"
   local width = WindowTextWidth (learn_window, learnFontId, DIALOG_TITLE, true)
@@ -628,7 +695,7 @@ function OnPluginInstall ()
   WindowText   (learn_window, learnFontId, DIALOG_TITLE, x, 3, 0, 0, ColourNameToRGB "white", true)
 
  -- close box
-  local box_size = font_height - 2
+  local box_size = learn_font_height - 2
   local GAP = 5
   local y = 3
   local x = 1
@@ -671,7 +738,7 @@ function OnPluginInstall ()
   local YES_BUTTON_LEFT = 100
   local NO_BUTTON_LEFT = YES_BUTTON_LEFT + LEARN_BUTTON_WIDTH + 20
 
-  local y = font_height + 10
+  local y = learn_font_height + 10
   for type_name, type_info in pairs (line_types) do
     WindowText   (learn_window, learnFontId, type_info.short, LABEL_LEFT, y + 8, 0, 0, ColourNameToRGB "black", true)
 
@@ -684,7 +751,8 @@ function OnPluginInstall ()
 
   end -- for
 
-  WindowShow (learn_window)
+  WindowShow (learn_window, config.SHOW_LEARNING_WINDOW)
+  WindowShow (win, config.SHOW_LEARNING_WINDOW)
 
 end -- OnPluginInstall
 
@@ -868,19 +936,32 @@ function fixuid (uid)
   if not uid then
     return "NO_UID"
   end -- if nil
-  return uid:sub (1, UID_SIZE)
+  return uid:sub (1, config.UID_SIZE)
 end -- fixuid
 
 -- -----------------------------------------------------------------
--- process_exit_line
+-- process_new_room
 -- we have an exit line - work out where we are and what the exits are
 -- -----------------------------------------------------------------
-function process_exit_line ()
+function process_new_room ()
 
   if not description then
     WARNING "No description for this room"
     return
   end -- if no description
+
+  if not exits_str then
+    WARNING "No exits for this room"
+    return
+  end -- if no exits string
+
+  if from_room and last_direction_moved then
+    local last_desc = rooms [from_room].desc
+    if last_desc == description then
+      mapper.mapprint ("Warning: You have moved from a room to one with an identical description - the mapper may get confused.")
+    end -- if
+
+  end -- if moved from somewhere
 
   -- generate a "room ID" by hashing the room description and exits
   uid = utils.tohex (utils.md5 (description .. exits_str))
@@ -925,7 +1006,7 @@ function process_exit_line ()
   end -- for
 
   -- try to work out where previous room's exit led
-  if expected_exit ~= uid and from_room then
+  if last_direction_moved and expected_exit ~= uid and from_room then
     fix_up_exit ()
   end -- exit was wrong
 
@@ -935,7 +1016,9 @@ function process_exit_line ()
   room_name = nil
   exits_str = nil
   description = nil
-end -- process_exit_line
+  last_direction_moved = nil
+
+end -- process_new_room
 
 
 -- -----------------------------------------------------------------
@@ -1041,7 +1124,16 @@ end -- function
 function OnPluginConnect ()
   from_room = nil
   last_direction_moved = nil
+  mapper.cancel_speedwalk ()
 end -- OnPluginConnect
+
+-- -----------------------------------------------------------------
+-- Plugin just disconnected from world
+-- -----------------------------------------------------------------
+
+function OnPluginDisconnect ()
+  mapper.cancel_speedwalk ()
+end -- OnPluginDisconnect
 
 -- -----------------------------------------------------------------
 -- Callback to show part of the room description, used by map_find
@@ -1109,7 +1201,8 @@ function map_find (name, line, wildcards)
   -- scan all rooms looking for a simple match
   for k, v in pairs (rooms) do
      local desc = v.desc:lower ()
-     if string.find (desc, wanted, 1, true) then
+     local name = v.name:lower ()
+     if string.find (desc, wanted, 1, true) or string.find (name, wanted, 1, true)  then
        room_ids [k] = true
        count = count + 1
      end -- if
@@ -1174,12 +1267,20 @@ last_deduced_type = nil
 saved_lines = { }
 
 function line_received (name, line, wildcards, styles)
-  if Trim (line) == "" then
+
+  if (not config.BLANK_LINE_TERMINATES_LINE_TYPE) and Trim (line) == "" then
     return
   end -- if empty line
 
   local this_line = GetLinesInBufferCount()
-  local deduced_type = analyse_line (this_line)
+  local deduced_type
+
+
+  if config.BLANK_LINE_TERMINATES_LINE_TYPE and Trim (line) == "" then
+    deduced_type = nil
+  else
+   deduced_type = analyse_line (this_line)
+  end -- if
 
   if deduced_type ~= last_deduced_type then
 
@@ -1194,7 +1295,7 @@ function line_received (name, line, wildcards, styles)
     saved_lines = { }
   end -- if line type has changed
 
-  -- INFO ("This line is", deduced_type)
+   -- INFO ("This line is", deduced_type)
 
   table.insert (saved_lines, { line = line, styles = styles } )
 end -- line_received
@@ -1210,3 +1311,286 @@ function corpus_info ()
     mapper.mapprint  (string.format ("%15s %5d %5d", k, v.is, v.isnot))
   end -- for each line type
 end -- corpus_info
+
+-- -----------------------------------------------------------------
+-- OnHelp - show help
+-- -----------------------------------------------------------------
+function OnHelp ()
+	mapper.mapprint (string.format ("[MUSHclient mapper, version %0.1f]", mapper.VERSION))
+	mapper.mapprint (GetPluginInfo (GetPluginID (), 3))
+  mapper.mapprint (string.rep ("-", 30))
+  mapper.mapprint (string.format ("%s version %0.2f", GetPluginName(), GetPluginInfo (GetPluginID (), 19)))
+end
+
+function map_where (name, line, wildcards)
+
+  if not mapper.check_we_can_find () then
+    return
+  end -- if
+
+  local wanted = wildcards [1]
+  -- they are stored as upper-case
+  wanted = wanted:upper ()
+
+  if current_room and string.match (current_room, wanted) then
+    mapper.mapprint ("You are already in that room.")
+    return
+  end -- if
+
+  local paths = mapper.find_paths (current_room,
+           function (uid)
+            return string.match (uid, wanted), string.match (uid, wanted)
+            end)
+
+  local uid, item = next (paths, nil) -- extract first (only) path
+
+  -- nothing? room not found
+  if not item then
+    mapper.mapprint (string.format ("Room %s not found", wanted))
+    return
+  end -- if
+
+  -- turn into speedwalk
+  local path = mapper.build_speedwalk (item.path)
+
+  -- display it
+  mapper.mapprint (string.format ("Path to %s is: %s", wanted, path))
+
+end -- map_where
+
+
+-- -----------------------------------------------------------------
+-- when_to_draw
+-- mapper draw room on <option> --> when to draw the new room. Options are one of:
+--                      room name, description, exits, prompt
+--                      Normal: exits because exits usually come last.
+--                      However if the exits come before the description draw after the description.
+-- -----------------------------------------------------------------
+local when_types = {
+    ["room name"]   = DRAW_MAP_ON_ROOM_NAME,
+    ["description"] = DRAW_MAP_ON_DESCRIPTION,
+    ["exits"]       = DRAW_MAP_ON_EXITS,
+    ["prompt"]      = DRAW_MAP_ON_PROMPT,
+    } -- end of table
+
+function when_to_draw (name, line, wildcards)
+  local when = wildcards [1]:lower ()
+
+  local w = when_types [when]
+  if not w then
+    mapper.mapprint ("Unknown time to draw the map: " .. wildcards [1])
+    mapper.mapprint ("Valid times are:")
+    for k in pairs (when_types) do
+      mapper.mapprint ("  mapper draw room on " .. k)
+    end -- for
+    return
+  end -- if type not found
+
+  config.WHEN_TO_DRAW_MAP = w
+  mapper.mapprint ("Map will be redrawn after " .. when:upper () .. " line type received")
+
+end -- when_to_draw
+
+function validate_colour (which)
+  local colour = ColourNameToRGB (which)
+  if colour == -1 then
+    mapper.mapprint (string.format ('Colour name "%s" not a valid HTML colour name or code.', which))
+    mapper.mapprint ("You can use HTML colour codes such as #123456 or names such as black or green.")
+    mapper.mapprint ("See the Colour Picker (Edit menu -> Colour picker: Ctrl+Alt+P).")
+    mapper.mapprint ("Colour not changed.")
+    return false
+  end -- if bad
+  return true
+end -- validate_colour
+
+function colour_change (description, colour, which)
+  mapper.mapprint (description .. " was previously: " .. config [which])
+  if not validate_colour (colour) then
+    return
+  end -- bad colour name
+  config [which] = colour
+  mapper.mapprint (description .. " is now: " .. colour)
+end -- colour_change
+
+-- -----------------------------------------------------------------
+-- mapper_status_background - eg. Type: mapper status background black
+-- -----------------------------------------------------------------
+function mapper_status_background (name, line, wildcards)
+  colour_change ("Background colour for the room types window", wildcards [1], 'STATUS_BACKGROUND_COLOUR')
+end -- mapper_status_background
+
+-- -----------------------------------------------------------------
+-- mapper_status_border - eg. Type: mapper status border gray
+-- -----------------------------------------------------------------
+function mapper_status_border (name, line, wildcards)
+  colour_change ("Border colour for the room types window", wildcards [1], 'STATUS_FRAME_COLOUR')
+end -- mapper_status_border
+
+-- -----------------------------------------------------------------
+-- mapper_status_text - eg. Type: mapper status text lightgreen
+-- -----------------------------------------------------------------
+function mapper_status_text (name, line, wildcards)
+  colour_change ("Text colour for the room types window", wildcards [1], 'STATUS_TEXT_COLOUR')
+end -- mapper_status_text
+
+-- -----------------------------------------------------------------
+-- mapper_uid_size - eg. mapper uid size 6
+-- -----------------------------------------------------------------
+function mapper_uid_size (name, line, wildcards)
+  local size = tonumber (wildcards [1])
+  if not size then
+    mapper.mapprint ("Bad UID size: " .. wildcards [1])
+    return
+  end -- if
+
+  if size < 3 or size > 25 then
+    mapper.mapprint ("UID size must be in the range 3 to 25")
+    return
+  end -- if
+
+  config.UID_SIZE = size
+  mapper.mapprint (size .. " characters of the unique id (UID) will be shown")
+end -- mapper_uid_size
+
+-- -----------------------------------------------------------------
+-- mapper_activate_description_after_exits - descriptions are ignored until after an exits line
+-- -----------------------------------------------------------------
+function mapper_activate_description_after_exits (name, line, wildcards)
+  config.ACTIVATE_DESCRIPTION_AFTER_EXITS = true
+  mapper.mapprint ("Description lines only active after an exit line has been received")
+  mapper.mapprint ("To disable this, type: mapper activate description always")
+end -- mapper_activate_description_after_exits
+
+-- -----------------------------------------------------------------
+-- mapper_activate_description_always - descriptions are always active
+-- -----------------------------------------------------------------
+function mapper_activate_description_always (name, line, wildcards)
+  config.ACTIVATE_DESCRIPTION_AFTER_EXITS = false
+  mapper.mapprint ("Description lines always active")
+  mapper.mapprint ("To disable this, type: mapper activate description after exits")
+end -- mapper_activate_description_always
+
+-- -----------------------------------------------------------------
+-- mapper_blank_lines_terminate_line_type - blank lines are considered a change of line type
+-- -----------------------------------------------------------------
+function mapper_blank_lines_terminate_line_type (name, line, wildcards)
+  config.BLANK_LINE_TERMINATES_LINE_TYPE = true
+  mapper.mapprint ("A blank line terminates the previous type of line")
+  mapper.mapprint ("To disable this, type: mapper ignore blank lines")
+end -- mapper_blank_lines_terminate_line_type
+
+-- -----------------------------------------------------------------
+-- mapper_ignore_blank_lines - descriptions are always active
+-- -----------------------------------------------------------------
+function mapper_ignore_blank_lines (name, line, wildcards)
+  config.BLANK_LINE_TERMINATES_LINE_TYPE = false
+  mapper.mapprint ("Blank lines are ignored")
+  mapper.mapprint ("To disable this, type: mapper blank lines terminate line type")
+end -- mapper_ignore_blank_lines
+
+-- -----------------------------------------------------------------
+-- mapper_add_newline_to_prompt - tries to add a newline to the end of packets without one
+-- -----------------------------------------------------------------
+function mapper_add_newline_to_prompt (name, line, wildcards)
+  config.ADD_NEWLINE_TO_PROMPT = true
+  mapper.mapprint ("Add a newline to a prompt at the end of packets without one")
+  mapper.mapprint ("To disable this, type: mapper no add newline to prompt")
+end -- mapper_add_newline_to_prompt
+
+-- -----------------------------------------------------------------
+-- mapper_no_add_newline_to_prompt - descriptions are always active
+-- -----------------------------------------------------------------
+function mapper_no_add_newline_to_prompt (name, line, wildcards)
+  config.ADD_NEWLINE_TO_PROMPT = false
+  mapper.mapprint ("Do not a newline to a prompt at the end of packets without one")
+  mapper.mapprint ("To disable this, type: mapper add newline to prompt")
+end -- mapper_no_add_newline_to_prompt
+
+-- -----------------------------------------------------------------
+-- mapper_config_info - summarize configuration
+-- -----------------------------------------------------------------
+function yesno (which)
+  if which then
+    return "Yes"
+  else
+    return "No"
+  end -- if
+end -- yesno
+
+function mapper_config_info (name, line, wildcards)
+  mapper.mapprint (string.format ("%50s: %s", "Background colour for the room types window", config.STATUS_BACKGROUND_COLOUR))
+  mapper.mapprint (string.format ("%50s: %s", "Border colour for the room types window", config.STATUS_FRAME_COLOUR))
+  mapper.mapprint (string.format ("%50s: %s", "Text colour for the room types window", config.STATUS_TEXT_COLOUR))
+  mapper.mapprint (string.format ("%50s: %s", "UID size", config.UID_SIZE))
+  mapper.mapprint (string.format ("%50s: %s", "Descriptions active only after exit lines", yesno (config.ACTIVATE_DESCRIPTION_AFTER_EXITS)))
+  mapper.mapprint (string.format ("%50s: %s", "Blank lines terminate line type", yesno (config.BLANK_LINE_TERMINATES_LINE_TYPE)))
+  mapper.mapprint (string.format ("%50s: %s", "Add newline to prompt at end of packet", yesno (config.ADD_NEWLINE_TO_PROMPT)))
+
+  local when = "Unknown"
+  for k, v in pairs (when_types) do
+    if config.WHEN_TO_DRAW_MAP == v then
+      when = k
+      break
+    end -- if
+  end -- for
+  mapper.mapprint (string.format ("%50s: %s", "Draw map after receiving", when))
+  local count = 0
+  for k, v in pairs (stats) do
+    count = count + v.is + v.isnot
+  end -- for each line type
+  mapper.mapprint (string.format ("%50s: %s", "Number of times line types trained", count))
+
+  mapper.mapprint ('  Type "mapper corpus info" for more information about line training')
+  mapper.mapprint (string.format ("%50s: %s", "Show mapper training window and status", yesno (config.SHOW_LEARNING_WINDOW)))
+  if not config.SHOW_LEARNING_WINDOW then
+    mapper.mapprint ('  Type "mapper learn" to activate the training windows')
+  end -- if
+end -- mapper_config_info
+
+-- -----------------------------------------------------------------
+-- OnPluginPacketReceived - try to add newlines to prompts if wanted
+-- -----------------------------------------------------------------
+function OnPluginPacketReceived (pkt)
+
+  if not config.ADD_NEWLINE_TO_PROMPT then
+    return pkt
+  end -- if
+
+  -- add a newline to the end of a packet if it appears to be a simple prompt (just a ">" sign after a newline)
+  if string.match (pkt, "\n>%s-$") then
+    return pkt .. "\n";
+  end -- if
+
+  -- add a newline to the end of a packet if it appears to be a prompt with a colour change (ie. \n ESC (number) "m>")
+  if string.match (pkt, "\n\027.-m>%s-$") then
+    return pkt .. "\n";
+  end -- if
+
+  return pkt
+end -- OnPluginPacketReceived
+
+function show_corpus ()
+
+
+  for name, type_info in pairs (line_types) do
+    mapper.mapprint (string.rep ("=", 72))
+    mapper.mapprint (type_info.short)
+    mapper.mapprint (string.rep ("=", 72))
+    corpus_line_type = corpus [name]
+    for _, marker in ipairs (markers) do
+      mapper.mapprint ("  " .. string.rep ("-", 70))
+      mapper.mapprint ("  " .. marker.desc)
+      mapper.mapprint ("  " .. string.rep ("-", 70))
+      local f = marker.show
+      local accessing_function  = marker.accessing_function
+      if f then
+        mapper.mapprint (string.format ("    %20s %5s %5s %7s", "Value", "Yes", "No", "Score"))
+        mapper.mapprint (string.format ("    %20s %5s %5s %7s", "-------", "---", "---", "-----"))
+        for k, v in accessing_function (corpus_line_type [marker.marker], function (a, b) return a:lower () < b:lower () end ) do
+          f (k, v)
+        end -- for each value
+      end -- if function exists
+    end -- for each marker type
+  end -- for each line type
+
+end -- show_corpus
