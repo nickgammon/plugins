@@ -28,15 +28,24 @@ Date:   24th January 2020
 
 --]]
 
--- black is true (ham) and red is false (spam)
--- in other words, a marker assigned black IS the sort of line, and one assigned red IS NOT the sort of line
+-- The probability (in the range 0.0 to 1.0) that a line has to meet to be considered a certain line type.
+-- The higher, the stricer the requirement.
+-- Default of 0.7 seems to work OK, but you could tweak that.
 
+PROBABILITY_CUTOFF = 0.7
+
+
+-- other modules needed by this plugin
 require "mapper"
 require "serialize"
 require "copytable"
 require "commas"
 require "tprint"
 require "pairsbykeys"
+
+-- -----------------------------------------------------------------
+-- Handlers for when a line-type changes
+-- -----------------------------------------------------------------
 
 function f_handle_description (saved_lines)
   local lines = { }
@@ -90,6 +99,9 @@ function f_handle_prompt ()
   end -- if
 end -- f_handle_prompt
 
+-- -----------------------------------------------------------------
+-- Handlers for getting the wanted value for a marker for the nominated line
+-- -----------------------------------------------------------------
 
 -- these are the types of lines we are trying to classify as a certain line IS or IS NOT that type
 line_types = {
@@ -136,7 +148,17 @@ function f_first_character (line)
   return { string.match (GetLineInfo(line, 1), "^.") or "" }
 end -- f_first_character
 
--- things we are looking for, like colour of first style run
+-- -----------------------------------------------------------------
+-- markers: things we are looking for, like colour of first style run
+-- You could add others, for example:
+--   * colour of the last style run
+--   * number of words on the line
+--   * number of style runs on the line
+--   * match on exact line contents (could be useful for error message, like 'The door is closed.')
+--  Whether that would help or not remains to be seen.
+
+-- The functions above return the value(s) for the corresponding marker, for the nominated line.
+-- -----------------------------------------------------------------
 markers = {
 
   {
@@ -204,7 +226,7 @@ default_config = {
   UNKNOWN_ROOM_COLOUR     = { name = "Unknown room",      colour =  ColourNameToRGB "#00CACA", },
   DIFFERENT_AREA_COLOUR   = { name = "Another area",      colour =  ColourNameToRGB "#009393", },
   SHOP_FILL_COLOUR        = { name = "Shop",              colour =  ColourNameToRGB "darkolivegreen", },
-  POSTOFFICE_FILL_COLOUR  = { name = "Post Office",       colour =  ColourNameToRGB "yellowgreen", },
+  TRAINER_FILL_COLOUR     = { name = "Trainer",           colour =  ColourNameToRGB "yellowgreen", },
   BANK_FILL_COLOUR        = { name = "Bank",              colour =  ColourNameToRGB "gold", },
   NEWSROOM_FILL_COLOUR    = { name = "Newsroom",          colour =  ColourNameToRGB "lightblue", },
   MAPPER_NOTE_COLOUR      = { name = "Messages",          colour =  ColourNameToRGB "lightgreen" },
@@ -249,7 +271,139 @@ default_config = {
   SHOW_LEARNING_WINDOW = true,                 -- if true, show the learning status and training windows on startup
   }
 
+-- -----------------------------------------------------------------
+-- Handlers for validating configuration values (eg. colour, boolean)
+-- -----------------------------------------------------------------
+
+function config_validate_colour (which)
+  local colour = ColourNameToRGB (which)
+  if colour == -1 then
+    mapper.maperror (string.format ('Colour name "%s" not a valid HTML colour name or code.', which))
+    mapper.mapprint ("  You can use HTML colour codes such as #123456 or names such as black or green.")
+    mapper.mapprint ("  See the Colour Picker (Edit menu -> Colour picker: Ctrl+Alt+P).")
+    return nil
+  end -- if bad
+  return which
+end -- config_validate_colour
+
+function config_validate_uid_size (which)
+  local size = tonumber (which)
+  if not size then
+    mapper.maperror ("Bad UID size: " .. which)
+    return nil
+  end -- if
+
+  if size < 3 or size > 25 then
+    mapper.maperror ("UID size must be in the range 3 to 25")
+    return nil
+  end -- if
+
+  return size
+end -- config_validate_uid_size
+
+local when_types = {
+    ["room name"]   = DRAW_MAP_ON_ROOM_NAME,
+    ["description"] = DRAW_MAP_ON_DESCRIPTION,
+    ["exits"]       = DRAW_MAP_ON_EXITS,
+    ["prompt"]      = DRAW_MAP_ON_PROMPT,
+    } -- end of table
+
+function config_validate_when_to_draw (whicn)
+  local when = which:lower ()
+
+  local w = when_types [when]
+  if not w then
+    mapper.maperror ("Unknown time to draw the map: " .. which)
+    mapper.mapprint ("Valid times are:")
+    local t = { }
+    for k, v in ipairs (when_types) do
+      table.insert (t, k)
+    end
+    mapper.mapprint ("    " .. table.concat (t, ", "))
+    return nil
+  end -- if type not found
+
+  return w
+end -- when_to_draw
+
+function convert_when_to_draw_to_name (which)
+  local when = "Unknown"
+  for k, v in pairs (when_types) do
+    if which == v then
+      when = k
+      break
+    end -- if
+  end -- for
+  return when
+end -- convert_when_to_draw_to_name
+
+local bools = {
+  yes = true,
+  y = true,
+  no = false,
+  n = false
+} -- end of bools
+
+function config_validate_boolean (which)
+  local which = which:lower ()
+  local yesno = bools [which]
+  if yesno == nil then
+    mapper.maperror ("Invalid option: must be YES or NO")
+    return
+  end -- not in bools table
+  return yesno
+end -- config_validate_boolean
+
+-- -----------------------------------------------------------------
+-- Handlers for displaying configuration values (eg. colour, boolean)
+-- -----------------------------------------------------------------
+
+function config_display_colour (which)
+  return which
+end -- config_display_colour
+
+function config_display_number (which)
+  return tostring (which)
+end -- config_display_number
+
+function config_display_when_to_draw (which)
+  return convert_when_to_draw_to_name (which)
+end -- config_display_when_to_draw
+
+function config_display_boolean (which)
+  if which then
+    return "Yes"
+  else
+    return "No"
+  end -- if
+end -- config_display_boolean
+
+-- -----------------------------------------------------------------
+-- Configuration options (ie. mapper config <option>) and their handlers and internal option name
+-- -----------------------------------------------------------------
+
+config_control = {
+  { option = 'STATUS_BACKGROUND_COLOUR',          name = 'status_background',                validate = config_validate_colour,       show = config_display_colour },
+  { option = 'STATUS_FRAME_COLOUR',               name = 'status_border',                    validate = config_validate_colour,       show = config_display_colour },
+  { option = 'STATUS_TEXT_COLOUR',                name = 'status_text',                      validate = config_validate_colour,       show = config_display_colour },
+  { option = 'UID_SIZE',                          name = 'uid_size',                         validate = config_validate_uid_size,     show = config_display_number },
+  { option = 'WHEN_TO_DRAW_MAP',                  name = 'when_to_draw',                     validate = config_validate_when_to_draw, show = config_display_when_to_draw },
+  { option = 'ACTIVATE_DESCRIPTION_AFTER_EXITS',  name = 'activate_description_after_exits', validate = config_validate_boolean, show = config_display_boolean },
+  { option = 'ADD_NEWLINE_TO_PROMPT',             name = 'add_newline_to_prompt',            validate = config_validate_boolean, show = config_display_boolean },
+
+}
+
+-- make a table keyed on the name the user uses
+config_control_names = { }
+for k, v in ipairs (config_control) do
+  config_control_names [v.name] = v
+end -- for
+
 rooms = {}
+
+-- -----------------------------------------------------------------
+-- valid_direction - for detecting movement between rooms, and validating exit lines
+-- -----------------------------------------------------------------
 
 valid_direction = {
   n = "n",
@@ -275,6 +429,10 @@ valid_direction = {
   ['in'] = "in",
   out = "out",
   }  -- end of valid_direction
+
+-- -----------------------------------------------------------------
+-- inverse_direction - if we go north then the inverse direction is south, and so on.
+-- -----------------------------------------------------------------
 
 inverse_direction = {
   n = "s",
@@ -387,20 +545,6 @@ end -- INFO
 function WARNING (...)
   ColourNote ("red", "", table.concat ( { ... }, " "))
 end -- WARNING
-
--- -----------------------------------------------------------------
--- DEBUG helper function for debugging the plugin to a notepad window
--- -----------------------------------------------------------------
-function DEBUG (...)
-
-  do return end  -- forget it for now
-
-  if GetNotepadLength("Debug") > 5000 then
-    return
-  end -- if too big
-
-  AppendToNotepad ("Debug", table.concat ( { ... }, " ") .. "\r\n")
-end -- DEBUG
 
 -- -----------------------------------------------------------------
 -- corpus_reset - throw away the learned corpus
@@ -645,21 +789,13 @@ function OnPluginInstall ()
   mapper.init {
               config = config,            -- our configuration table
               get_room = get_room,        -- get info about a room
+              room_click = room_click,    -- called on RH click on room square
               show_other_areas = true,    -- show all areas
               show_help = OnHelp,         -- to show help
   }
   mapper.mapprint (string.format ("MUSHclient mapper installed, version %0.1f", mapper.VERSION))
 
   OnPluginWorldOutputResized ()
-
---[[
-
-  -- clear debugging window
-  if GetNotepadLength("Debug") > 0 then
-    SendToNotepad ("Debug", "")
-  end -- if
-
---]]
 
  -- find where window was last time
 
@@ -899,19 +1035,14 @@ function analyse_line (line)
     marker_values [m.marker] = m.func (line) -- call handler to get values
   end -- for each type of marker
 
-  DEBUG ("Debugging line", line, ":", GetLineInfo (line, 1))
   for line_type, line_type_info in pairs (line_types) do
-    DEBUG ("  Line type", line_type)
     local probs = { }
     for _, m in ipairs (markers) do
-      DEBUG ("    Marker", m.marker)
       local values = marker_values [m.marker] -- get previously-retrieved values
-      DEBUG ("      Value", value)
       for _, value in ipairs (values) do
         local corpus_value = corpus [line_type] [m.marker] [value]
         if corpus_value then
           assert (type (corpus_value) == 'table', 'corpus_value not a table')
-          DEBUG ("        Score", tostring (corpus_value.score))
           table.insert (probs, corpus_value.score)
         end -- of having a value
       end -- for each value
@@ -921,7 +1052,7 @@ function analyse_line (line)
     table.insert (line_type_probs, { line_type = line_type, score = score } )
   end -- for each line type
   table.sort (line_type_probs, function (a, b) return a.score > b.score end)
-  if line_type_probs [1].score > 0.7 then
+  if line_type_probs [1].score > PROBABILITY_CUTOFF then
     return line_type_probs [1].line_type, line_type_probs [1].score
   else
     return nil
@@ -1041,14 +1172,29 @@ function get_room (uid)
 
   local desc = string.gsub (room.desc, "%. .*", ".")
   if room.name and not string.match (room.name, "^%x+$") then
-    desc = room.name
+    -- desc = room.name
   end -- if
 
+  local textras = { }
+  if room.Bank then
+    table.insert (textras, "Bank")
+  end -- if
+  if room.Shop then
+    table.insert (textras, "Shop")
+  end -- if
+  if room.Trainer then
+    table.insert (textras, "Trainer")
+  end -- if
+  local extras = ""
+  if #textras then
+    extras = "\n" .. table.concat (textras, ", ")
+  end -- if extras
   room.hovermessage = string.format (
-       "%s\tExits: %s\nRoom: %s\n%s",
+       "%s\tExits: %s\nRoom: %s%s\n%s",
         room.name or "unknown",
         table.concat (texits, ", "),
         fixuid (uid),
+        extras,
         desc
       )
 
@@ -1057,8 +1203,22 @@ function get_room (uid)
     room.borderpenwidth = 2
   end -- not in this area
 
-  return room
+  room.fillbrush = miniwin.brush_null -- no fill
 
+  -- special room fill colours
+
+  if room.Shop then
+    room.fillcolour = config.SHOP_FILL_COLOUR.colour
+    room.fillbrush = miniwin.brush_fine_pattern
+  elseif room.Trainer then
+    room.fillcolour = config.TRAINER_FILL_COLOUR.colour
+    room.fillbrush = miniwin.brush_fine_pattern
+  elseif room.Bank then
+    room.fillcolour = config.BANK_FILL_COLOUR.colour
+    room.fillbrush = miniwin.brush_fine_pattern
+  end -- if
+
+  return room
 end -- get_room
 
 -- -----------------------------------------------------------------
@@ -1310,6 +1470,7 @@ function corpus_info ()
   for k, v in pairs (stats) do
     mapper.mapprint  (string.format ("%15s %5d %5d", k, v.is, v.isnot))
   end -- for each line type
+  mapper.mapprint ("There are " .. count_values (corpus) .. " entries in the corpus.")
 end -- corpus_info
 
 -- -----------------------------------------------------------------
@@ -1358,195 +1519,6 @@ function map_where (name, line, wildcards)
 
 end -- map_where
 
-
--- -----------------------------------------------------------------
--- when_to_draw
--- mapper draw room on <option> --> when to draw the new room. Options are one of:
---                      room name, description, exits, prompt
---                      Normal: exits because exits usually come last.
---                      However if the exits come before the description draw after the description.
--- -----------------------------------------------------------------
-local when_types = {
-    ["room name"]   = DRAW_MAP_ON_ROOM_NAME,
-    ["description"] = DRAW_MAP_ON_DESCRIPTION,
-    ["exits"]       = DRAW_MAP_ON_EXITS,
-    ["prompt"]      = DRAW_MAP_ON_PROMPT,
-    } -- end of table
-
-function when_to_draw (name, line, wildcards)
-  local when = wildcards [1]:lower ()
-
-  local w = when_types [when]
-  if not w then
-    mapper.mapprint ("Unknown time to draw the map: " .. wildcards [1])
-    mapper.mapprint ("Valid times are:")
-    for k in pairs (when_types) do
-      mapper.mapprint ("  mapper draw room on " .. k)
-    end -- for
-    return
-  end -- if type not found
-
-  config.WHEN_TO_DRAW_MAP = w
-  mapper.mapprint ("Map will be redrawn after " .. when:upper () .. " line type received")
-
-end -- when_to_draw
-
-function validate_colour (which)
-  local colour = ColourNameToRGB (which)
-  if colour == -1 then
-    mapper.mapprint (string.format ('Colour name "%s" not a valid HTML colour name or code.', which))
-    mapper.mapprint ("You can use HTML colour codes such as #123456 or names such as black or green.")
-    mapper.mapprint ("See the Colour Picker (Edit menu -> Colour picker: Ctrl+Alt+P).")
-    mapper.mapprint ("Colour not changed.")
-    return false
-  end -- if bad
-  return true
-end -- validate_colour
-
-function colour_change (description, colour, which)
-  mapper.mapprint (description .. " was previously: " .. config [which])
-  if not validate_colour (colour) then
-    return
-  end -- bad colour name
-  config [which] = colour
-  mapper.mapprint (description .. " is now: " .. colour)
-end -- colour_change
-
--- -----------------------------------------------------------------
--- mapper_status_background - eg. Type: mapper status background black
--- -----------------------------------------------------------------
-function mapper_status_background (name, line, wildcards)
-  colour_change ("Background colour for the room types window", wildcards [1], 'STATUS_BACKGROUND_COLOUR')
-end -- mapper_status_background
-
--- -----------------------------------------------------------------
--- mapper_status_border - eg. Type: mapper status border gray
--- -----------------------------------------------------------------
-function mapper_status_border (name, line, wildcards)
-  colour_change ("Border colour for the room types window", wildcards [1], 'STATUS_FRAME_COLOUR')
-end -- mapper_status_border
-
--- -----------------------------------------------------------------
--- mapper_status_text - eg. Type: mapper status text lightgreen
--- -----------------------------------------------------------------
-function mapper_status_text (name, line, wildcards)
-  colour_change ("Text colour for the room types window", wildcards [1], 'STATUS_TEXT_COLOUR')
-end -- mapper_status_text
-
--- -----------------------------------------------------------------
--- mapper_uid_size - eg. mapper uid size 6
--- -----------------------------------------------------------------
-function mapper_uid_size (name, line, wildcards)
-  local size = tonumber (wildcards [1])
-  if not size then
-    mapper.mapprint ("Bad UID size: " .. wildcards [1])
-    return
-  end -- if
-
-  if size < 3 or size > 25 then
-    mapper.mapprint ("UID size must be in the range 3 to 25")
-    return
-  end -- if
-
-  config.UID_SIZE = size
-  mapper.mapprint (size .. " characters of the unique id (UID) will be shown")
-end -- mapper_uid_size
-
--- -----------------------------------------------------------------
--- mapper_activate_description_after_exits - descriptions are ignored until after an exits line
--- -----------------------------------------------------------------
-function mapper_activate_description_after_exits (name, line, wildcards)
-  config.ACTIVATE_DESCRIPTION_AFTER_EXITS = true
-  mapper.mapprint ("Description lines only active after an exit line has been received")
-  mapper.mapprint ("To disable this, type: mapper activate description always")
-end -- mapper_activate_description_after_exits
-
--- -----------------------------------------------------------------
--- mapper_activate_description_always - descriptions are always active
--- -----------------------------------------------------------------
-function mapper_activate_description_always (name, line, wildcards)
-  config.ACTIVATE_DESCRIPTION_AFTER_EXITS = false
-  mapper.mapprint ("Description lines always active")
-  mapper.mapprint ("To disable this, type: mapper activate description after exits")
-end -- mapper_activate_description_always
-
--- -----------------------------------------------------------------
--- mapper_blank_lines_terminate_line_type - blank lines are considered a change of line type
--- -----------------------------------------------------------------
-function mapper_blank_lines_terminate_line_type (name, line, wildcards)
-  config.BLANK_LINE_TERMINATES_LINE_TYPE = true
-  mapper.mapprint ("A blank line terminates the previous type of line")
-  mapper.mapprint ("To disable this, type: mapper ignore blank lines")
-end -- mapper_blank_lines_terminate_line_type
-
--- -----------------------------------------------------------------
--- mapper_ignore_blank_lines - descriptions are always active
--- -----------------------------------------------------------------
-function mapper_ignore_blank_lines (name, line, wildcards)
-  config.BLANK_LINE_TERMINATES_LINE_TYPE = false
-  mapper.mapprint ("Blank lines are ignored")
-  mapper.mapprint ("To disable this, type: mapper blank lines terminate line type")
-end -- mapper_ignore_blank_lines
-
--- -----------------------------------------------------------------
--- mapper_add_newline_to_prompt - tries to add a newline to the end of packets without one
--- -----------------------------------------------------------------
-function mapper_add_newline_to_prompt (name, line, wildcards)
-  config.ADD_NEWLINE_TO_PROMPT = true
-  mapper.mapprint ("Add a newline to a prompt at the end of packets without one")
-  mapper.mapprint ("To disable this, type: mapper no add newline to prompt")
-end -- mapper_add_newline_to_prompt
-
--- -----------------------------------------------------------------
--- mapper_no_add_newline_to_prompt - descriptions are always active
--- -----------------------------------------------------------------
-function mapper_no_add_newline_to_prompt (name, line, wildcards)
-  config.ADD_NEWLINE_TO_PROMPT = false
-  mapper.mapprint ("Do not a newline to a prompt at the end of packets without one")
-  mapper.mapprint ("To disable this, type: mapper add newline to prompt")
-end -- mapper_no_add_newline_to_prompt
-
--- -----------------------------------------------------------------
--- mapper_config_info - summarize configuration
--- -----------------------------------------------------------------
-function yesno (which)
-  if which then
-    return "Yes"
-  else
-    return "No"
-  end -- if
-end -- yesno
-
-function mapper_config_info (name, line, wildcards)
-  mapper.mapprint (string.format ("%50s: %s", "Background colour for the room types window", config.STATUS_BACKGROUND_COLOUR))
-  mapper.mapprint (string.format ("%50s: %s", "Border colour for the room types window", config.STATUS_FRAME_COLOUR))
-  mapper.mapprint (string.format ("%50s: %s", "Text colour for the room types window", config.STATUS_TEXT_COLOUR))
-  mapper.mapprint (string.format ("%50s: %s", "UID size", config.UID_SIZE))
-  mapper.mapprint (string.format ("%50s: %s", "Descriptions active only after exit lines", yesno (config.ACTIVATE_DESCRIPTION_AFTER_EXITS)))
-  mapper.mapprint (string.format ("%50s: %s", "Blank lines terminate line type", yesno (config.BLANK_LINE_TERMINATES_LINE_TYPE)))
-  mapper.mapprint (string.format ("%50s: %s", "Add newline to prompt at end of packet", yesno (config.ADD_NEWLINE_TO_PROMPT)))
-
-  local when = "Unknown"
-  for k, v in pairs (when_types) do
-    if config.WHEN_TO_DRAW_MAP == v then
-      when = k
-      break
-    end -- if
-  end -- for
-  mapper.mapprint (string.format ("%50s: %s", "Draw map after receiving", when))
-  local count = 0
-  for k, v in pairs (stats) do
-    count = count + v.is + v.isnot
-  end -- for each line type
-  mapper.mapprint (string.format ("%50s: %s", "Number of times line types trained", count))
-
-  mapper.mapprint ('  Type "mapper corpus info" for more information about line training')
-  mapper.mapprint (string.format ("%50s: %s", "Show mapper training window and status", yesno (config.SHOW_LEARNING_WINDOW)))
-  if not config.SHOW_LEARNING_WINDOW then
-    mapper.mapprint ('  Type "mapper learn" to activate the training windows')
-  end -- if
-end -- mapper_config_info
-
 -- -----------------------------------------------------------------
 -- OnPluginPacketReceived - try to add newlines to prompts if wanted
 -- -----------------------------------------------------------------
@@ -1557,35 +1529,40 @@ function OnPluginPacketReceived (pkt)
   end -- if
 
   -- add a newline to the end of a packet if it appears to be a simple prompt (just a ">" sign after a newline)
-  if string.match (pkt, "\n>%s-$") then
+  if string.match (pkt, "\n>%s*$") then
     return pkt .. "\n";
   end -- if
 
   -- add a newline to the end of a packet if it appears to be a prompt with a colour change (ie. \n ESC (number) "m>")
-  if string.match (pkt, "\n\027.-m>%s-$") then
+  if string.match (pkt, "\n\027.-m>%s*$") then
     return pkt .. "\n";
   end -- if
 
   return pkt
 end -- OnPluginPacketReceived
 
+-- -----------------------------------------------------------------
+-- show_corpus - show all values in the corpus, printed nicely
+-- -----------------------------------------------------------------
 function show_corpus ()
 
-
+  -- start with each line type (eg. exits, descriptions)
   for name, type_info in pairs (line_types) do
     mapper.mapprint (string.rep ("=", 72))
     mapper.mapprint (type_info.short)
     mapper.mapprint (string.rep ("=", 72))
     corpus_line_type = corpus [name]
+    -- for each one show each marker type (eg. first word, all words, colour)
     for _, marker in ipairs (markers) do
       mapper.mapprint ("  " .. string.rep ("-", 70))
       mapper.mapprint ("  " .. marker.desc)
       mapper.mapprint ("  " .. string.rep ("-", 70))
       local f = marker.show
-      local accessing_function  = marker.accessing_function
+      local accessing_function  = marker.accessing_function  -- pairs for numbers or pairsByKeys for strings
       if f then
         mapper.mapprint (string.format ("    %20s %5s %5s %7s", "Value", "Yes", "No", "Score"))
         mapper.mapprint (string.format ("    %20s %5s %5s %7s", "-------", "---", "---", "-----"))
+        -- for each marker show each value, along with its counts for and against, and its calculated score
         for k, v in accessing_function (corpus_line_type [marker.marker], function (a, b) return a:lower () < b:lower () end ) do
           f (k, v)
         end -- for each value
@@ -1594,3 +1571,364 @@ function show_corpus ()
   end -- for each line type
 
 end -- show_corpus
+
+
+-- -----------------------------------------------------------------
+-- mapper_config - display or change configuration options
+-- Format is: mapper config <name> <value>  <-- change option <name> to <value>
+--            mapper config                 <-- show all options
+--            mapper config <name>          <-- show setting for one option
+-- -----------------------------------------------------------------
+function mapper_config (name, line, wildcards)
+  local name = Trim (wildcards.name:lower ())
+  local value = Trim (wildcards.value)
+
+  -- no config item - show all existing ones
+  if name == "" then
+    mapper.mapprint ("All mapper configuration items")
+    mapper.mapprint (string.rep ("-", 60))
+    mapper.mapprint ("")
+    for k, v in ipairs (config_control) do
+      mapper.mapprint (string.format ("mapper config %-35s %s", v.name, v.show (config [v.option])))
+    end
+    mapper.mapprint ("")
+    mapper.mapprint (string.rep ("-", 60))
+
+    -- training counts
+    local count = 0
+    for k, v in pairs (stats) do
+      count = count + v.is + v.isnot
+    end -- for each line type
+    mapper.mapprint (string.format ("%s: %s", "Number of times line types trained", count))
+
+    -- hints on corpus info
+    mapper.mapprint ('Type "mapper corpus info" for more information about line training.')
+    mapper.mapprint (string.format ("%s: %s", "Show mapper training window and status", config_display_boolean (config.SHOW_LEARNING_WINDOW)))
+    if not config.SHOW_LEARNING_WINDOW then
+      mapper.mapprint ('  Type "mapper learn" to activate the training windows.')
+    end -- if
+  return
+  end -- no item given
+
+  -- config name given - look it up in the list
+  local config_item = config_control_names [name]
+  if not config_item then
+    mapper.maperror ("There is no configuration item: " .. name)
+    mapper.mapprint ("  Configuration items are:")
+    for k, v in ipairs (config_control) do
+      mapper.mapprint ("    " .. v.name)
+    end
+    return
+  end -- config item not found
+
+  -- no value given - display the current setting of this option
+  if value == "" then
+    mapper.mapprint ("Current value for " .. name .. ":")
+    mapper.mapprint ("")
+    mapper.mapprint (string.format ("mapper config %s %s", config_item.name, config_item.show (config [config_item.option])))
+    mapper.mapprint ("")
+    return
+  end -- no value given
+
+  -- validate new option value
+  local new_value = config_item.validate (value)
+  if new_value == nil then    -- it might be false, so we have to test for nil
+    mapper.maperror ("Configuration option not changed.")
+    return
+  end -- bad value
+
+  -- set the new value and confirm it was set
+  config [config_item.option] = new_value
+  mapper.mapprint ("Configuration option changed. New value is:")
+  mapper.mapprint (string.format ("mapper config %s %s", config_item.name, config_item.show (config [config_item.option])))
+
+end -- mapper_config
+
+-- -----------------------------------------------------------------
+-- count_rooms - count how many rooms are in the database
+-- -----------------------------------------------------------------
+function count_rooms ()
+  local count = 0
+  for k, v in pairs (rooms) do
+    count = count + 1
+  end -- for
+  return count
+end -- count_rooms
+
+-- -----------------------------------------------------------------
+-- mapper_export - writes the rooms table to a file
+-- -----------------------------------------------------------------
+function mapper_export (name, line, wildcards)
+  local filter = { lua = "Lua files" }
+
+  local filename = utils.filepicker ("Export mapper map database", "Map_database.lua", "lua", filter, true)
+  if not filename then
+    return
+  end -- if cancelled
+  local f, err = io.open (filename, "w")
+  if not f then
+    mapper.maperror ("Cannot open " .. filename .. " for output: " .. err)
+    return
+  end -- if not open
+
+  local status, err = f:write ("rooms = "  .. serialize.save_simple (rooms) .. "\n")
+  if not status then
+    mapper.maperror ("Cannot write database to " .. filename .. ": " .. err)
+  end -- if cannot write
+  f:close ()
+  mapper.mapprint ("Database exported, " .. count_rooms () .. " rooms.")
+end -- mapper_export
+
+
+-- -----------------------------------------------------------------
+-- mapper_import - imports the rooms table from a file
+-- -----------------------------------------------------------------
+function mapper_import (name, line, wildcards)
+
+  if count_rooms () > 0 then
+    mapper.maperror ("Mapper database is not empty (there are " .. count_rooms () .. " rooms in it)")
+    mapper.maperror ("Before importing another database, clear this one out with: mapper reset database")
+    return
+  end -- if
+
+  local filter = { lua = "Lua files" }
+
+  local filename = utils.filepicker ("Import mapper map database", "Map_database.lua", "lua", filter, false)
+  if not filename then
+    return
+  end -- if cancelled
+  local f, err = io.open (filename, "r")
+  if not f then
+    mapper.maperror ("Cannot open " .. filename .. " for input: " .. err)
+    return
+  end -- if not open
+
+  local s, err = f:read ("*a")
+  if not s then
+    mapper.maperror ("Cannot read database from " .. filename .. ": " .. err)
+  end -- if cannot write
+  f:close ()
+
+  -- make a sandbox so they can't put Lua functions into the import file
+
+  local t = {} -- empty environment table
+  f = loadstring (s)
+  setfenv (f, t)
+  -- load it
+  f ()
+
+  -- move the rooms table into our rooms table
+  rooms = t.rooms
+  mapper.mapprint ("Database imported, " .. count_rooms () .. " rooms.")
+
+end -- mapper_import
+
+
+-- -----------------------------------------------------------------
+-- count_values - count how many values are in the database
+-- -----------------------------------------------------------------
+function count_values (t, done)
+  local count = count or 0
+  done = done or {}
+  for key, value in pairs (t) do
+    if type (value) == "table" and not done [value] then
+      done [value] = true
+      count = count + count_values (value, done)
+    else
+      count = count + 1
+    end
+  end
+  return count
+end -- count_values
+
+-- -----------------------------------------------------------------
+-- corpus_export - writes the corpus table to a file
+-- -----------------------------------------------------------------
+function corpus_export (name, line, wildcards)
+  local filter = { lua = "Lua files" }
+
+  local filename = utils.filepicker ("Export map corpus", "Map_corpus.lua", "lua", filter, true)
+  if not filename then
+    return
+  end -- if cancelled
+  local f, err = io.open (filename, "w")
+  if not f then
+    corpus.maperror ("Cannot open " .. filename .. " for output: " .. err)
+    return
+  end -- if not open
+
+  local status, err = f:write ("corpus = "  .. serialize.save_simple (corpus) .. "\n")
+  if not status then
+    mapper.maperror ("Cannot write corpus to " .. filename .. ": " .. err)
+  end -- if cannot write
+  f:close ()
+  mapper.mapprint ("Corpus exported, " .. count_values (corpus) .. " entries.")
+end -- corpus_export
+
+
+-- -----------------------------------------------------------------
+-- corpus_import - imports the corpus table from a file
+-- -----------------------------------------------------------------
+function corpus_import (name, line, wildcards)
+
+  if count_values (corpus) > 0 then
+    mapper.maperror ("Corpus is not empty (there are " .. count_values (corpus) .. " entries in it)")
+    mapper.maperror ("Before importing another corpus, clear this one out with: mapper reset corpus")
+    return
+  end -- if
+
+  local filter = { lua = "Lua files" }
+
+  local filename = utils.filepicker ("Import map corpus", "Map_corpus.lua", "lua", filter, false)
+  if not filename then
+    return
+  end -- if cancelled
+  local f, err = io.open (filename, "r")
+  if not f then
+    mapper.maperror ("Cannot open " .. filename .. " for input: " .. err)
+    return
+  end -- if not open
+
+  local s, err = f:read ("*a")
+  if not s then
+    mapper.maperror ("Cannot read corpus from " .. filename .. ": " .. err)
+  end -- if cannot write
+  f:close ()
+
+  -- make a sandbox so they can't put Lua functions into the import file
+
+  local t = {} -- empty environment table
+  f = loadstring (s)
+  setfenv (f, t)
+  -- load it
+  f ()
+
+  -- move the corpus table into our corpus table
+  corpus = t.corpus
+  mapper.mapprint ("Corpus imported, " .. count_values (corpus) .. " entries.")
+
+end -- corpus_import
+
+function room_toggle_trainer (room, uid)
+  room.Trainer = not room.Trainer
+  mapper.mapprint ("Trainer here: " .. config_display_boolean (room.Trainer))
+end -- room_toggle_trainer
+
+
+function room_toggle_shop (room, uid)
+  room.Shop = not room.Shop
+  mapper.mapprint ("Shop here: " .. config_display_boolean (room.Trainer))
+end -- room_toggle_shop
+
+function room_toggle_bank (room, uid)
+  room.Bank = not room.Bank
+  mapper.mapprint ("Bank here: " .. config_display_boolean (room.Trainer))
+end -- room_toggle_bank
+
+-- -----------------------------------------------------------------
+-- room_click - RH-click on a room
+-- -----------------------------------------------------------------
+function room_click (uid, flags)
+
+  -- check we got room at all
+  if not uid then
+    return nil
+  end -- if
+
+  -- look it up
+  local room = rooms [uid]
+
+  if not room then
+    return
+  end -- if still not there
+
+  local handlers = {
+      { name = "Edit bookmark", func = room_edit_bookmark} ,
+      { name = "-", } ,
+      { name = "Trainer", func = room_toggle_trainer, check_item = true} ,
+      { name = "Shop",    func = room_toggle_shop,    check_item = true} ,
+      { name = "Bank",    func = room_toggle_bank,    check_item = true} ,
+      } -- handlers
+
+  local t, tf = {}, {}
+  for _, v in pairs (handlers) do
+    local name = v.name
+    if v.check_item then
+      if room [name] then
+        name = "+" .. name
+      end -- if
+    end -- if need to add a checkmark
+    table.insert (t, name)
+    tf [v.name] = v.func
+  end -- for
+
+  local choice = WindowMenu (mapper.win,
+                            WindowInfo (mapper.win, 14),
+                            WindowInfo (mapper.win, 15),
+                            table.concat (t, "|"))
+
+  -- find their choice, if any (empty string if cancelled)
+  local f = tf [choice]
+
+  if f then
+    f (room, uid)
+    mapper.draw (current_room)
+  end -- if handler found
+
+
+end -- room_click
+
+-- -----------------------------------------------------------------
+-- Find a with a special attribute which f(room) will return true if it exists
+-- -----------------------------------------------------------------
+
+function map_find_special (f)
+
+  local room_ids = {}
+  local count = 0
+
+  -- scan all rooms looking for a match
+  for uid, room in pairs (rooms) do
+     if f (room) then
+       room_ids [uid] = true
+       count = count + 1
+     end -- if
+  end   -- finding room
+
+  -- see if nearby
+  mapper.find (
+    function (uid)
+      local room = room_ids [uid]
+      if room then
+        room_ids [uid] = nil
+      end -- if
+      return room, next (room_ids) == nil
+    end,  -- function
+    show_vnums,  -- show vnum?
+    count,      -- how many to expect
+    false       -- don't auto-walk
+    )
+
+end -- map_find
+
+-- -----------------------------------------------------------------
+-- map_shops - find nearby shops
+-- -----------------------------------------------------------------
+function map_shops (name, line, wildcards)
+  map_find_special (function (room) return room.Shop end)
+end -- map_shops
+
+-- -----------------------------------------------------------------
+-- map_trainers - find nearby trainers
+-- -----------------------------------------------------------------
+function map_trainers (name, line, wildcards)
+  map_find_special (function (room) return room.Trainer end)
+end -- map_trainers
+
+
+-- -----------------------------------------------------------------
+-- map_banks - find nearby banks
+-- -----------------------------------------------------------------
+function map_banks (name, line, wildcards)
+  map_find_special (function (room) return room.Bank end)
+end -- map_banks

@@ -45,8 +45,11 @@ mapper show         --> show map
 FINDING THINGS
 
 mapper bookmarks    --> show nearby rooms that you bookmarked
-mapper find <text>  --> search for text (eg. mapper find shop)
+mapper find <text>  --> search for text in room name or description (eg. mapper find blacksmith)
 mapper where <room> --> show directions to a room (given a room ID)
+mapper shops        --> find nearby shops
+mapper trainers     --> find nearby trainers
+mapper banks        --> find nearby banks
 
 MOVING
 
@@ -59,45 +62,53 @@ LEARNING INTERFACE CONTROL
 mapper learn        --> toggle on/off the mapper learning window and line informationwindow
 
 mapper corpus info  --> shows how many times you trained various different line types
-mapper corpus       --> show the entire mapper corpus (can be very lengthy)
-mapper corpus reset --> deletes the entire mapper corpus so it will need to be trained again
+mapper corpus       --> show the entire mapper corpus (can be lengthy)
+mapper reset corpus --> deletes the entire mapper corpus so it will need to be trained again
                        (after a confirmation dialog)
+mapper export corpus       --> export corpus database for backup or sharing with others
+mapper import corpus       --> import corpus database from backup or from someone else
 
 MAPPER CONFIGURATION
 
-mapper draw room on <linetype> --> when to draw the new room. Line types are one of:
-                      room name, description, exits, prompt
-                      For most MUDS: Use "exits" because exits usually come last. However if the exits come before the description draw after the description.
-mapper status background <colour>  --> background colour for the room types status window (eg. black)
-mapper status border <colour>      --> colour of the border of the room types status window (eg. darkgray)
-mapper status text <colour>        --> colour of the text in the room types status window (eg. lightgreen)
-mapper uid size <size>             --> how many characters of the unique ID to show in room information (3 to 25)
-mapper activate description after exits  --> Only consider lines to be description lines directly after exit lines (use for MUDs with descriptions after the exits)
-mapper activate description always       --> Always consider lines to be description lines (use for MUDs with exits after descriptions) (default)
-mapper blank lines terminate line type   --> A blank line is considered to be the the end of a line type (eg. end of a description)
-mapper ignore blank lines                --> Blank lines are ignored (default)
-mapper add newline to prompt             --> Add a newline to a prompt at the end of a packet
-mapper no add newline to prompt          --> Don't add a newline to a prompt at the end of a packet  (default)
-mapper config info                       --> Display all of the above configuration items (for discussing in a forum post, for example)
+mapper config                   --> show all current configuration option value
+mapper config <option>          --> show one option value
+mapper config <option> <value>  --> change <option> to <value>
+
+OPTION NAMES:
+
+    status_background  <colour> --> background colour for the room types status window (eg. black)
+    status_border      <colour> --> colour of the border of the room types status window (eg. darkgray)
+    status_text        <colour> --> colour of the text in the room types status window (eg. lightgreen)
+    uid_size           <size>   --> how many characters of the unique ID to show in room information (3 to 25)
+    when_to_draw       <when>   --> see below
+    activate_description_after_exits  (yes/no) --> Only consider lines to be description lines directly after exit lines (use for MUDs with descriptions after the exits)
+    add_newline_to_prompt  (yes/no)  --> Add a newline to a prompt at the end of a packet
+
+WHEN TO DRAW option
+
+When to draw the new room. Line types are one of:  room name, description, exits, prompt
+For most MUDS: Use "exits" because exits usually come last.
+However if the exits come *before* the description is drawn, then make it after the description.
 
 TIPS
 
 * If the mapper seems to lag behind drawing a new room, make sure that you get a complete line *after* the exits line.
 * If the MUD supports colours, then use them. The mapper uses the colour of lines to distinguish them from each other.
-* Try activating world configuration -> Appearance -> Output -> Convert IAC EOR/GA to new line
+* Try activating world configuration -> Appearance -> Output -> "Convert IAC EOR/GA to new line"
 * If the MUD has prompts, try forcing a newline after a prompt (the suggestion above might do that)
   For example, on some MUDs you can change the prompt like this: PROMPT %hH %mM %vV>!
   In that case the "!" tells the MUD to send a new line. See your MUD documentation for details.
-* You can also try activating the automatic adding of newlines after simple prompts. Type "mapper add newline to prompt"
+* You can also try activating the automatic adding of newlines after simple prompts. Type "mapper config add_newline_to_prompt YES"
 * If room descriptions are not shown every time you enter a room (but only the first time) turn that option off in the MUD configuration (eg. "toggle brief")
 * Also try training prompt lines (they are not otherwise used, but a prompt line helps terminate a non-prompt line)
 * If the MUD shows a minimap on the left or right side of description lines, turn that option off in the MUD configuration (eg. "toggle minimap")
 * It is important that temporary things (like mobs in a room, people in a room, items on the ground, chat messages) are not considered part of the description. If they are select that line and click "Description: No".
 * If the MUD shows everything in one colour, try activating colour output (eg. "term ansi"). There may be configuration options to colour certain types of lines (eg. "ansi roomshort light green"). This will help with recognition of line types. The exact options will vary from MUD to MUD.
+* An exit line like: "South: A Room in Mud School" will give an erroneous link to the "in" direction.
 
 LEARNING INTERFACE ALIASES (TRAIN THE MAPPER)
 
-(Type these or make a macro to use instead of clicking on the learning window)
+(Type these or make a macro to use instead of clicking on the learning window - for example make F5 train the selected line to be a description).
 
 mapper is room name     --> the selected line(s) are the name of a room
 mapper not room name    --> the selected line(s) are NOT the name of a room
@@ -110,7 +121,8 @@ mapper not prompt       --> the selected line(s) are NOT prompt line(s)
 
 MAPPER DATABASE
 
-mapper debug            --> shows entire mapper database (can be very length)
+mapper export map       --> export mapper database for backup or sharing with others
+mapper import map       --> import mapper database from backup or from someone else
 mapper reset database   --> deletes the entire mapper database, so all mapped rooms are lost
                             (after a confirmation dialog)
 
@@ -237,7 +249,7 @@ mapper reset database   --> deletes the entire mapper database, so all mapped ro
   </alias>
 
  <alias
-   match="mapper corpus reset"
+   match="mapper reset corpus"
    enabled="y"
    send_to="12"
    sequence="100"
@@ -263,114 +275,14 @@ mapper reset database   --> deletes the entire mapper database, so all mapped ro
   </alias>
 
  <alias
-   match="mapper draw room on *"
+   match="^mapper config(\s+(?<name>[a-zA-Z_]+)(\s+(?<value>.*))?)?$"
    enabled="y"
    send_to="1"
    sequence="100"
-   script="when_to_draw"
-  >
-  </alias>
-
- <alias
-   match="mapper status background *"
-   enabled="y"
-   send_to="1"
-   sequence="100"
-   script="mapper_status_background"
-  >
-  </alias>
-
- <alias
-   match="mapper status border *"
-   enabled="y"
-   send_to="1"
-   sequence="100"
-   script="mapper_status_border"
-  >
-  </alias>
-
- <alias
-   match="mapper status text *"
-   enabled="y"
-   send_to="1"
-   sequence="100"
-   script="mapper_status_text"
-  >
-  </alias>
-
- <alias
-   match="^mapper uid size (\d+)$"
-   enabled="y"
    regexp="y"
-   send_to="1"
-   sequence="100"
-   script="mapper_uid_size"
+   script="mapper_config"
   >
   </alias>
-
- <alias
-   match="mapper activate description after exits"
-   enabled="y"
-   send_to="1"
-   sequence="100"
-   script="mapper_activate_description_after_exits"
-  >
-  </alias>
-
- <alias
-   match="mapper activate description always"
-   enabled="y"
-   send_to="1"
-   sequence="100"
-   script="mapper_activate_description_always"
-  >
-  </alias>
-
- <alias
-   match="mapper blank lines terminate line type"
-   enabled="y"
-   send_to="1"
-   sequence="100"
-   script="mapper_blank_lines_terminate_line_type"
-  >
-  </alias>
-
- <alias
-   match="mapper ignore blank lines"
-   enabled="y"
-   send_to="1"
-   sequence="100"
-   script="mapper_ignore_blank_lines"
-  >
-  </alias>
-
- <alias
-   match="mapper add newline to prompt"
-   enabled="y"
-   send_to="1"
-   sequence="100"
-   script="mapper_add_newline_to_prompt"
-  >
-  </alias>
-
- <alias
-   match="mapper no add newline to prompt"
-   enabled="y"
-   send_to="1"
-   sequence="100"
-   script="mapper_no_add_newline_to_prompt"
-  >
-  </alias>
-
- <alias
-   match="mapper config info"
-   enabled="y"
-   send_to="1"
-   sequence="100"
-   script="mapper_config_info"
-  >
-  </alias>
-
 
   <alias
    match="mapper reset database"
@@ -412,22 +324,88 @@ mapper reset database   --> deletes the entire mapper database, so all mapped ro
   >
   </alias>
 
-  <!--  mapper debug by showing rooms table -->
+  <!-- find shops nearby -->
 
- <alias
-   match="mapper debug"
+  <alias
+   match="^mapper shops?$"
+   regexp="y"
    enabled="y"
    sequence="100"
-   send_to="12"
+   script="map_shops"
   >
-  <send>
-    print (string.rep ("-", 60))
-    print "Rooms"
-    print (string.rep ("-", 60))
-    tprint (rooms)
-    print (string.rep ("-", 60))
-  </send>
+
   </alias>
+
+  <!-- find trainers nearby -->
+
+  <alias
+   match="^mapper trainers?$"
+   regexp="y"
+   enabled="y"
+   sequence="100"
+   script="map_trainers"
+  >
+
+  </alias>
+
+  <!-- find banks nearby -->
+
+  <alias
+   match="^mapper banks?$"
+   regexp="y"
+   enabled="y"
+   sequence="100"
+   script="map_banks"
+  >
+
+  </alias>
+
+  <!--  export rooms -->
+
+ <alias
+   match="mapper export map"
+   enabled="y"
+   sequence="100"
+   send_to="1"
+   script="mapper_export"
+  >
+   </alias>
+
+  <!--  import rooms -->
+
+ <alias
+   match="mapper import map"
+   enabled="y"
+   sequence="100"
+   send_to="1"
+   script="mapper_import"
+  >
+   </alias>
+
+ <!--  export corpus -->
+
+ <alias
+   match="mapper export corpus"
+   enabled="y"
+   sequence="100"
+   send_to="1"
+   script="corpus_export"
+  >
+   </alias>
+
+  <!--  import corpus -->
+
+ <alias
+   match="mapper import corpus"
+   enabled="y"
+   sequence="100"
+   send_to="1"
+   script="corpus_import"
+  >
+   </alias>
+
+
+  <!--  show directions to a room -->
 
  <alias
    match="mapper where *"
