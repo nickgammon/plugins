@@ -289,6 +289,7 @@ default_config = {
   SHOW_LEARNING_WINDOW = true,                 -- if true, show the learning status and training windows on startup
   EXITS_ON_ROOM_NAME = false,                  -- if true, exits are listed on the room name line (eg. Starter Inventory and Shops [E, U])
   INCLUDE_EXITS_IN_HASH = true,                -- if true, exits are included in the description hash (UID)
+  EXITS_IS_SINGLE_LINE = false,                -- if true, exits are assumed to be only a single line
 
   }
 
@@ -411,6 +412,7 @@ config_control = {
   { option = 'BLANK_LINE_TERMINATES_LINE_TYPE',   name = 'blank_line_terminates_line_type',  validate = config_validate_boolean,      show = config_display_boolean },
   { option = 'EXITS_ON_ROOM_NAME',                name = 'exits_on_room_name',               validate = config_validate_boolean,      show = config_display_boolean },
   { option = 'INCLUDE_EXITS_IN_HASH',             name = 'include_exits_in_hash',            validate = config_validate_boolean,      show = config_display_boolean },
+  { option = 'EXITS_IS_SINGLE_LINE',              name = 'exits_is_single_line',              validate = config_validate_boolean,      show = config_display_boolean },
   { option = 'STATUS_BACKGROUND_COLOUR',          name = 'status_background',                validate = config_validate_colour,       show = config_display_colour },
   { option = 'STATUS_FRAME_COLOUR',               name = 'status_border',                    validate = config_validate_colour,       show = config_display_colour },
   { option = 'STATUS_TEXT_COLOUR',                name = 'status_text',                      validate = config_validate_colour,       show = config_display_colour },
@@ -541,12 +543,13 @@ function OnPluginDrawOutputWindow (firstline, offset, notused)
           have_prompt = true
         end -- if
 
+
+
         -- we would have drawn on a linetype change, if not a partial line
-        if linetype and linetype ~= previous_linetype and GetLineInfo (line, 3) then
-
-          local draw = false
-
-          if previous_linetype == 'description' and have_description then
+        if linetype and GetLineInfo (line, 3) and (linetype ~= previous_linetype
+                                    or linetype == 'exits' and config.EXITS_IS_SINGLE_LINE) then
+            local draw = false
+            if previous_linetype == 'description' and have_description then
             if config.WHEN_TO_DRAW_MAP == DRAW_MAP_ON_DESCRIPTION then
               draw = true
             end -- if draw now
@@ -562,6 +565,9 @@ function OnPluginDrawOutputWindow (firstline, offset, notused)
             if config.WHEN_TO_DRAW_MAP == DRAW_MAP_ON_PROMPT then
               draw = true
             end -- if draw now
+          end -- if
+          if linetype == 'exits' and config.EXITS_IS_SINGLE_LINE then
+            draw = true
           end -- if
           if draw then
              x_offset = x_offset + WindowText (win, font_id, " (draw map)", 1 + x_offset, top, 0, 0, ColourNameToRGB ("darkgray"))
@@ -1595,7 +1601,7 @@ function line_received (name, line, wildcards, styles)
   if config.BLANK_LINE_TERMINATES_LINE_TYPE and Trim (line) == "" then
     deduced_type = nil
   else
-   deduced_type = analyse_line (this_line)
+    deduced_type = analyse_line (this_line)
   end -- if
 
   if deduced_type ~= last_deduced_type then
@@ -1614,6 +1620,13 @@ function line_received (name, line, wildcards, styles)
    -- INFO ("This line is", deduced_type)
 
   table.insert (saved_lines, { line = line, styles = styles } )
+
+  if config.EXITS_IS_SINGLE_LINE and deduced_type == 'exits' then
+      line_types.exits.handler (saved_lines)  -- handle the line
+      saved_lines = { }
+      last_deduced_type = nil
+  end -- if
+
 end -- line_received
 
 -- -----------------------------------------------------------------
@@ -1686,9 +1699,15 @@ function OnPluginPacketReceived (pkt)
 
   -- add a newline to the end of a packet if it appears to be a simple prompt
   -- (just a ">" sign at the end of a line optionally followed by one space)
-  if string.match (pkt, "> ?$") then
-    return pkt .. "\n";
-  end -- if
+  if GetInfo (104) then  -- if MXP enabled
+    if string.match (pkt, "&gt; ?$") then
+      return pkt .. "\n";
+    end -- if
+  else
+    if string.match (pkt, "> ?$") then
+      return pkt .. "\n";
+    end -- if
+  end -- if MXP or not
 
   return pkt
 end -- OnPluginPacketReceived
