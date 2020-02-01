@@ -44,8 +44,8 @@ mapper show         --> show map
 
 FINDING THINGS
 
-mapper bookmarks    --> show nearby rooms that you bookmarked
-mapper find <text>  --> search for text in room name or description (eg. mapper find blacksmith)
+mapper notes        --> show nearby rooms that you added notes to
+mapper find <text>  --> search for text in room name, description or notes (eg. mapper find blacksmith)
 mapper where <room> --> show directions to a room (given a room ID)
 mapper shops        --> find nearby shops
 mapper trainers     --> find nearby trainers
@@ -80,9 +80,13 @@ OPTION NAMES:
     status_border      <colour> --> colour of the border of the room types status window (eg. darkgray)
     status_text        <colour> --> colour of the text in the room types status window (eg. lightgreen)
     uid_size           <size>   --> how many characters of the unique ID to show in room information (3 to 25)
-    when_to_draw       <when>   --> see below
-    activate_description_after_exits  (yes/no) --> Only consider lines to be description lines directly after exit lines (use for MUDs with descriptions after the exits)
-    add_newline_to_prompt  (yes/no)  --> Add a newline to a prompt at the end of a packet
+    when_to_draw       <when>   --> one of "room name", "description", "exits", "prompt". See below.
+    activate_description_after_exits      (yes/no) --> Only consider lines to be description lines directly after exit lines (use for MUDs with descriptions after the exits)
+    activate_description_after_room_name  (yes/no) --> Only consider lines to be description lines directly after room name lines (use for MUDs with descriptions after the room names)
+    add_newline_to_prompt  (yes/no)            --> Add a newline to a prompt at the end of a packet, where a packet ends with exactly ">" or "> ".
+    blank_line_terminates_line_type (yes/no)   --> A blank line is considered to be the end of a line type - useful if there are no blank lines in descriptions, but one after.
+    exits_on_room_name (yes/no)                --> The room name also contains the available exits in the form:  Room name [N, S, E, W]
+    include_exits_in_hash (yes/no)             --> Include the exits in the room ID hash. Yes: better handling of rooms with the same name. No: If the MUD adds and removes exits from time to time (for example, if you unlock a door).
 
 WHEN TO DRAW option
 
@@ -356,6 +360,18 @@ mapper reset database   --> deletes the entire mapper database, so all mapped ro
    enabled="y"
    sequence="100"
    script="map_banks"
+  >
+
+  </alias>
+
+  <!-- find bookmarked rooms nearby -->
+
+  <alias
+   match="^mapper notes?$"
+   regexp="y"
+   enabled="y"
+   sequence="100"
+   script="map_bookmarks"
   >
 
   </alias>

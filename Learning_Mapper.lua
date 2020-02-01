@@ -61,6 +61,13 @@ function f_handle_description (saved_lines)
     end -- if
   end -- if
 
+  -- if the description follows the room name, then ignore descriptions that don't follow the room name
+  if config.ACTIVATE_DESCRIPTION_AFTER_ROOM_NAME then
+    if not room_name then
+      return
+    end -- if
+  end -- if
+
   if config.WHEN_TO_DRAW_MAP == DRAW_MAP_ON_DESCRIPTION then
     process_new_room ()
   end -- if
@@ -83,6 +90,16 @@ function f_handle_name ()
     table.insert (lines, line_info.line) -- get text of line
   end -- for each line
   room_name = table.concat (lines, " ")
+
+  -- a bit of a hack, but look for: Room name [N, S, W]
+  if config.EXITS_ON_ROOM_NAME then
+    local name, exits = string.match (room_name, "^([^%[]+)(%[.*%])%s*$")
+    if name then
+      room_name = name
+      exits_str = exits:lower ()
+    end -- if that sort of line found
+  end -- if exits on room name wanted
+
   if config.WHEN_TO_DRAW_MAP == DRAW_MAP_ON_ROOM_NAME then
     process_new_room ()
   end -- if
@@ -228,7 +245,7 @@ default_config = {
   SHOP_FILL_COLOUR        = { name = "Shop",              colour =  ColourNameToRGB "darkolivegreen", },
   TRAINER_FILL_COLOUR     = { name = "Trainer",           colour =  ColourNameToRGB "yellowgreen", },
   BANK_FILL_COLOUR        = { name = "Bank",              colour =  ColourNameToRGB "gold", },
-  NEWSROOM_FILL_COLOUR    = { name = "Newsroom",          colour =  ColourNameToRGB "lightblue", },
+  BOOKMARK_FILL_COLOUR    = { name = "Notes",             colour =  ColourNameToRGB "lightskyblue", },
   MAPPER_NOTE_COLOUR      = { name = "Messages",          colour =  ColourNameToRGB "lightgreen" },
 
   ROOM_NAME_TEXT          = { name = "Room name text",    colour = ColourNameToRGB "#BEF3F1", },
@@ -266,9 +283,13 @@ default_config = {
   -- learning configuration
   WHEN_TO_DRAW_MAP = DRAW_MAP_ON_EXITS,        -- we need to have name/description/exits to draw the map
   ACTIVATE_DESCRIPTION_AFTER_EXITS = false,    -- descriptions are activated *after* an exit line (used for MUDs with exits then descriptions)
+  ACTIVATE_DESCRIPTION_AFTER_ROOM_NAME = false,-- descriptions are activated *after* a room name line
   BLANK_LINE_TERMINATES_LINE_TYPE = false,     -- if true, a blank line terminates the previous line type
   ADD_NEWLINE_TO_PROMPT = false,               -- if true, attempts to add a newline to a prompt at the end of a packet
   SHOW_LEARNING_WINDOW = true,                 -- if true, show the learning status and training windows on startup
+  EXITS_ON_ROOM_NAME = false,                  -- if true, exits are listed on the room name line (eg. Starter Inventory and Shops [E, U])
+  INCLUDE_EXITS_IN_HASH = true,                -- if true, exits are included in the description hash (UID)
+
   }
 
 -- -----------------------------------------------------------------
@@ -308,7 +329,7 @@ local when_types = {
     ["prompt"]      = DRAW_MAP_ON_PROMPT,
     } -- end of table
 
-function config_validate_when_to_draw (whicn)
+function config_validate_when_to_draw (which)
   local when = which:lower ()
 
   local w = when_types [when]
@@ -383,13 +404,17 @@ end -- config_display_boolean
 -- -----------------------------------------------------------------
 
 config_control = {
+  { option = 'WHEN_TO_DRAW_MAP',                  name = 'when_to_draw',                     validate = config_validate_when_to_draw, show = config_display_when_to_draw },
+  { option = 'ACTIVATE_DESCRIPTION_AFTER_EXITS',  name = 'activate_description_after_exits', validate = config_validate_boolean,      show = config_display_boolean },
+  { option = 'ACTIVATE_DESCRIPTION_AFTER_ROOM_NAME',  name = 'activate_description_after_room_name', validate = config_validate_boolean,      show = config_display_boolean },
+  { option = 'ADD_NEWLINE_TO_PROMPT',             name = 'add_newline_to_prompt',            validate = config_validate_boolean,      show = config_display_boolean },
+  { option = 'BLANK_LINE_TERMINATES_LINE_TYPE',   name = 'blank_line_terminates_line_type',  validate = config_validate_boolean,      show = config_display_boolean },
+  { option = 'EXITS_ON_ROOM_NAME',                name = 'exits_on_room_name',               validate = config_validate_boolean,      show = config_display_boolean },
+  { option = 'INCLUDE_EXITS_IN_HASH',             name = 'include_exits_in_hash',            validate = config_validate_boolean,      show = config_display_boolean },
   { option = 'STATUS_BACKGROUND_COLOUR',          name = 'status_background',                validate = config_validate_colour,       show = config_display_colour },
   { option = 'STATUS_FRAME_COLOUR',               name = 'status_border',                    validate = config_validate_colour,       show = config_display_colour },
   { option = 'STATUS_TEXT_COLOUR',                name = 'status_text',                      validate = config_validate_colour,       show = config_display_colour },
   { option = 'UID_SIZE',                          name = 'uid_size',                         validate = config_validate_uid_size,     show = config_display_number },
-  { option = 'WHEN_TO_DRAW_MAP',                  name = 'when_to_draw',                     validate = config_validate_when_to_draw, show = config_display_when_to_draw },
-  { option = 'ACTIVATE_DESCRIPTION_AFTER_EXITS',  name = 'activate_description_after_exits', validate = config_validate_boolean, show = config_display_boolean },
-  { option = 'ADD_NEWLINE_TO_PROMPT',             name = 'add_newline_to_prompt',            validate = config_validate_boolean, show = config_display_boolean },
 
 }
 
@@ -451,14 +476,19 @@ inverse_direction = {
 
 -- -----------------------------------------------------------------
 -- OnPluginDrawOutputWindow
---  Update our debugging info
+--  Update our line information info
 -- -----------------------------------------------------------------
 function OnPluginDrawOutputWindow (firstline, offset, notused)
   local background_colour = ColourNameToRGB (config.STATUS_BACKGROUND_COLOUR)
   local frame_colour = ColourNameToRGB (config.STATUS_FRAME_COLOUR)
   local text_colour = ColourNameToRGB (config.STATUS_TEXT_COLOUR)
-  local main_height = GetInfo (263)
+  local main_height = GetInfo (280)
   local font_height = GetInfo (212)
+  local have_name = false
+  local have_exit = false
+  local have_description = false
+  local have_prompt = false
+  local previous_linetype = ""
 
   -- clear window
   WindowRectOp (win, miniwin.rect_fill, 0, 0, 0, 0, background_colour)
@@ -484,9 +514,66 @@ function OnPluginDrawOutputWindow (firstline, offset, notused)
         else
           line_type_info = ""
         end -- if
-        WindowText (win, font_id, line_type_info, 1, top,
-                    0, 0, text_colour)
-      end -- if
+        local x_offset = WindowText (win, font_id, line_type_info, 1, top, 0, 0, text_colour)
+        if (not GetLineInfo (line, 3)) and (line >= lastline - 1) then
+          x_offset = x_offset + WindowText (win, font_id, " (partial line)", 1 + x_offset, top, 0, 0, ColourNameToRGB ("darkgray"))
+        end -- if
+        local description_ignored = false
+        -- descriptions ignored if not after an exit?
+        if linetype == 'description' and config.ACTIVATE_DESCRIPTION_AFTER_EXITS and not have_exit then
+          description_ignored = true
+          x_offset = x_offset + WindowText (win, font_id, " (ignored)", 1 + x_offset, top, 0, 0, ColourNameToRGB ("darkgray"))
+        -- descriptions ignored if not after a room name?
+        elseif linetype == 'description' and config.ACTIVATE_DESCRIPTION_AFTER_ROOM_NAME and not have_name then
+          description_ignored = true
+          x_offset = x_offset + WindowText (win, font_id, " (ignored)", 1 + x_offset, top, 0, 0, ColourNameToRGB ("darkgray"))
+        end
+
+        if linetype == 'description' then
+          if not description_ignored then
+            have_description = true
+          end -- if
+        elseif linetype == 'exits' then
+          have_exit = true
+        elseif linetype == 'room_name' then
+          have_name = true
+        elseif linetype == 'prompt' then
+          have_prompt = true
+        end -- if
+
+        -- we would have drawn on a linetype change, if not a partial line
+        if linetype and linetype ~= previous_linetype and GetLineInfo (line, 3) then
+
+          local draw = false
+
+          if previous_linetype == 'description' and have_description then
+            if config.WHEN_TO_DRAW_MAP == DRAW_MAP_ON_DESCRIPTION then
+              draw = true
+            end -- if draw now
+          elseif previous_linetype == 'exits' and have_exit then
+            if config.WHEN_TO_DRAW_MAP == DRAW_MAP_ON_EXITS then
+              draw = true
+            end -- if draw now
+          elseif previous_linetype == 'room_name' and have_name then
+            if config.WHEN_TO_DRAW_MAP == DRAW_MAP_ON_ROOM_NAME then
+              draw = true
+            end -- if draw now
+          elseif previous_linetype == 'prompt' and have_prompt then
+            if config.WHEN_TO_DRAW_MAP == DRAW_MAP_ON_PROMPT then
+              draw = true
+            end -- if draw now
+          end -- if
+          if draw then
+             x_offset = x_offset + WindowText (win, font_id, " (draw map)", 1 + x_offset, top, 0, 0, ColourNameToRGB ("darkgray"))
+             -- drawing discards previous ones
+             have_exit = false
+             have_name = false
+             have_description = false
+             have_prompt = false
+          end -- if
+          previous_linetype = linetype
+        end -- linetype change
+      end -- if output line
       top = top + font_height
     end -- if line exists
   end -- for each line
@@ -510,7 +597,7 @@ function OnPluginWorldOutputResized ()
   WindowCreate (win,
                 (output_width * wrap_column) + pixel_offset + 10, -- left
                 0,  -- top
-                500, -- width
+                400, -- width
                 GetInfo (263),   -- world window client height
                 miniwin.pos_top_left,   -- position (irrelevant)
                 miniwin.create_absolute_location,   -- flags
@@ -1094,8 +1181,13 @@ function process_new_room ()
 
   end -- if moved from somewhere
 
-  -- generate a "room ID" by hashing the room description and exits
-  uid = utils.tohex (utils.md5 (description .. exits_str))
+  -- generate a "room ID" by hashing the room description and possibly the exits
+  if config.INCLUDE_EXITS_IN_HASH then
+    uid = utils.tohex (utils.md5 (description .. exits_str))
+  else
+    uid = utils.tohex (utils.md5 (description))
+  end -- if
+
   uid = uid:sub (1, 25)
 
   -- break up exits into individual directions
@@ -1189,13 +1281,20 @@ function get_room (uid)
   if #textras then
     extras = "\n" .. table.concat (textras, ", ")
   end -- if extras
+
+  local notes = ""
+  if room.notes then
+    notes = "\nNotes: " .. room.notes
+  end -- if notes
+
   room.hovermessage = string.format (
-       "%s\tExits: %s\nRoom: %s%s\n%s",
+       "%s\tExits: %s\nRoom: %s%s\n%s%s",
         room.name or "unknown",
         table.concat (texits, ", "),
         fixuid (uid),
         extras,
-        desc
+        desc,
+        notes
       )
 
   if uid == current_room then
@@ -1207,7 +1306,10 @@ function get_room (uid)
 
   -- special room fill colours
 
-  if room.Shop then
+  if room.notes and room.notes ~= "" then
+    room.fillcolour = config.BOOKMARK_FILL_COLOUR.colour
+    room.fillbrush = miniwin.brush_solid
+  elseif room.Shop then
     room.fillcolour = config.SHOP_FILL_COLOUR.colour
     room.fillbrush = miniwin.brush_fine_pattern
   elseif room.Trainer then
@@ -1296,30 +1398,40 @@ function OnPluginDisconnect ()
 end -- OnPluginDisconnect
 
 -- -----------------------------------------------------------------
--- Callback to show part of the room description, used by map_find
+-- Callback to show part of the room description/name/notes, used by map_find
 -- -----------------------------------------------------------------
 
 FIND_OFFSET = 33
 
 function show_find_details (uid)
   local this_room = rooms [uid]
-  local desc = this_room.desc:lower ()
-  local st, en = string.find (desc, wanted, 1, true)
+  local target = this_room.desc
+  local label = "Description: "
+  local st, en = string.find (target:lower (), wanted, 1, true)
+  -- not in description, try the name
   if not st then
-    return
-  end -- can't find the description, odd
+    target = this_room.name
+    label = "Room name: "
+    st, en = string.find (target:lower (), wanted, 1, true)
+    if not st then
+      target = this_room.notes
+      label = "Notes: "
+      if target then
+        st, en = string.find (target:lower (), wanted, 1, true)
+      end -- if any notes
+    end -- not found in the name
+  end -- can't find the wanted text anywhere, odd
 
-  desc = this_room.desc
 
   local first, last
   local first_dots = ""
   local last_dots = ""
 
-  for i = 1, #desc do
+  for i = 1, #target do
 
     -- find a space before the wanted match string, within the FIND_OFFSET range
     if not first and
-       desc:sub (i, i) == ' ' and
+       target:sub (i, i) == ' ' and
        i < st and
        st - i <= FIND_OFFSET then
       first = i
@@ -1328,7 +1440,7 @@ function show_find_details (uid)
 
     -- find a space after the wanted match string, within the FIND_OFFSET range
     if not last and
-      desc:sub (i, i) == ' ' and
+      target:sub (i, i) == ' ' and
       i > en and
       i - en >= FIND_OFFSET then
       last = i
@@ -1341,10 +1453,10 @@ function show_find_details (uid)
     first = 1
   end -- if
   if not last then
-    last = #desc
+    last = #target
   end -- if
 
-  mapper.mapprint (first_dots .. Trim (string.gsub (desc:sub (first, last), "\n", " ")) .. last_dots)
+  mapper.mapprint (label .. first_dots .. Trim (string.gsub (target:sub (first, last), "\n", " ")) .. last_dots)
 
 end -- show_find_details
 
@@ -1362,7 +1474,13 @@ function map_find (name, line, wildcards)
   for k, v in pairs (rooms) do
      local desc = v.desc:lower ()
      local name = v.name:lower ()
-     if string.find (desc, wanted, 1, true) or string.find (name, wanted, 1, true)  then
+     local notes = ""
+     if v.notes then
+       notes = v.notes:lower ()
+      end -- if notes
+     if string.find (desc, wanted, 1, true) or
+        string.find (name, wanted, 1, true) or
+        string.find (notes, wanted, 1, true) then
        room_ids [k] = true
        count = count + 1
      end -- if
@@ -1384,6 +1502,44 @@ function map_find (name, line, wildcards)
     )
 
 end -- map_find
+
+function mapper_show_bookmarked_room (uid)
+  local this_room = rooms [uid]
+  mapper.mapprint (this_room.notes)
+end -- mapper_show_bookarked_room
+
+-- -----------------------------------------------------------------
+-- Find bookmarked rooms
+-- -----------------------------------------------------------------
+function map_bookmarks (name, line, wildcards)
+
+  local room_ids = {}
+  local count = 0
+
+  -- scan all rooms looking for a simple match
+  for k, v in pairs (rooms) do
+    if v.notes and v.notes ~= "" then
+      room_ids [k] = true
+      count = count + 1
+    end -- if
+  end   -- finding room
+
+  -- find such places
+  mapper.find (
+    function (uid)
+      local room = room_ids [uid]
+      if room then
+        room_ids [uid] = nil
+      end -- if
+      return room, next (rooms) == nil  -- room will be type of info (eg. shop)
+    end,  -- function
+    show_vnums,  -- show vnum?
+    count,       -- how many to expect
+    false,       -- don't auto-walk
+    mapper_show_bookmarked_room  -- callback function to show the room bookmark
+    )
+
+end -- map_bookmarks
 
 -- -----------------------------------------------------------------
 -- Go to a room
@@ -1528,13 +1684,9 @@ function OnPluginPacketReceived (pkt)
     return pkt
   end -- if
 
-  -- add a newline to the end of a packet if it appears to be a simple prompt (just a ">" sign after a newline)
-  if string.match (pkt, "\n>%s*$") then
-    return pkt .. "\n";
-  end -- if
-
-  -- add a newline to the end of a packet if it appears to be a prompt with a colour change (ie. \n ESC (number) "m>")
-  if string.match (pkt, "\n\027.-m>%s*$") then
+  -- add a newline to the end of a packet if it appears to be a simple prompt
+  -- (just a ">" sign at the end of a line optionally followed by one space)
+  if string.match (pkt, "> ?$") then
     return pkt .. "\n";
   end -- if
 
@@ -1585,28 +1737,27 @@ function mapper_config (name, line, wildcards)
 
   -- no config item - show all existing ones
   if name == "" then
-    mapper.mapprint ("All mapper configuration items")
+    mapper.mapprint ("All mapper configuration options")
     mapper.mapprint (string.rep ("-", 60))
     mapper.mapprint ("")
     for k, v in ipairs (config_control) do
-      mapper.mapprint (string.format ("mapper config %-35s %s", v.name, v.show (config [v.option])))
+      mapper.mapprint (string.format ("mapper config %-40s %s", v.name, v.show (config [v.option])))
     end
     mapper.mapprint ("")
     mapper.mapprint (string.rep ("-", 60))
+    mapper.mapprint ('Type "mapper help" for more information about the above options.')
 
     -- training counts
     local count = 0
     for k, v in pairs (stats) do
       count = count + v.is + v.isnot
     end -- for each line type
-    mapper.mapprint (string.format ("%s: %s", "Number of times line types trained", count))
+    mapper.mapprint (string.format ("%s: %s.", "Number of times line types trained", count))
 
     -- hints on corpus info
     mapper.mapprint ('Type "mapper corpus info" for more information about line training.')
     mapper.mapprint (string.format ("%s: %s", "Show mapper training window and status", config_display_boolean (config.SHOW_LEARNING_WINDOW)))
-    if not config.SHOW_LEARNING_WINDOW then
-      mapper.mapprint ('  Type "mapper learn" to activate the training windows.')
-    end -- if
+    mapper.mapprint ('Type "mapper learn" to toggle the training windows.')
   return
   end -- no item given
 
@@ -1661,7 +1812,7 @@ end -- count_rooms
 function mapper_export (name, line, wildcards)
   local filter = { lua = "Lua files" }
 
-  local filename = utils.filepicker ("Export mapper map database", "Map_database.lua", "lua", filter, true)
+  local filename = utils.filepicker ("Export mapper map database", "Map_database " .. WorldName () .. ".lua", "lua", filter, true)
   if not filename then
     return
   end -- if cancelled
@@ -1693,7 +1844,7 @@ function mapper_import (name, line, wildcards)
 
   local filter = { lua = "Lua files" }
 
-  local filename = utils.filepicker ("Import mapper map database", "Map_database.lua", "lua", filter, false)
+  local filename = utils.filepicker ("Import mapper map database", "Map_database " .. WorldName () .. ".lua", "lua", filter, false)
   if not filename then
     return
   end -- if cancelled
@@ -1734,7 +1885,7 @@ function count_values (t, done)
     if type (value) == "table" and not done [value] then
       done [value] = true
       count = count + count_values (value, done)
-    else
+    elseif key == 'score' then
       count = count + 1
     end
   end
@@ -1747,7 +1898,7 @@ end -- count_values
 function corpus_export (name, line, wildcards)
   local filter = { lua = "Lua files" }
 
-  local filename = utils.filepicker ("Export map corpus", "Map_corpus.lua", "lua", filter, true)
+  local filename = utils.filepicker ("Export map corpus", "Map_corpus " .. WorldName () .. ".lua", "lua", filter, true)
   if not filename then
     return
   end -- if cancelled
@@ -1779,7 +1930,7 @@ function corpus_import (name, line, wildcards)
 
   local filter = { lua = "Lua files" }
 
-  local filename = utils.filepicker ("Import map corpus", "Map_corpus.lua", "lua", filter, false)
+  local filename = utils.filepicker ("Import map corpus", "Map_corpus " .. WorldName () .. ".lua", "lua", filter, false)
   if not filename then
     return
   end -- if cancelled
@@ -1817,13 +1968,121 @@ end -- room_toggle_trainer
 
 function room_toggle_shop (room, uid)
   room.Shop = not room.Shop
-  mapper.mapprint ("Shop here: " .. config_display_boolean (room.Trainer))
+  mapper.mapprint ("Shop here: " .. config_display_boolean (room.Shop))
 end -- room_toggle_shop
 
 function room_toggle_bank (room, uid)
   room.Bank = not room.Bank
-  mapper.mapprint ("Bank here: " .. config_display_boolean (room.Trainer))
+  mapper.mapprint ("Bank here: " .. config_display_boolean (room.Bank))
 end -- room_toggle_bank
+
+function room_edit_bookmark (room, uid)
+
+  local notes = room.notes
+  local found = room.notes and room.notes ~= ""
+
+
+  if found then
+    newnotes = utils.inputbox ("Modify room comment (clear it to delete it)", room.name, notes)
+  else
+    newnotes = utils.inputbox ("Enter room comment (creates a note for this room)", room.name, notes)
+  end -- if
+
+  if not newnotes then
+    return
+  end -- if cancelled
+
+  if newnotes == "" then
+    if not found then
+      mapper.mapprint ("Nothing, note not saved.")
+      return
+    else
+      mapper.mapprint ("Note for room", uid, "deleted. Was previously:", notes)
+      rooms [uid].notes = nil
+      return
+    end -- if
+  end -- if
+
+  if notes == newnotes then
+    return -- no change made
+  end -- if
+
+  if found then
+     mapper.mapprint ("Note for room", uid, "changed to:", newnotes)
+   else
+     mapper.mapprint ("Note added to room", uid, ":", newnotes)
+   end -- if
+
+   rooms [uid].notes = newnotes
+
+end -- room_edit_bookmark
+
+
+function room_delete_exit (room, uid)
+
+local available =  {
+  n = "North",
+  s = "South",
+  e = "East",
+  w = "West",
+  u = "Up",
+  d = "Down",
+  ne = "Northeast",
+  sw = "Southwest",
+  nw = "Northwest",
+  se = "Southeast",
+  ['in'] = "In",
+  out = "Out",
+  }  -- end of available
+
+  -- remove non-existent exits
+  for k in pairs (available) do
+    if room.exits [k] then
+      available [k] = available [k] .. " --> " .. room.exits [k]
+    else
+      available [k] = nil
+    end -- if not a room exit
+  end -- for
+
+  if next (available) == nil then
+    utils.msgbox ("There are no exits from this room.", "No exits!", "ok", "!", 1)
+    return
+  end -- not known
+
+  local chosen_exit = utils.listbox ("Choose exit to delete", "Exits ...", available )
+  if not chosen_exit then
+    return
+  end
+
+  mapper.mapprint ("Deleted exit", available [chosen_exit], "from room", uid, "from mapper.")
+
+  -- update in-memory table
+  rooms [uid].exits [chosen_exit] = nil
+
+  mapper.draw (current_room)
+
+end -- room_delete_exit
+
+function room_show_description (room, uid)
+
+  local font_name = GetInfo (20) -- output window font
+  local font_size = GetOption "output_font_height"
+  local output_width  = GetInfo (240)  -- average width of pixels per character
+  local wrap_column   = GetOption ('wrap_column')
+  local _, lines = string.gsub (room.desc, "\n", "x") -- count lines
+
+  local font_height = WindowFontInfo (win, font_id, 1)  -- height
+
+  utils.editbox ("", "Description of " .. room.name, string.gsub (room.desc, "\n", "\r\n"), font_name, font_size,
+                { read_only = true,
+                box_width  = output_width * wrap_column + 50,
+                box_height  = font_height * (lines + 1) + 120,
+                reply_width = output_width * wrap_column + 10,
+                -- cancel_button_width = 1,
+                prompt_height = 1,
+                 } )
+
+end -- room_show_description
 
 -- -----------------------------------------------------------------
 -- room_click - RH-click on a room
@@ -1842,12 +2101,20 @@ function room_click (uid, flags)
     return
   end -- if still not there
 
+  local notes_desc = "Add note"
+  if room.notes then
+    notes_desc = "Edit note"
+  end -- if
+
   local handlers = {
-      { name = "Edit bookmark", func = room_edit_bookmark} ,
+      { name = notes_desc, func = room_edit_bookmark} ,
+      { name = "Show description", func = room_show_description} ,
       { name = "-", } ,
       { name = "Trainer", func = room_toggle_trainer, check_item = true} ,
       { name = "Shop",    func = room_toggle_shop,    check_item = true} ,
       { name = "Bank",    func = room_toggle_bank,    check_item = true} ,
+      { name = "-", } ,
+      { name = "Delete an exit", func = room_delete_exit} ,
       } -- handlers
 
   local t, tf = {}, {}
@@ -1909,7 +2176,7 @@ function map_find_special (f)
     false       -- don't auto-walk
     )
 
-end -- map_find
+end -- map_find_special
 
 -- -----------------------------------------------------------------
 -- map_shops - find nearby shops
