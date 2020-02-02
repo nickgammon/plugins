@@ -986,6 +986,15 @@ function OnPluginInstall ()
 end -- OnPluginInstall
 
 -- -----------------------------------------------------------------
+-- OnPluginClose
+-- -----------------------------------------------------------------
+function OnPluginClose ()
+  WindowShow (learn_window, false)
+  WindowShow (win, false)
+  mapper.hide ()  -- hide the map
+end -- OnPluginClose
+
+-- -----------------------------------------------------------------
 -- Plugin Save State
 -- -----------------------------------------------------------------
 function OnPluginSaveState ()

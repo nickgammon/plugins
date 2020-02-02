@@ -10,8 +10,9 @@
    purpose="AI interface to mapper to learn descriptions etc."
    save_state="y"
    date_written="2020-01-23 11:29:22"
+   date_modified="2020-02-02 08:45:00"
    requires="5.05"
-   version="1.0"
+   version="1.1"
    >
 <description trim="y">
 <![CDATA[
