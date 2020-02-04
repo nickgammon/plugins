@@ -50,6 +50,9 @@ Date:   24th January 2020
                CallPlugin ("99c74b2685e425d3b6ed6a7d", "set_line_type", "exits")
                CallPlugin ("99c74b2685e425d3b6ed6a7d", "do_not_deduce_line_type", "exits")
 
+  Note: The plugin ID is fixed as it is set in the Learning_Mapper.xml file near the top:
+       id="99c74b2685e425d3b6ed6a7d"
+
 --]]
 
 -- The probability (in the range 0.0 to 1.0) that a line has to meet to be considered a certain line type.
@@ -196,7 +199,11 @@ function f_show_colour (which, value)
 end -- f_show_colour
 
 function f_show_word (which, value)
-  mapper.mapprint (string.format ("    %20s %5d %5d %7.2f", which, value.black, value.red, value.score))
+  if #which > 20 then
+    mapper.mapprint (string.format ("%s\n    %20s %5d %5d %7.2f", which, '', value.black, value.red, value.score))
+  else
+    mapper.mapprint (string.format ("    %20s %5d %5d %7.2f", which, value.black, value.red, value.score))
+  end -- if
 end -- f_show_colour
 
 function f_first_word (line)
@@ -618,12 +625,6 @@ function OnPluginDrawOutputWindow (firstline, offset, notused)
   local text_colour = ColourNameToRGB (config.STATUS_TEXT_COLOUR)
   local main_height = GetInfo (280)
   local font_height = GetInfo (212)
-  local have_name = false
-  local have_exit = false
-  local have_description = false
-  local have_prompt = false
-  local have_ignore_received = false
-  local previous_linetype = ""
 
   -- clear window
   WindowRectOp (win, miniwin.rect_fill, 0, 0, 0, 0, background_colour)
@@ -644,92 +645,21 @@ function OnPluginDrawOutputWindow (firstline, offset, notused)
         -- note or input line, ignore it
       else
         local linetype, probability, x_offset
-        if overridden_lines [line] then
-          linetype = overridden_lines [line]
-          line_type_info = string.format ("<- %s (certain)", linetype)
-          x_offset = WindowText (win, font_id, line_type_info, 1, top, 0, 0, text_colour)
-        else
-          linetype, probability = analyse_line (line)
-          if linetype then
-            line_type_info = string.format ("<- %s (%0.0f%%)", linetype, probability * 100)
+        local ded = deduced_line_types [GetLineInfo (line, 10)]
+        if ded then
+          if ded.ov then
+            line_type_info = string.format ("<- %s (certain)", line_types [ded.lt].short)
           else
-            line_type_info = ""
-          end -- if
-          x_offset = WindowText (win, font_id, line_type_info, 1, top, 0, 0, text_colour)
+            line_type_info = string.format ("<- %s (%0.0f%%)", line_types [ded.lt].short, (ded.con or 0) * 100)
+          end -- if overridden or not
+          local x_offset = WindowText (win, font_id, line_type_info, 1, top, 0, 0, text_colour)
           if (not GetLineInfo (line, 3)) and (line >= lastline - 1) then
             x_offset = x_offset + WindowText (win, font_id, " (partial line)", 1 + x_offset, top, 0, 0, ColourNameToRGB ("darkgray"))
           end -- if
-          local description_ignored = false
-          -- descriptions ignored if not after an exit?
-          if linetype == 'description' and config.ACTIVATE_DESCRIPTION_AFTER_EXITS and not have_exit then
-            description_ignored = true
-            x_offset = x_offset + WindowText (win, font_id, " (ignored)", 1 + x_offset, top, 0, 0, ColourNameToRGB ("darkgray"))
-          -- descriptions ignored if not after a room name?
-          elseif linetype == 'description' and config.ACTIVATE_DESCRIPTION_AFTER_ROOM_NAME and not have_name then
-            description_ignored = true
-            x_offset = x_offset + WindowText (win, font_id, " (ignored)", 1 + x_offset, top, 0, 0, ColourNameToRGB ("darkgray"))
-          elseif linetype == 'description' and have_ignore_received then
-            description_ignored = true
-            x_offset = x_offset + WindowText (win, font_id, " (ignored)", 1 + x_offset, top, 0, 0, ColourNameToRGB ("darkgray"))
-
-          end
-        end -- if overridden line or not
-
-        if linetype == 'description' then
-          if not description_ignored then
-            have_description = true
+          if ded.draw then
+            x_offset = x_offset + WindowText (win, font_id, " (draw map)", 1 + x_offset, top, 0, 0, ColourNameToRGB ("darkgray"))
           end -- if
-        elseif linetype == 'exits' then
-          have_exit = true
-        elseif linetype == 'room_name' then
-          have_name = true
-        elseif linetype == 'prompt' then
-          have_prompt = true
-        elseif linetype == 'ignore' then
-          have_ignore_received = true
-        end -- if
-
-        -- we would have drawn on a linetype change, if not a partial line
-        if linetype and GetLineInfo (line, 3) and (linetype ~= previous_linetype
-                                    or (linetype == 'exits' and config.EXITS_IS_SINGLE_LINE)
-                                    or (linetype == 'prompt' and config.PROMPT_IS_SINGLE_LINE)
-                                    )
-                                    then
-          local draw = false
-          if previous_linetype == 'description' and have_description then
-            if config.WHEN_TO_DRAW_MAP == DRAW_MAP_ON_DESCRIPTION then
-              draw = true
-            end -- if draw now
-          elseif previous_linetype == 'exits' and have_exit then
-            if config.WHEN_TO_DRAW_MAP == DRAW_MAP_ON_EXITS then
-              draw = true
-            end -- if draw now
-          elseif previous_linetype == 'room_name' and have_name then
-            if config.WHEN_TO_DRAW_MAP == DRAW_MAP_ON_ROOM_NAME then
-              draw = true
-            end -- if draw now
-          elseif previous_linetype == 'prompt' and have_prompt then
-            if config.WHEN_TO_DRAW_MAP == DRAW_MAP_ON_PROMPT then
-              draw = true
-            end -- if draw now
-          end -- if
-          if linetype == 'exits' and config.EXITS_IS_SINGLE_LINE and config.WHEN_TO_DRAW_MAP == DRAW_MAP_ON_EXITS then
-            draw = true
-          end -- if
-          if linetype == 'prompt' and config.PROMPT_IS_SINGLE_LINE and config.WHEN_TO_DRAW_MAP == DRAW_MAP_ON_PROMPT then
-            draw = true
-          end -- if
-          if draw then
-             x_offset = x_offset + WindowText (win, font_id, " (draw map)", 1 + x_offset, top, 0, 0, ColourNameToRGB ("darkgray"))
-             -- drawing discards previous ones
-             have_exit = false
-             have_name = false
-             have_description = false
-             have_prompt = false
-             have_ignore_received = false
-          end -- if
-          previous_linetype = linetype
-        end -- linetype change
+        end -- if in deduced_line_types table
       end -- if output line
       top = top + font_height
     end -- if line exists
@@ -821,29 +751,6 @@ function corpus_reset (empty)
 
     end -- for each marker type
   end -- for each line type
-
---[[
-
-  -- make sure rules table exists
-  if not config.rules then
-    config.rules =  { }
-  end -- if
-
-  -- make sure each line type and each marker is in the config
-  for line_type, line_info in pairs (line_types) do
-    if not config.rules [line_type] then
-      config.rules [line_type] = { }
-    end -- if
-
-    local t = config.rules [line_type]
-    for _, m in ipairs (markers) do
-       if t [m.marker] == nil then
-         t [m.marker] = true
-       end -- if rule not there
-    end -- if
-  end -- if
-
---]]
 
 end -- corpus_reset
 
@@ -1250,23 +1157,10 @@ function learn_line_type (which, black)
   for line = start_line, end_line do
     -- process all the marker types, and add 1 to the red/black counter for that particular marker
     for k, v in ipairs (markers) do
-      if marker_active  (which, v.marker) then
-        local values = v.func (line) -- call handler to get values
-        for _, value in ipairs (values) do
-          update_corpus (which, v.marker, value, black)
-        end -- for each value
-      end -- this marker active for this linetype
-
---[[
-      -- other line types do NOT match this, if it was black
-      if black then
-        for linetype in pairs (line_types) do
-          if linetype ~= which then -- don't do the one which it IS
-            update_corpus (linetype, v.marker, value, red)
-          end -- if not the learning type
-        end -- each line type
-      end -- black learning
---]]
+      local values = v.func (line) -- call handler to get values
+      for _, value in ipairs (values) do
+        update_corpus (which, v.marker, value, black)
+      end -- for each value
 
     end -- for each type of marker
   end -- for each line
@@ -1332,18 +1226,15 @@ function analyse_line (line)
       local probs = { }
       for _, m in ipairs (markers) do
         marker_probs = { }  -- probability for this marker
-        -- they can disable some markers for some line types
-        if marker_active (line_type, m.marker) then
-          local values = marker_values [m.marker] -- get previously-retrieved values
-          for _, value in ipairs (values) do
-            local corpus_value = corpus [line_type] [m.marker] [value]
-            if corpus_value then
-              assert (type (corpus_value) == 'table', 'corpus_value not a table')
-              --table.insert (probs, corpus_value.score)
-              table.insert (marker_probs, corpus_value.score)
-            end -- of having a value
-          end -- for each value
-        end -- of marker being active for this line type
+        local values = marker_values [m.marker] -- get previously-retrieved values
+        for _, value in ipairs (values) do
+          local corpus_value = corpus [line_type] [m.marker] [value]
+          if corpus_value then
+            assert (type (corpus_value) == 'table', 'corpus_value not a table')
+            --table.insert (probs, corpus_value.score)
+            table.insert (marker_probs, corpus_value.score)
+          end -- of having a value
+        end -- for each value
         table.insert (probs, SetProbability (marker_probs))
       end -- for each type of marker
       local score = SetProbability (probs)
@@ -1381,6 +1272,9 @@ end -- fixuid
 -- we have an exit line - work out where we are and what the exits are
 -- -----------------------------------------------------------------
 function process_new_room ()
+
+  local this_line = GetLinesInBufferCount()         -- which line in the output buffer
+  local line_number = GetLineInfo (this_line, 10)   -- which line this was overall
 
   if override_contents ['description'] then
     description = override_contents ['description']
@@ -1468,6 +1362,8 @@ function process_new_room ()
 
   -- call mapper to draw this room
   mapper.draw (uid)
+
+  deduced_line_types [line_number].draw = true
 
   room_name = nil
   exits_str = nil
@@ -1622,7 +1518,6 @@ end -- function
 function OnPluginConnect ()
   mapper.cancel_speedwalk ()
   from_room = nil
-  overridden_lines = { }
   room_name = nil
   exits_str = nil
   description = nil
@@ -1640,7 +1535,6 @@ end -- OnPluginConnect
 
 function OnPluginDisconnect ()
   mapper.cancel_speedwalk ()
-  overridden_lines = { }
 end -- OnPluginDisconnect
 
 -- -----------------------------------------------------------------
@@ -1827,12 +1721,13 @@ end -- map_goto
 
 last_deduced_type = nil
 saved_lines = { }
-overridden_lines = { }
+deduced_line_types = { }
 
 function line_received (name, line, wildcards, styles)
 
-  local this_line = GetLinesInBufferCount()
-  local deduced_type
+  local this_line = GetLinesInBufferCount()         -- which line in the output buffer
+  local line_number = GetLineInfo (this_line, 10)   -- which line this was overall
+  local deduced_type, probability
 
   -- see if a plugin has overriden the line type
   if override_line_type then
@@ -1840,9 +1735,7 @@ function line_received (name, line, wildcards, styles)
     if override_line_contents then
       line = override_line_contents
     end -- if new contents wanted
-    overridden_lines [this_line] = override_line_type
   else
-    overridden_lines [this_line] = nil
     if (not config.BLANK_LINE_TERMINATES_LINE_TYPE) and Trim (line) == "" then
       return
     end -- if empty line
@@ -1850,10 +1743,22 @@ function line_received (name, line, wildcards, styles)
     if config.BLANK_LINE_TERMINATES_LINE_TYPE and Trim (line) == "" then
       deduced_type = nil
     else
-      deduced_type = analyse_line (this_line)
+      deduced_type, probability = analyse_line (this_line)
     end -- if
 
   end -- if
+
+  -- record for scrollback buffer
+  if deduced_type then
+    deduced_line_types [line_number] = {
+        lt = deduced_type,  -- what type we assigned to it
+        con = probability,  -- with what probability
+        draw = false,       -- did we draw on this line?
+        ov = override_line_type,  -- was it overridden?
+        }
+  end -- if not nil type
+
+  -- INFO ("This line is", deduced_type)
 
   if deduced_type ~= last_deduced_type then
 
@@ -1868,7 +1773,6 @@ function line_received (name, line, wildcards, styles)
     saved_lines = { }
   end -- if line type has changed
 
-   -- INFO ("This line is", deduced_type)
 
   table.insert (saved_lines, { line = line, styles = styles } )
 
@@ -1993,12 +1897,8 @@ function show_corpus ()
     corpus_line_type = corpus [name]
     -- for each one show each marker type (eg. first word, all words, colour)
     for _, marker in ipairs (markers) do
-      local inactive = ""
-      if not marker_active (name, marker.marker) then
-        inactive = " (not used)"
-      end -- if
       mapper.mapprint ("  " .. string.rep ("-", 70))
-      mapper.mapprint ("  " .. marker.desc .. inactive)
+      mapper.mapprint ("  " .. marker.desc)
       mapper.mapprint ("  " .. string.rep ("-", 70))
       local f = marker.show
       local accessing_function  = marker.accessing_function  -- pairs for numbers or pairsByKeys for strings
@@ -2035,15 +1935,6 @@ function mapper_config (name, line, wildcards)
       mapper.mapprint (string.format ("mapper config %-40s %s", v.name, v.show (config [v.option])))
     end
     mapper.mapprint ("")
-    --[[
-    for line_type, line_info in pairs (line_types) do
-      local t = config.rules [line_type]
-      for _, m in ipairs (markers) do
-        mapper.mapprint (string.format ("mapper rule %-12s %-30s %s", line_type, m.marker, config_display_boolean (t [m.marker])))
-      end -- for
-    end -- for
-    --]]
-
     mapper.mapprint (string.rep ("-", 60))
     mapper.mapprint ('Type "mapper help" for more information about the above options.')
 
@@ -2089,68 +1980,6 @@ function mapper_config (name, line, wildcards)
   mapper.mapprint (string.format ("mapper config %s %s", config_item.name, config_item.show (config [config_item.option])))
   return true
 end -- mapper_config
-
--- -----------------------------------------------------------------
--- marker_active - returns true if we are using this marker for this linetype
--- -----------------------------------------------------------------
-function marker_active (linetype, marker)
-  assert (line_types [linetype], "Line type " .. linetype .. " not known.")
-  assert (inverse_markers [marker], "Marker " .. marker .. " not known.")
-  return true; -- DEBUG
-  -- return config.rules [linetype] [marker]
-end -- marker_active
-
---[[
-
--- -----------------------------------------------------------------
--- mapper_rule - change rule options
--- Format is: mapper config <linetype> <marker> <value>  <-- change option <name> to <value>
--- -----------------------------------------------------------------
-function mapper_rule (name, line, wildcards)
-  local linetype = Trim (wildcards.linetype:lower ())
-  local marker = Trim (wildcards.marker:lower ())
-  local value = Trim (wildcards.value)
-
-  -- line type name given - look it up in the list
-  if not validate_linetype (linetype, 'mapper rule') then
-    return
-  end -- if not valid
-
-  if not inverse_markers [marker] then
-    if marker ~= "" then
-       mapper.maperror ("There is no marker: " .. marker)
-    end -- if
-    mapper.mapprint ("  Markers are:")
-    for k, v in ipairs (markers) do
-      mapper.mapprint ("    " .. v.marker)
-    end -- for
-    return
-  end -- if
-
-  -- no value given - display the current setting of this option
-  if value == "" then
-    mapper.mapprint ("Current value for " .. linetype .. " " .. marker .. ":")
-    mapper.mapprint ("")
-    mapper.mapprint (string.format ("mapper rule %s %s %s", linetype, marker, config_display_boolean (marker_active (linetype, marker))))
-    mapper.mapprint ("")
-    return
-  end -- no value given
-
-  -- validate new option value
-  local new_value = config_validate_boolean (value)
-  if new_value == nil then    -- it might be false, so we have to test for nil
-    mapper.maperror ("Configuration rule not changed.")
-    return
-  end -- bad value
-
-  -- set the new value and confirm it was set
-  config.rules [linetype] [marker] = new_value
-  mapper.mapprint ("Configuration rule changed. New value is:")
-  mapper.mapprint (string.format ("mapper rule %s %s %s", linetype, marker, config_display_boolean (config.rules [linetype] [marker])))
-
-end -- mapper_rule
-
---]]
 
 -- -----------------------------------------------------------------
 -- count_rooms - count how many rooms are in the database

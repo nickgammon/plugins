@@ -289,20 +289,6 @@ mapper reset database   --> deletes the entire mapper database, so all mapped ro
   >
   </alias>
 
-<!--
-
- <alias
-   match="^mapper rules?(\s+(?<linetype>[a-zA-Z_]+)(\s+(?<marker>[a-zA-Z_]+)(\s+(?<value>[a-zA-Z]+))?)?)?$"
-   enabled="y"
-   send_to="1"
-   sequence="100"
-   regexp="y"
-   script="mapper_rule"
-  >
-  </alias>
-
--->
-
   <alias
    match="mapper reset database"
    enabled="y"
