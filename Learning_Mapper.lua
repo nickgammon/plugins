@@ -26,6 +26,26 @@ Date:   24th January 2020
  tort or otherwise, arising from, out of or in connection with the software
  or the use or other dealings in the software.
 
+  EXPOSED FUNCTIONS
+
+  eg. config = CallPlugin ("99c74b2685e425d3b6ed6a7d", "get_config")
+               CallPlugin ("99c74b2685e425d3b6ed6a7d", "set_line_type", "exits")
+               CallPlugin ("99c74b2685e425d3b6ed6a7d", "do_not_deduce_line_type", "exits")
+
+  set_line_type (linetype)           --> set this current line to be definitely linetype
+  set_not_line_type (linetype)       --> set this current line to be definitely not linetype (can call for multiple line types)
+  do_not_deduce_line_type (linetype) --> do not deduce (do Bayesian analysis) on this type of line - has to be set by set_line_type
+  deduce_line_type (linetype)        --> deduce this line type (cancels do_not_deduce_line_type)
+  get_last_line_type ()              --> get the previous line type as deduced or set by set_line_type
+  get_this_line_type ()              --> get the current overridden line type (from set_line_type)
+  set_config_option (name, value)    --> set a mapper configuration value if <name> to <value>
+  get_config_option (name)           --> get the current configuration value of <name>
+  get_corpus ()                      --> get the corpus (serialized table)
+  get_stats ()                       --> get the training stats (serialized table)
+  get_database ()                    --> get the mapper database (rooms table) (serialized table)
+  get_config ()                      --> get the configuration options (serialized table)
+
+
 --]]
 
 -- The probability (in the range 0.0 to 1.0) that a line has to meet to be considered a certain line type.
@@ -48,11 +68,10 @@ require "pairsbykeys"
 -- -----------------------------------------------------------------
 
 function f_handle_description (saved_lines)
-  local lines = { }
-  for _, line_info in ipairs (saved_lines) do
-    table.insert (lines, line_info.line) -- get text of line
-  end -- for each line
-  description = table.concat (lines, "\n")
+
+  if description and ignore_received then
+    return
+  end -- if
 
   -- if the description follows the exits, then ignore descriptions that don't follow exits
   if config.ACTIVATE_DESCRIPTION_AFTER_EXITS then
@@ -67,6 +86,12 @@ function f_handle_description (saved_lines)
       return
     end -- if
   end -- if
+
+  local lines = { }
+  for _, line_info in ipairs (saved_lines) do
+    table.insert (lines, line_info.line) -- get text of line
+  end -- for each line
+  description = table.concat (lines, "\n")
 
   if config.WHEN_TO_DRAW_MAP == DRAW_MAP_ON_DESCRIPTION then
     process_new_room ()
@@ -116,16 +141,28 @@ function f_handle_prompt ()
   end -- if
 end -- f_handle_prompt
 
+-- ignore this line type
+function f_handle_ignore ()
+  ignore_received = true
+end -- f_handle_ignore
+
+-- we can't move! - cancel any speedwalk
+function f_cannot_move ()
+  mapper.cancel_speedwalk ()
+end -- f_cannot_move
+
 -- -----------------------------------------------------------------
 -- Handlers for getting the wanted value for a marker for the nominated line
 -- -----------------------------------------------------------------
 
 -- these are the types of lines we are trying to classify as a certain line IS or IS NOT that type
 line_types = {
-  description = { short = "Description",  handler = f_handle_description },
-  exits       = { short = "Exits",        handler = f_handle_exits },
-  room_name   = { short = "Room name",    handler = f_handle_name },
-  prompt      = { short = "Prompt",       handler = f_handle_prompt },
+  room_name   = { short = "Room name",    handler = f_handle_name,        seq = 1 },
+  description = { short = "Description",  handler = f_handle_description, seq = 2 },
+  exits       = { short = "Exits",        handler = f_handle_exits,       seq = 3 },
+  prompt      = { short = "Prompt",       handler = f_handle_prompt,      seq = 4 },
+  ignore      = { short = "Ignore",       handler = f_handle_ignore,      seq = 5 },
+  cannot_move = { short = "Can't move",   handler = f_cannot_move,        seq = 6 },
 }  -- end of line_types table
 
 function f_first_style_run_foreground (line)
@@ -146,6 +183,27 @@ function f_first_word (line)
   end -- no line available
   return { (string.match (GetLineInfo(line, 1), "^%s*(%a+)") or ""):lower () }
 end -- f_first_word
+
+function f_exact_line (line)
+  if not GetLineInfo(line, 1) then
+    return {}
+  end -- no line available
+  return { GetLineInfo(line, 1) }
+end -- f_exact_line
+
+function f_first_two_words (line)
+  if not GetLineInfo(line, 1) then
+    return {}
+  end -- no line available
+  return { (string.match (GetLineInfo(line, 1), "^%s*(%a+%s+%a+)") or ""):lower () }
+end -- f_first_two_words
+
+function f_first_three_words (line)
+  if not GetLineInfo(line, 1) then
+    return {}
+  end -- no line available
+  return { (string.match (GetLineInfo(line, 1), "^%s*(%a+%s+%a+%s+%a+)") or ""):lower () }
+end -- f_first_three_words
 
 function f_all_words (line)
   if not GetLineInfo(line, 1) then
@@ -181,7 +239,7 @@ markers = {
   {
   desc = "Foreground colour of first style run",
   func = f_first_style_run_foreground,
-  marker = "m_first_style_run_foreground",
+  marker = "first_style_run_foreground",
   show = f_show_colour,
   accessing_function = pairs,
   },
@@ -189,7 +247,25 @@ markers = {
   {
   desc = "First word in the line",
   func = f_first_word,
-  marker = "m_first_word",
+  marker = "first_word",
+  show = f_show_word,
+  accessing_function = pairsByKeys,
+
+  },
+
+ {
+  desc = "First two words in the line",
+  func = f_first_two_words,
+  marker = "first_two_words",
+  show = f_show_word,
+  accessing_function = pairsByKeys,
+
+  },
+
+ {
+  desc = "First three words in the line",
+  func = f_first_three_words,
+  marker = "first_three_words",
   show = f_show_word,
   accessing_function = pairsByKeys,
 
@@ -198,10 +274,18 @@ markers = {
   {
   desc = "All words in the line",
   func = f_all_words,
-  marker = "m_all_words",
+  marker = "all_words",
   show = f_show_word,
   accessing_function = pairsByKeys,
 
+  },
+
+ {
+  desc = "Exact line",
+  func = f_exact_line,
+  marker = "exact_line",
+  show = f_show_word,
+  accessing_function = pairsByKeys,
   },
 
 --[[
@@ -209,7 +293,7 @@ markers = {
  {
   desc = "First character in the line",
   func = f_first_character,
-  marker = "m_first_character",
+  marker = "first_character",
   show = f_show_word,
 
   },
@@ -217,6 +301,11 @@ markers = {
 --]]
 
   } -- end of markers
+
+inverse_markers = { }
+for k, v in ipairs (markers) do
+  inverse_markers [v.marker] = v
+end -- for
 
 -- this table has the counters
 corpus = { }
@@ -290,6 +379,7 @@ default_config = {
   EXITS_ON_ROOM_NAME = false,                  -- if true, exits are listed on the room name line (eg. Starter Inventory and Shops [E, U])
   INCLUDE_EXITS_IN_HASH = true,                -- if true, exits are included in the description hash (UID)
   EXITS_IS_SINGLE_LINE = false,                -- if true, exits are assumed to be only a single line
+  EXIT_LINES_START_WITH_DIRECTION = false,     -- if true, exit lines must start with a direction (north, south, etc.)
 
   }
 
@@ -412,7 +502,8 @@ config_control = {
   { option = 'BLANK_LINE_TERMINATES_LINE_TYPE',   name = 'blank_line_terminates_line_type',  validate = config_validate_boolean,      show = config_display_boolean },
   { option = 'EXITS_ON_ROOM_NAME',                name = 'exits_on_room_name',               validate = config_validate_boolean,      show = config_display_boolean },
   { option = 'INCLUDE_EXITS_IN_HASH',             name = 'include_exits_in_hash',            validate = config_validate_boolean,      show = config_display_boolean },
-  { option = 'EXITS_IS_SINGLE_LINE',              name = 'exits_is_single_line',              validate = config_validate_boolean,      show = config_display_boolean },
+  { option = 'EXITS_IS_SINGLE_LINE',              name = 'exits_is_single_line',             validate = config_validate_boolean,      show = config_display_boolean },
+  { option = 'EXIT_LINES_START_WITH_DIRECTION',   name = 'exit_lines_start_with_direction',  validate = config_validate_boolean,      show = config_display_boolean },
   { option = 'STATUS_BACKGROUND_COLOUR',          name = 'status_background',                validate = config_validate_colour,       show = config_display_colour },
   { option = 'STATUS_FRAME_COLOUR',               name = 'status_border',                    validate = config_validate_colour,       show = config_display_colour },
   { option = 'STATUS_TEXT_COLOUR',                name = 'status_text',                      validate = config_validate_colour,       show = config_display_colour },
@@ -490,6 +581,7 @@ function OnPluginDrawOutputWindow (firstline, offset, notused)
   local have_exit = false
   local have_description = false
   local have_prompt = false
+  local have_ignore_received = false
   local previous_linetype = ""
 
   -- clear window
@@ -510,26 +602,37 @@ function OnPluginDrawOutputWindow (firstline, offset, notused)
       if GetLineInfo (line, 4) or GetLineInfo (line, 5) then
         -- note or input line, ignore it
       else
-        local linetype, probability = analyse_line (line)
-        if linetype then
-          line_type_info = string.format ("<- %s (%0.0f%%)", linetype, probability * 100)
+        local linetype, probability, x_offset
+        if overridden_lines [line] then
+          linetype = overridden_lines [line]
+          line_type_info = string.format ("<- %s (certain)", linetype)
+          x_offset = WindowText (win, font_id, line_type_info, 1, top, 0, 0, text_colour)
         else
-          line_type_info = ""
-        end -- if
-        local x_offset = WindowText (win, font_id, line_type_info, 1, top, 0, 0, text_colour)
-        if (not GetLineInfo (line, 3)) and (line >= lastline - 1) then
-          x_offset = x_offset + WindowText (win, font_id, " (partial line)", 1 + x_offset, top, 0, 0, ColourNameToRGB ("darkgray"))
-        end -- if
-        local description_ignored = false
-        -- descriptions ignored if not after an exit?
-        if linetype == 'description' and config.ACTIVATE_DESCRIPTION_AFTER_EXITS and not have_exit then
-          description_ignored = true
-          x_offset = x_offset + WindowText (win, font_id, " (ignored)", 1 + x_offset, top, 0, 0, ColourNameToRGB ("darkgray"))
-        -- descriptions ignored if not after a room name?
-        elseif linetype == 'description' and config.ACTIVATE_DESCRIPTION_AFTER_ROOM_NAME and not have_name then
-          description_ignored = true
-          x_offset = x_offset + WindowText (win, font_id, " (ignored)", 1 + x_offset, top, 0, 0, ColourNameToRGB ("darkgray"))
-        end
+          linetype, probability = analyse_line (line)
+          if linetype then
+            line_type_info = string.format ("<- %s (%0.0f%%)", linetype, probability * 100)
+          else
+            line_type_info = ""
+          end -- if
+          x_offset = WindowText (win, font_id, line_type_info, 1, top, 0, 0, text_colour)
+          if (not GetLineInfo (line, 3)) and (line >= lastline - 1) then
+            x_offset = x_offset + WindowText (win, font_id, " (partial line)", 1 + x_offset, top, 0, 0, ColourNameToRGB ("darkgray"))
+          end -- if
+          local description_ignored = false
+          -- descriptions ignored if not after an exit?
+          if linetype == 'description' and config.ACTIVATE_DESCRIPTION_AFTER_EXITS and not have_exit then
+            description_ignored = true
+            x_offset = x_offset + WindowText (win, font_id, " (ignored)", 1 + x_offset, top, 0, 0, ColourNameToRGB ("darkgray"))
+          -- descriptions ignored if not after a room name?
+          elseif linetype == 'description' and config.ACTIVATE_DESCRIPTION_AFTER_ROOM_NAME and not have_name then
+            description_ignored = true
+            x_offset = x_offset + WindowText (win, font_id, " (ignored)", 1 + x_offset, top, 0, 0, ColourNameToRGB ("darkgray"))
+          elseif linetype == 'description' and have_ignore_received then
+            description_ignored = true
+            x_offset = x_offset + WindowText (win, font_id, " (ignored)", 1 + x_offset, top, 0, 0, ColourNameToRGB ("darkgray"))
+
+          end
+        end -- if overridden line or not
 
         if linetype == 'description' then
           if not description_ignored then
@@ -541,9 +644,9 @@ function OnPluginDrawOutputWindow (firstline, offset, notused)
           have_name = true
         elseif linetype == 'prompt' then
           have_prompt = true
+        elseif linetype == 'ignore' then
+          have_ignore_received = true
         end -- if
-
-
 
         -- we would have drawn on a linetype change, if not a partial line
         if linetype and GetLineInfo (line, 3) and (linetype ~= previous_linetype
@@ -576,6 +679,7 @@ function OnPluginDrawOutputWindow (firstline, offset, notused)
              have_name = false
              have_description = false
              have_prompt = false
+             have_ignore_received = false
           end -- if
           previous_linetype = linetype
         end -- linetype change
@@ -629,7 +733,7 @@ end -- OnPluginWorldOutputResized
 -- INFO helper function for debugging the plugin (information messages)
 -- -----------------------------------------------------------------
 function INFO (...)
-   -- ColourNote ("orange", "", table.concat ( { ... }, " "))
+    -- ColourNote ("orange", "", table.concat ( { ... }, " "))
 end -- INFO
 
 -- -----------------------------------------------------------------
@@ -666,10 +770,30 @@ function corpus_reset (empty)
 
     end -- for each marker type
   end -- for each line type
+
+  -- make sure rules table exists
+  if not config.rules then
+    config.rules =  { }
+  end -- if
+
+  -- make sure each line type and each marker is in the config
+  for line_type, line_info in pairs (line_types) do
+    if not config.rules [line_type] then
+      config.rules [line_type] = { }
+    end -- if
+
+    local t = config.rules [line_type]
+    for _, m in ipairs (markers) do
+       if t [m.marker] == nil then
+         t [m.marker] = true
+       end -- if rule not there
+    end -- if
+  end -- if
+
 end -- corpus_reset
 
 LEARN_WINDOW_WIDTH = 300
-LEARN_WINDOW_HEIGHT = 200
+LEARN_WINDOW_HEIGHT = 270
 LEARN_BUTTON_WIDTH = 80
 LEARN_BUTTON_HEIGHT = 30
 
@@ -862,12 +986,12 @@ function OnPluginInstall ()
   -- load stats
   assert (loadstring (GetVariable ("stats") or "")) ()
 
-  corpus_reset ()
-
   config = {}  -- in case not found
 
   -- get saved configuration
   assert (loadstring (GetVariable ("config") or "")) ()
+
+  corpus_reset ()
 
   -- allow for additions to config
   for k, v in pairs (default_config) do
@@ -967,8 +1091,16 @@ function OnPluginInstall ()
   local YES_BUTTON_LEFT = 100
   local NO_BUTTON_LEFT = YES_BUTTON_LEFT + LEARN_BUTTON_WIDTH + 20
 
+  -- get the line types into my preferred order
+  local sorted_line_types = { }
+  for type_name in pairs (line_types) do
+    table.insert (sorted_line_types, type_name)
+  end -- for
+  table.sort (sorted_line_types, function (a, b) return line_types [a].seq < line_types [b].seq end)
+
   local y = learn_font_height + 10
-  for type_name, type_info in pairs (line_types) do
+  for _, type_name in ipairs (sorted_line_types) do
+    local type_info = line_types [type_name]
     WindowText   (learn_window, learnFontId, type_info.short, LABEL_LEFT, y + 8, 0, 0, ColourNameToRGB "black", true)
 
     make_button (learn_window, learnFontId, YES_BUTTON_LEFT, y, "Yes", "Learn selection IS " .. type_info.short,
@@ -1063,10 +1195,12 @@ function learn_line_type (which, black)
   for line = start_line, end_line do
     -- process all the marker types, and add 1 to the red/black counter for that particular marker
     for k, v in ipairs (markers) do
-      local values = v.func (line) -- call handler to get values
-      for _, value in ipairs (values) do
-        update_corpus (which, v.marker, value, black)
-      end -- for each value
+      if marker_active  (which, v.marker) then
+        local values = v.func (line) -- call handler to get values
+        for _, value in ipairs (values) do
+          update_corpus (which, v.marker, value, black)
+        end -- for each value
+      end -- this marker active for this linetype
 
 --[[
       -- other line types do NOT match this, if it was black
@@ -1138,20 +1272,35 @@ function analyse_line (line)
   end -- for each type of marker
 
   for line_type, line_type_info in pairs (line_types) do
-    local probs = { }
-    for _, m in ipairs (markers) do
-      local values = marker_values [m.marker] -- get previously-retrieved values
-      for _, value in ipairs (values) do
-        local corpus_value = corpus [line_type] [m.marker] [value]
-        if corpus_value then
-          assert (type (corpus_value) == 'table', 'corpus_value not a table')
-          table.insert (probs, corpus_value.score)
-        end -- of having a value
-      end -- for each value
-    end -- for each type of marker
-    local score = SetProbability (probs)
-    table.insert (result, string.format ("%s: %3.2f", line_type_info.short, score))
-    table.insert (line_type_probs, { line_type = line_type, score = score } )
+     -- don't if they don't want Bayesian deduction for this type
+    if not do_not_deduce_linetypes [line_type] or line_is_not_line_type [line_type] then
+      local probs = { }
+      for _, m in ipairs (markers) do
+        marker_probs = { }  -- probability for this marker
+        -- they can disable some markers for some line types
+        if marker_active (line_type, m.marker) then
+          local values = marker_values [m.marker] -- get previously-retrieved values
+          for _, value in ipairs (values) do
+            local corpus_value = corpus [line_type] [m.marker] [value]
+            if corpus_value then
+              assert (type (corpus_value) == 'table', 'corpus_value not a table')
+              --table.insert (probs, corpus_value.score)
+              table.insert (marker_probs, corpus_value.score)
+            end -- of having a value
+          end -- for each value
+        end -- of marker being active for this line type
+        table.insert (probs, SetProbability (marker_probs))
+      end -- for each type of marker
+      local score = SetProbability (probs)
+      table.insert (result, string.format ("%s: %3.2f", line_type_info.short, score))
+      local first_word = (string.match (GetLineInfo(line, 1), "^%s*(%a+)") or ""):lower ()
+
+      if line_type ~= 'exits' or
+        (not config.EXIT_LINES_START_WITH_DIRECTION) or
+        valid_direction [first_word] then
+          table.insert (line_type_probs, { line_type = line_type, score = score } )
+      end -- if
+    end -- allowed to deduce this line type
   end -- for each line type
   table.sort (line_type_probs, function (a, b) return a.score > b.score end)
   if line_type_probs [1].score > PROBABILITY_CUTOFF then
@@ -1255,6 +1404,10 @@ function process_new_room ()
   exits_str = nil
   description = nil
   last_direction_moved = nil
+  ignore_received = false
+  override_line_type = nil
+  override_line_contents = nil
+  line_is_not_line_type = { }
 
 end -- process_new_room
 
@@ -1392,16 +1545,22 @@ function OnPluginSent (sText)
   end -- if
 end -- function
 
-
-
 -- -----------------------------------------------------------------
 -- Plugin just connected to world
 -- -----------------------------------------------------------------
 
 function OnPluginConnect ()
-  from_room = nil
-  last_direction_moved = nil
   mapper.cancel_speedwalk ()
+  from_room = nil
+  overridden_lines = { }
+  room_name = nil
+  exits_str = nil
+  description = nil
+  last_direction_moved = nil
+  ignore_received = false
+  override_line_type = nil
+  override_line_contents = nil
+  line_is_not_line_type = { }
 end -- OnPluginConnect
 
 -- -----------------------------------------------------------------
@@ -1410,6 +1569,7 @@ end -- OnPluginConnect
 
 function OnPluginDisconnect ()
   mapper.cancel_speedwalk ()
+  overridden_lines = { }
 end -- OnPluginDisconnect
 
 -- -----------------------------------------------------------------
@@ -1596,21 +1756,32 @@ end -- map_goto
 
 last_deduced_type = nil
 saved_lines = { }
+overridden_lines = { }
 
 function line_received (name, line, wildcards, styles)
-
-  if (not config.BLANK_LINE_TERMINATES_LINE_TYPE) and Trim (line) == "" then
-    return
-  end -- if empty line
 
   local this_line = GetLinesInBufferCount()
   local deduced_type
 
-
-  if config.BLANK_LINE_TERMINATES_LINE_TYPE and Trim (line) == "" then
-    deduced_type = nil
+  -- see if a plugin has overriden the line type
+  if override_line_type then
+    deduced_type = override_line_type
+    if override_line_contents then
+      line = override_line_contents
+    end -- if new contents wanted
+    overridden_lines [this_line] = override_line_type
   else
-    deduced_type = analyse_line (this_line)
+    overridden_lines [this_line] = nil
+    if (not config.BLANK_LINE_TERMINATES_LINE_TYPE) and Trim (line) == "" then
+      return
+    end -- if empty line
+
+    if config.BLANK_LINE_TERMINATES_LINE_TYPE and Trim (line) == "" then
+      deduced_type = nil
+    else
+      deduced_type = analyse_line (this_line)
+    end -- if
+
   end -- if
 
   if deduced_type ~= last_deduced_type then
@@ -1636,6 +1807,10 @@ function line_received (name, line, wildcards, styles)
       last_deduced_type = nil
   end -- if
 
+  -- reset back ready for next line
+  line_is_not_line_type = { }
+  override_line_type = nil
+
 end -- line_received
 
 -- -----------------------------------------------------------------
@@ -1643,10 +1818,10 @@ end -- line_received
 -- -----------------------------------------------------------------
 
 function corpus_info ()
-  mapper.mapprint  (string.format ("%15s %5s %5s", "Line type", "is", "not"))
-  mapper.mapprint  (string.format ("%15s %5s %5s", string.rep ("-", 15), string.rep ("-", 5), string.rep ("-", 5)))
+  mapper.mapprint  (string.format ("%20s %5s %5s", "Line type", "is", "not"))
+  mapper.mapprint  (string.format ("%20s %5s %5s", string.rep ("-", 15), string.rep ("-", 5), string.rep ("-", 5)))
   for k, v in pairs (stats) do
-    mapper.mapprint  (string.format ("%15s %5d %5d", k, v.is, v.isnot))
+    mapper.mapprint  (string.format ("%20s %5d %5d", k, v.is, v.isnot))
   end -- for each line type
   mapper.mapprint ("There are " .. count_values (corpus) .. " entries in the corpus.")
 end -- corpus_info
@@ -1661,6 +1836,9 @@ function OnHelp ()
   mapper.mapprint (string.format ("%s version %0.2f", GetPluginName(), GetPluginInfo (GetPluginID (), 19)))
 end
 
+-- -----------------------------------------------------------------
+-- map_where - where is the specified room? (by uid)
+-- -----------------------------------------------------------------
 function map_where (name, line, wildcards)
 
   if not mapper.check_we_can_find () then
@@ -1710,11 +1888,13 @@ function OnPluginPacketReceived (pkt)
   -- (just a ">" sign at the end of a line optionally followed by one space)
   if GetInfo (104) then  -- if MXP enabled
     if string.match (pkt, "&gt; ?$") then
-      return pkt .. "\n";
+      return pkt .. "\n"
     end -- if
   else
-    if string.match (pkt, "> ?$") then
-      return pkt .. "\n";
+    if string.match (pkt, "> ?$") then  -- > symbol at end of packet
+      return pkt .. "\n"
+    elseif string.match (pkt, ">\027%[0m ?$") then -- > symbol at end of packet followed by ESC [0m
+      return pkt .. "\n"
     end -- if
   end -- if MXP or not
 
@@ -1734,8 +1914,12 @@ function show_corpus ()
     corpus_line_type = corpus [name]
     -- for each one show each marker type (eg. first word, all words, colour)
     for _, marker in ipairs (markers) do
+      local inactive = ""
+      if not marker_active (name, marker.marker) then
+        inactive = " (not used)"
+      end -- if
       mapper.mapprint ("  " .. string.rep ("-", 70))
-      mapper.mapprint ("  " .. marker.desc)
+      mapper.mapprint ("  " .. marker.desc .. inactive)
       mapper.mapprint ("  " .. string.rep ("-", 70))
       local f = marker.show
       local accessing_function  = marker.accessing_function  -- pairs for numbers or pairsByKeys for strings
@@ -1772,6 +1956,15 @@ function mapper_config (name, line, wildcards)
       mapper.mapprint (string.format ("mapper config %-40s %s", v.name, v.show (config [v.option])))
     end
     mapper.mapprint ("")
+    --[[
+    for line_type, line_info in pairs (line_types) do
+      local t = config.rules [line_type]
+      for _, m in ipairs (markers) do
+        mapper.mapprint (string.format ("mapper rule %-12s %-30s %s", line_type, m.marker, config_display_boolean (t [m.marker])))
+      end -- for
+    end -- for
+    --]]
+
     mapper.mapprint (string.rep ("-", 60))
     mapper.mapprint ('Type "mapper help" for more information about the above options.')
 
@@ -1786,19 +1979,14 @@ function mapper_config (name, line, wildcards)
     mapper.mapprint ('Type "mapper corpus info" for more information about line training.')
     mapper.mapprint (string.format ("%s: %s", "Show mapper training window and status", config_display_boolean (config.SHOW_LEARNING_WINDOW)))
     mapper.mapprint ('Type "mapper learn" to toggle the training windows.')
-  return
+    return false
   end -- no item given
 
   -- config name given - look it up in the list
-  local config_item = config_control_names [name]
+  local config_item = validate_option (name, 'mapper config')
   if not config_item then
-    mapper.maperror ("There is no configuration item: " .. name)
-    mapper.mapprint ("  Configuration items are:")
-    for k, v in ipairs (config_control) do
-      mapper.mapprint ("    " .. v.name)
-    end
-    return
-  end -- config item not found
+    return false
+  end -- if no such option
 
   -- no value given - display the current setting of this option
   if value == "" then
@@ -1806,22 +1994,84 @@ function mapper_config (name, line, wildcards)
     mapper.mapprint ("")
     mapper.mapprint (string.format ("mapper config %s %s", config_item.name, config_item.show (config [config_item.option])))
     mapper.mapprint ("")
-    return
+    return false
   end -- no value given
 
   -- validate new option value
   local new_value = config_item.validate (value)
   if new_value == nil then    -- it might be false, so we have to test for nil
     mapper.maperror ("Configuration option not changed.")
-    return
+    return false
   end -- bad value
 
   -- set the new value and confirm it was set
   config [config_item.option] = new_value
   mapper.mapprint ("Configuration option changed. New value is:")
   mapper.mapprint (string.format ("mapper config %s %s", config_item.name, config_item.show (config [config_item.option])))
-
+  return true
 end -- mapper_config
+
+-- -----------------------------------------------------------------
+-- marker_active - returns true if we are using this marker for this linetype
+-- -----------------------------------------------------------------
+function marker_active (linetype, marker)
+  assert (line_types [linetype], "Line type " .. linetype .. " not known.")
+  assert (inverse_markers [marker], "Marker " .. marker .. " not known.")
+  return true; -- DEBUG
+  -- return config.rules [linetype] [marker]
+end -- marker_active
+
+--[[
+
+-- -----------------------------------------------------------------
+-- mapper_rule - change rule options
+-- Format is: mapper config <linetype> <marker> <value>  <-- change option <name> to <value>
+-- -----------------------------------------------------------------
+function mapper_rule (name, line, wildcards)
+  local linetype = Trim (wildcards.linetype:lower ())
+  local marker = Trim (wildcards.marker:lower ())
+  local value = Trim (wildcards.value)
+
+  -- line type name given - look it up in the list
+  if not validate_linetype (linetype, 'mapper rule') then
+    return
+  end -- if not valid
+
+  if not inverse_markers [marker] then
+    if marker ~= "" then
+       mapper.maperror ("There is no marker: " .. marker)
+    end -- if
+    mapper.mapprint ("  Markers are:")
+    for k, v in ipairs (markers) do
+      mapper.mapprint ("    " .. v.marker)
+    end -- for
+    return
+  end -- if
+
+  -- no value given - display the current setting of this option
+  if value == "" then
+    mapper.mapprint ("Current value for " .. linetype .. " " .. marker .. ":")
+    mapper.mapprint ("")
+    mapper.mapprint (string.format ("mapper rule %s %s %s", linetype, marker, config_display_boolean (marker_active (linetype, marker))))
+    mapper.mapprint ("")
+    return
+  end -- no value given
+
+  -- validate new option value
+  local new_value = config_validate_boolean (value)
+  if new_value == nil then    -- it might be false, so we have to test for nil
+    mapper.maperror ("Configuration rule not changed.")
+    return
+  end -- bad value
+
+  -- set the new value and confirm it was set
+  config.rules [linetype] [marker] = new_value
+  mapper.mapprint ("Configuration rule changed. New value is:")
+  mapper.mapprint (string.format ("mapper rule %s %s %s", linetype, marker, config_display_boolean (config.rules [linetype] [marker])))
+
+end -- mapper_rule
+
+--]]
 
 -- -----------------------------------------------------------------
 -- count_rooms - count how many rooms are in the database
@@ -2103,7 +2353,7 @@ function room_show_description (room, uid)
 
   utils.editbox ("", "Description of " .. room.name, string.gsub (room.desc, "\n", "\r\n"), font_name, font_size,
                 { read_only = true,
-                box_width  = output_width * wrap_column + 50,
+                box_width  = output_width * wrap_column + 100,
                 box_height  = font_height * (lines + 1) + 120,
                 reply_width = output_width * wrap_column + 10,
                 -- cancel_button_width = 1,
@@ -2227,3 +2477,180 @@ end -- map_trainers
 function map_banks (name, line, wildcards)
   map_find_special (function (room) return room.Bank end)
 end -- map_banks
+
+
+-- -----------------------------------------------------------------
+-- validate_linetype and  validate_option
+-- helper functions for validating line types and option names
+-- -----------------------------------------------------------------
+
+function validate_linetype (which, func_name)
+  if not line_types [which] then
+    mapper.maperror ("Invalid line type '" .. which .. "' given to '" .. func_name .. "'")
+    mapper.mapprint ("  Line types are:")
+    for k, v in pairs (line_types) do
+      mapper.mapprint ("    " .. k)
+    end
+    return false
+  end -- not valid
+  return true
+end -- validate_linetype
+
+function validate_option (which, func_name)
+  -- config name given - look it up in the list
+  local config_item = config_control_names [which]
+  if not config_item then
+    mapper.maperror ("Invalid config item name '" .. which .. "' given to '" .. func_name .. "'")
+    mapper.mapprint ("  Configuration items are:")
+    for k, v in ipairs (config_control) do
+      mapper.mapprint ("    " .. v.name)
+    end
+    return false
+  end -- config item not found
+  return config_item
+end -- validate_option
+
+-- =================================================================
+-- EXPOSED FUNCTIONS FOR OTHER PLUGINS TO CALL
+-- =================================================================
+
+-- -----------------------------------------------------------------
+-- set_line_type - the current line is of type: linetype
+-- linetype is one of: description, exits, room_name, prompt, ignore
+-- optional contents lets you change what the contents are (eg. from "You are standing in a field" to "in a field")
+-- -----------------------------------------------------------------
+override_line_type = nil
+override_line_contents = nil
+function set_line_type (linetype, contents)
+  if not validate_linetype (linetype, 'set_line_type') then
+    return nil
+  end -- not valid
+  override_line_type = linetype
+  override_line_contents = contents
+  return true
+end -- set_line_type
+
+-- -----------------------------------------------------------------
+-- set_not_line_type - the current line is NOT of type: linetype
+-- linetype is one of: description, exits, room_name, prompt, ignore
+-- -----------------------------------------------------------------
+line_is_not_line_type = { }
+function set_not_line_type (linetype)
+  if not validate_linetype (linetype, 'set_not_line_type') then
+    return nil
+  end -- not valid
+  line_is_not_line_type [linetype] = true
+  return true
+end -- set_not_line_type
+
+-- -----------------------------------------------------------------
+-- do_not_deduce_line_type - do not use the Bayesian deduction on linetype
+-- linetype is one of: description, exits, room_name, prompt, ignore
+
+-- Used to make sure that lines which we have not explicitly set (eg. to an exit)
+-- are never deduced to be an exit. Useful for making sure that set_line_type is
+-- the only way we know a certain line is a certain type (eg. an exit line)
+-- -----------------------------------------------------------------
+do_not_deduce_linetypes = { }
+function do_not_deduce_line_type (linetype)
+  if not validate_linetype (linetype, 'do_not_deduce_line_type') then
+    return nil
+  end -- not valid
+  do_not_deduce_linetypes [linetype] = true
+  return true
+end -- do_not_deduce_line_type
+
+-- -----------------------------------------------------------------
+-- deduce_line_type - use the Bayesian deduction on linetype
+--   (undoes do_not_deduce_line_type for that type of line)
+-- linetype is one of: description, exits, room_name, prompt, ignore
+-- -----------------------------------------------------------------
+function deduce_line_type (linetype)
+  if not validate_linetype (linetype, 'deduce_line_type') then
+    return nil
+  end -- not valid
+  do_not_deduce_linetypes [linetype] = nil
+  return true
+end -- do_not_deduce_line_type
+
+-- -----------------------------------------------------------------
+-- get the previous line type (deduced or not)
+-- returns nil if no last deduced type
+-- -----------------------------------------------------------------
+function get_last_line_type ()
+  return last_deduced_type
+end -- get_last_line_type
+
+-- -----------------------------------------------------------------
+-- get the current overridden line type
+-- returns nil if no last overridden type
+-- -----------------------------------------------------------------
+function get_this_line_type ()
+  return override_line_type
+end -- get_last_line_type
+
+-- -----------------------------------------------------------------
+-- set_config_option - set a configuration option
+-- name: which option (eg. when_to_draw)
+-- value: new setting (string) (eg. 'description')
+-- equivalent in behaviour to: mapper config <name> <value>
+-- returns nil if option name not given or invalid
+-- returns true on success
+-- -----------------------------------------------------------------
+function set_config_option (name, value)
+  if type (value) == 'boolean' then
+    if value then
+      value = 'yes'
+    else
+      value = 'no'
+    end -- if
+  end -- they supplied a boolean
+  return mapper_config (name, 'mapper config whatever', { name = name or '', value = value or '' } )
+end -- set_config_option
+
+-- -----------------------------------------------------------------
+-- get_config_option - get a configuration option
+-- name: which option (eg. when_to_draw)
+-- returns (string) (eg. 'description')
+-- returns nil if option name not given or invalid
+-- -----------------------------------------------------------------
+function get_config_option (name)
+  if not name or name == '' then
+    mapper.mapprint ("No option name given to 'get_config_option'")
+    return nil
+  end -- if no name
+  local config_item = validate_option (name, 'get_config_option')
+  if not config_item then
+    return nil
+  end -- if not valid
+  return config_item.show (config [config_item.option])
+end -- get_config_option
+
+-- -----------------------------------------------------------------
+-- get_corpus - gets the corpus (serialized)
+-- -----------------------------------------------------------------
+function get_corpus ()
+  return "corpus = " .. serialize.save_simple (corpus)
+end -- get_corpus_count
+
+-- -----------------------------------------------------------------
+-- get_stats - gets the training stats (serialized)
+-- -----------------------------------------------------------------
+function get_stats ()
+  return "stats = " .. serialize.save_simple (stats)
+end -- get_stats
+
+-- -----------------------------------------------------------------
+-- get_database - gets the mapper database (rooms) (serialized)
+-- -----------------------------------------------------------------
+function get_database ()
+  return "rooms = " .. serialize.save_simple (rooms)
+end -- get_database
+
+-- -----------------------------------------------------------------
+-- get_config - gets the mapper database (rooms) (serialized)
+-- -----------------------------------------------------------------
+function get_config ()
+  return "config = " .. serialize.save_simple (config)
+end -- get_config
+

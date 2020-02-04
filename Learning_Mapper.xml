@@ -71,7 +71,7 @@ mapper import corpus       --> import corpus database from backup or from someon
 
 MAPPER CONFIGURATION
 
-mapper config                   --> show all current configuration option value
+mapper config                   --> show all current configuration option value and rules
 mapper config <option>          --> show one option value
 mapper config <option> <value>  --> change <option> to <value>
 
@@ -288,6 +288,20 @@ mapper reset database   --> deletes the entire mapper database, so all mapped ro
    script="mapper_config"
   >
   </alias>
+
+<!--
+
+ <alias
+   match="^mapper rules?(\s+(?<linetype>[a-zA-Z_]+)(\s+(?<marker>[a-zA-Z_]+)(\s+(?<value>[a-zA-Z]+))?)?)?$"
+   enabled="y"
+   send_to="1"
+   sequence="100"
+   regexp="y"
+   script="mapper_rule"
+  >
+  </alias>
+
+-->
 
   <alias
    match="mapper reset database"
