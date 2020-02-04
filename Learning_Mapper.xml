@@ -71,7 +71,7 @@ mapper import corpus       --> import corpus database from backup or from someon
 
 MAPPER CONFIGURATION
 
-mapper config                   --> show all current configuration option value and rules
+mapper config                   --> show all current configuration option values
 mapper config <option>          --> show one option value
 mapper config <option> <value>  --> change <option> to <value>
 

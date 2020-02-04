@@ -26,19 +26,19 @@ Date:   24th January 2020
  tort or otherwise, arising from, out of or in connection with the software
  or the use or other dealings in the software.
 
-  EXPOSED FUNCTIONS
+ -------------------------------------------------------------------------
 
-  eg. config = CallPlugin ("99c74b2685e425d3b6ed6a7d", "get_config")
-               CallPlugin ("99c74b2685e425d3b6ed6a7d", "set_line_type", "exits")
-               CallPlugin ("99c74b2685e425d3b6ed6a7d", "do_not_deduce_line_type", "exits")
+ EXPOSED FUNCTIONS
 
-  set_line_type (linetype)           --> set this current line to be definitely linetype
+  set_line_type (linetype, contents) --> set this current line to be definitely linetype with option contents
+  set_line_type_contents (linetype, contents)  --> sets the content for <linetype> to be <contents>
+                                                   (for example, if you get a room name on a prompt line)
   set_not_line_type (linetype)       --> set this current line to be definitely not linetype (can call for multiple line types)
   do_not_deduce_line_type (linetype) --> do not deduce (do Bayesian analysis) on this type of line - has to be set by set_line_type
   deduce_line_type (linetype)        --> deduce this line type (cancels do_not_deduce_line_type)
   get_last_line_type ()              --> get the previous line type as deduced or set by set_line_type
   get_this_line_type ()              --> get the current overridden line type (from set_line_type)
-  set_config_option (name, value)    --> set a mapper configuration value if <name> to <value>
+  set_config_option (name, value)    --> set a mapper configuration value of <name> to <value>
   get_config_option (name)           --> get the current configuration value of <name>
   get_corpus ()                      --> get the corpus (serialized table)
   get_stats ()                       --> get the training stats (serialized table)
@@ -46,14 +46,17 @@ Date:   24th January 2020
   get_config ()                      --> get the configuration options (serialized table)
 
 
+  eg. config = CallPlugin ("99c74b2685e425d3b6ed6a7d", "get_config")
+               CallPlugin ("99c74b2685e425d3b6ed6a7d", "set_line_type", "exits")
+               CallPlugin ("99c74b2685e425d3b6ed6a7d", "do_not_deduce_line_type", "exits")
+
 --]]
 
 -- The probability (in the range 0.0 to 1.0) that a line has to meet to be considered a certain line type.
--- The higher, the stricer the requirement.
+-- The higher, the stricter the requirement.
 -- Default of 0.7 seems to work OK, but you could tweak that.
 
 PROBABILITY_CUTOFF = 0.7
-
 
 -- other modules needed by this plugin
 require "mapper"
@@ -67,6 +70,9 @@ require "pairsbykeys"
 -- Handlers for when a line-type changes
 -- -----------------------------------------------------------------
 
+-- -----------------------------------------------------------------
+-- description
+-- -----------------------------------------------------------------
 function f_handle_description (saved_lines)
 
   if description and ignore_received then
@@ -98,6 +104,9 @@ function f_handle_description (saved_lines)
   end -- if
 end -- f_handle_description
 
+-- -----------------------------------------------------------------
+-- exits
+-- -----------------------------------------------------------------
 function f_handle_exits ()
   local lines = { }
   for _, line_info in ipairs (saved_lines) do
@@ -109,6 +118,9 @@ function f_handle_exits ()
   end -- if
 end -- f_handle_exits
 
+-- -----------------------------------------------------------------
+-- room name
+-- -----------------------------------------------------------------
 function f_handle_name ()
   local lines = { }
   for _, line_info in ipairs (saved_lines) do
@@ -130,25 +142,35 @@ function f_handle_name ()
   end -- if
 end -- f_handle_name
 
+-- -----------------------------------------------------------------
+-- prompt
+-- -----------------------------------------------------------------
 function f_handle_prompt ()
   local lines = { }
   for _, line_info in ipairs (saved_lines) do
     table.insert (lines, line_info.line) -- get text of line
   end -- for each line
   prompt = table.concat (lines, " ")
-  if config.WHEN_TO_DRAW_MAP == DRAW_MAP_ON_PROMPT then
+  if config.WHEN_TO_DRAW_MAP == DRAW_MAP_ON_PROMPT and
+     description and
+     exits_str then
     process_new_room ()
   end -- if
 end -- f_handle_prompt
 
+-- -----------------------------------------------------------------
 -- ignore this line type
+-- -----------------------------------------------------------------
 function f_handle_ignore ()
   ignore_received = true
 end -- f_handle_ignore
 
--- we can't move! - cancel any speedwalk
+-- -----------------------------------------------------------------
+-- cannot move - cancel speedwalk
+-- -----------------------------------------------------------------
 function f_cannot_move ()
   mapper.cancel_speedwalk ()
+  last_direction_moved = nil  -- therefore we haven't moved anywhere
 end -- f_cannot_move
 
 -- -----------------------------------------------------------------
@@ -229,7 +251,6 @@ end -- f_first_character
 --   * colour of the last style run
 --   * number of words on the line
 --   * number of style runs on the line
---   * match on exact line contents (could be useful for error message, like 'The door is closed.')
 --  Whether that would help or not remains to be seen.
 
 -- The functions above return the value(s) for the corresponding marker, for the nominated line.
@@ -379,7 +400,14 @@ default_config = {
   EXITS_ON_ROOM_NAME = false,                  -- if true, exits are listed on the room name line (eg. Starter Inventory and Shops [E, U])
   INCLUDE_EXITS_IN_HASH = true,                -- if true, exits are included in the description hash (UID)
   EXITS_IS_SINGLE_LINE = false,                -- if true, exits are assumed to be only a single line
+  PROMPT_IS_SINGLE_LINE = true,                -- if true, prompts are assumed to be only a single line
   EXIT_LINES_START_WITH_DIRECTION = false,     -- if true, exit lines must start with a direction (north, south, etc.)
+
+  -- other stuff
+
+  SHOW_INFO = false,              -- if true, information messages are displayed
+  SHOW_WARNINGS = true,           -- if true, warning messages are displayed
+  SHOW_ROOM_AND_EXITS = false,    -- if true, exact deduced room name and exits are shown (needs SHOW_INFO)
 
   }
 
@@ -413,6 +441,9 @@ function config_validate_uid_size (which)
   return size
 end -- config_validate_uid_size
 
+-- -----------------------------------------------------------------
+-- when we draw the map (after what sort of line)
+-- -----------------------------------------------------------------
 local when_types = {
     ["room name"]   = DRAW_MAP_ON_ROOM_NAME,
     ["description"] = DRAW_MAP_ON_DESCRIPTION,
@@ -503,11 +534,15 @@ config_control = {
   { option = 'EXITS_ON_ROOM_NAME',                name = 'exits_on_room_name',               validate = config_validate_boolean,      show = config_display_boolean },
   { option = 'INCLUDE_EXITS_IN_HASH',             name = 'include_exits_in_hash',            validate = config_validate_boolean,      show = config_display_boolean },
   { option = 'EXITS_IS_SINGLE_LINE',              name = 'exits_is_single_line',             validate = config_validate_boolean,      show = config_display_boolean },
+  { option = 'PROMPT_IS_SINGLE_LINE',             name = 'prompt_is_single_line',            validate = config_validate_boolean,      show = config_display_boolean },
   { option = 'EXIT_LINES_START_WITH_DIRECTION',   name = 'exit_lines_start_with_direction',  validate = config_validate_boolean,      show = config_display_boolean },
   { option = 'STATUS_BACKGROUND_COLOUR',          name = 'status_background',                validate = config_validate_colour,       show = config_display_colour },
   { option = 'STATUS_FRAME_COLOUR',               name = 'status_border',                    validate = config_validate_colour,       show = config_display_colour },
   { option = 'STATUS_TEXT_COLOUR',                name = 'status_text',                      validate = config_validate_colour,       show = config_display_colour },
   { option = 'UID_SIZE',                          name = 'uid_size',                         validate = config_validate_uid_size,     show = config_display_number },
+  { option = 'SHOW_INFO',                         name = 'show_info',                        validate = config_validate_boolean,      show = config_display_boolean },
+  { option = 'SHOW_WARNINGS',                     name = 'show_warnings',                    validate = config_validate_boolean,      show = config_display_boolean },
+  { option = 'SHOW_ROOM_AND_EXITS',               name = 'show_room_and_exits',              validate = config_validate_boolean,      show = config_display_boolean },
 
 }
 
@@ -572,6 +607,12 @@ inverse_direction = {
 --  Update our line information info
 -- -----------------------------------------------------------------
 function OnPluginDrawOutputWindow (firstline, offset, notused)
+
+  -- don't bother if window not visible
+  if not WindowInfo (win, 5) then
+    return
+  end -- if
+
   local background_colour = ColourNameToRGB (config.STATUS_BACKGROUND_COLOUR)
   local frame_colour = ColourNameToRGB (config.STATUS_FRAME_COLOUR)
   local text_colour = ColourNameToRGB (config.STATUS_TEXT_COLOUR)
@@ -650,9 +691,12 @@ function OnPluginDrawOutputWindow (firstline, offset, notused)
 
         -- we would have drawn on a linetype change, if not a partial line
         if linetype and GetLineInfo (line, 3) and (linetype ~= previous_linetype
-                                    or linetype == 'exits' and config.EXITS_IS_SINGLE_LINE) then
-            local draw = false
-            if previous_linetype == 'description' and have_description then
+                                    or (linetype == 'exits' and config.EXITS_IS_SINGLE_LINE)
+                                    or (linetype == 'prompt' and config.PROMPT_IS_SINGLE_LINE)
+                                    )
+                                    then
+          local draw = false
+          if previous_linetype == 'description' and have_description then
             if config.WHEN_TO_DRAW_MAP == DRAW_MAP_ON_DESCRIPTION then
               draw = true
             end -- if draw now
@@ -669,7 +713,10 @@ function OnPluginDrawOutputWindow (firstline, offset, notused)
               draw = true
             end -- if draw now
           end -- if
-          if linetype == 'exits' and config.EXITS_IS_SINGLE_LINE then
+          if linetype == 'exits' and config.EXITS_IS_SINGLE_LINE and config.WHEN_TO_DRAW_MAP == DRAW_MAP_ON_EXITS then
+            draw = true
+          end -- if
+          if linetype == 'prompt' and config.PROMPT_IS_SINGLE_LINE and config.WHEN_TO_DRAW_MAP == DRAW_MAP_ON_PROMPT then
             draw = true
           end -- if
           if draw then
@@ -733,14 +780,18 @@ end -- OnPluginWorldOutputResized
 -- INFO helper function for debugging the plugin (information messages)
 -- -----------------------------------------------------------------
 function INFO (...)
-    -- ColourNote ("orange", "", table.concat ( { ... }, " "))
+  if config.SHOW_INFO then
+    ColourNote ("orange", "", table.concat ( { ... }, " "))
+  end -- if
 end -- INFO
 
 -- -----------------------------------------------------------------
 -- WARNING helper function for debugging the plugin (warning/error messages)
 -- -----------------------------------------------------------------
 function WARNING (...)
-  ColourNote ("red", "", table.concat ( { ... }, " "))
+  if config.SHOW_WARNINGS then
+    ColourNote ("red", "", table.concat ( { ... }, " "))
+  end -- if
 end -- WARNING
 
 -- -----------------------------------------------------------------
@@ -771,6 +822,8 @@ function corpus_reset (empty)
     end -- for each marker type
   end -- for each line type
 
+--[[
+
   -- make sure rules table exists
   if not config.rules then
     config.rules =  { }
@@ -789,6 +842,8 @@ function corpus_reset (empty)
        end -- if rule not there
     end -- if
   end -- if
+
+--]]
 
 end -- corpus_reset
 
@@ -1273,7 +1328,7 @@ function analyse_line (line)
 
   for line_type, line_type_info in pairs (line_types) do
      -- don't if they don't want Bayesian deduction for this type
-    if not do_not_deduce_linetypes [line_type] or line_is_not_line_type [line_type] then
+    if not do_not_deduce_linetypes [line_type] and not line_is_not_line_type [line_type] then
       local probs = { }
       for _, m in ipairs (markers) do
         marker_probs = { }  -- probability for this marker
@@ -1327,6 +1382,16 @@ end -- fixuid
 -- -----------------------------------------------------------------
 function process_new_room ()
 
+  if override_contents ['description'] then
+    description = override_contents ['description']
+  end -- if
+  if override_contents ['exits'] then
+    exits_str = override_contents ['exits']
+  end -- if
+  if override_contents ['room_name'] then
+    room_name = override_contents ['room_name']
+  end -- if
+
   if not description then
     WARNING "No description for this room"
     return
@@ -1353,6 +1418,10 @@ function process_new_room ()
   end -- if
 
   uid = uid:sub (1, 25)
+
+  if config.SHOW_ROOM_AND_EXITS then
+    INFO (string.format ("Description:\n'%s'\nExits: '%s'\nHash: %s", description, exits_str, fixuid (uid)))
+  end -- if config.SHOW_ROOM_AND_EXITS
 
   -- break up exits into individual directions
   local exits = {}
@@ -1408,6 +1477,7 @@ function process_new_room ()
   override_line_type = nil
   override_line_contents = nil
   line_is_not_line_type = { }
+  override_contents = { }
 
 end -- process_new_room
 
@@ -1560,6 +1630,7 @@ function OnPluginConnect ()
   ignore_received = false
   override_line_type = nil
   override_line_contents = nil
+  override_contents = { }
   line_is_not_line_type = { }
 end -- OnPluginConnect
 
@@ -1801,8 +1872,16 @@ function line_received (name, line, wildcards, styles)
 
   table.insert (saved_lines, { line = line, styles = styles } )
 
+  -- if exits are on a single line, then we can process them as soon as we get them
   if config.EXITS_IS_SINGLE_LINE and deduced_type == 'exits' then
       line_types.exits.handler (saved_lines)  -- handle the line
+      saved_lines = { }
+      last_deduced_type = nil
+  end -- if
+
+  -- if prompt are on a single line, then we can process it as soon as we get it
+  if config.PROMPT_IS_SINGLE_LINE and deduced_type == 'prompt' then
+      line_types.prompt.handler (saved_lines)  -- handle the line
       saved_lines = { }
       last_deduced_type = nil
   end -- if
@@ -2531,6 +2610,20 @@ function set_line_type (linetype, contents)
 end -- set_line_type
 
 -- -----------------------------------------------------------------
+-- set_line_type_contents - set the contents of <linetype> to be <contents>
+-- linetype is one of: description, exits, room_name, prompt, ignore
+-- This lets you set something (like the room name) from another line (eg. the prompt)
+-- -----------------------------------------------------------------
+override_contents = { }
+function set_line_type_contents (linetype, contents)
+  if not validate_linetype (linetype, 'set_line_type_contents') then
+    return nil
+  end -- not valid
+  override_contents [linetype] = contents
+  return true
+end -- set_line_type_contents
+
+-- -----------------------------------------------------------------
 -- set_not_line_type - the current line is NOT of type: linetype
 -- linetype is one of: description, exits, room_name, prompt, ignore
 -- -----------------------------------------------------------------
@@ -2653,4 +2746,3 @@ end -- get_database
 function get_config ()
   return "config = " .. serialize.save_simple (config)
 end -- get_config
-
