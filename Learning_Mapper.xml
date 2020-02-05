@@ -10,9 +10,9 @@
    purpose="AI interface to mapper to learn descriptions etc."
    save_state="y"
    date_written="2020-01-23 11:29:22"
-   date_modified="2020-02-02 08:45:00"
+   date_modified="2020-02-06 09:18:00"
    requires="5.05"
-   version="1.2"
+   version="1.3"
    >
 <description trim="y">
 <![CDATA[
@@ -94,7 +94,7 @@ OPTION NAMES:
 
 WHEN TO DRAW option
 
-When to draw the new room. Line types are one of:  room name, description, exits, prompt
+When to draw the new room. Line types are one of:  room_name, description, exits, prompt, ignore, cannot_move
 For most MUDS: Use "exits" because exits usually come last.
 However if the exits come *before* the description is drawn, then make it after the description.
 

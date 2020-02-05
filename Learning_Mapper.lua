@@ -55,7 +55,7 @@ Date:   24th January 2020
 
 --]]
 
-LEARNING_MAPPER_LUA_VERSION = 1.2  -- version must agree with plugin version
+LEARNING_MAPPER_LUA_VERSION = 1.3  -- version must agree with plugin version
 
 -- The probability (in the range 0.0 to 1.0) that a line has to meet to be considered a certain line type.
 -- The higher, the stricter the requirement.
@@ -341,11 +341,6 @@ for k, v in ipairs (markers) do
   inverse_markers [v.marker] = v
 end -- for
 
--- this table has the counters
-corpus = { }
--- stats
-stats = { }
-
 local MAX_NAME_LENGTH = 60
 
 -- when to update the map
@@ -564,8 +559,6 @@ config_control_names = { }
 for k, v in ipairs (config_control) do
   config_control_names [v.name] = v
 end -- for
-
-rooms = {}
 
 -- -----------------------------------------------------------------
 -- valid_direction - for detecting movement between rooms, and validating exit lines
@@ -886,6 +879,15 @@ end -- make_button
 
 buttons_active = nil
 
+
+-- stuff for warning them to save their file
+time_last_saved = os.time ()
+time_last_warned = nil
+
+TIME_BETWEEN_SAVES = 15 * 60    -- warn if they haven't saved for 30 minutes
+TIME_BETWEEN_WARNINGS = 1 * 60  -- warn every 1 minute
+ADDED_ROOMS_COUNT = 10          -- warn if they have added this many rooms
+
 function update_buttons (name)
 
   -- to save memory, throw away info for lines more than 1000 further back in the buffer
@@ -900,6 +902,20 @@ function update_buttons (name)
         end -- for
     end -- for
   end -- if we have any lines
+
+  -- warn user if database not saved after adding rooms
+
+  -- how long since the last save
+  local time_since_save = os.difftime (os.time (), time_last_saved)
+
+  -- if they have added a few rooms and not saved then warn them
+  if rooms_added >= ADDED_ROOMS_COUNT and     -- added a few rooms
+    time_since_save > TIME_BETWEEN_SAVES and  -- not saved for a while
+    (time_last_warned == nil or os.difftime (os.time (), time_last_warned) >= TIME_BETWEEN_WARNINGS) then  -- warn quite often after that time elapsed
+    mapper.maperror (string.format ("WARNING: You have added %d rooms, but have not saved your world file recently.", rooms_added))
+    mapper.mapprint ("Recommended: Save your world file (Ctrl+S) which will also save the mapper database.")
+    time_last_warned = os.time ()
+  end -- if
 
   -- do nothing if button pressed
   if button_down then
@@ -961,6 +977,12 @@ function OnPluginInstall ()
 
   font_id = "f"
 
+  -- this table has the counters
+  corpus = { }
+
+  -- stats
+  stats = { }
+
   -- load corpus
   assert (loadstring (GetVariable ("corpus") or "")) ()
   -- load stats
@@ -977,6 +999,8 @@ function OnPluginInstall ()
   for k, v in pairs (default_config) do
     config [k] = config [k] or v
   end -- for
+
+  rooms = {}
 
   -- and rooms
   assert (loadstring (GetVariable ("rooms") or "")) ()
@@ -1095,6 +1119,9 @@ function OnPluginInstall ()
   WindowShow (learn_window, config.SHOW_LEARNING_WINDOW)
   WindowShow (win, config.SHOW_LEARNING_WINDOW)
 
+  time_last_saved = os.time ()
+  rooms_added = 0
+
 end -- OnPluginInstall
 
 -- -----------------------------------------------------------------
@@ -1116,6 +1143,10 @@ function OnPluginSaveState ()
   SetVariable ("config", "config = " .. serialize.save_simple (config))
   SetVariable ("rooms",  "rooms = "  .. serialize.save_simple (rooms))
   movewindow.save_state (learn_window)
+
+  time_last_saved = os.time ()
+  rooms_added = 0
+
 end -- OnPluginSaveState
 
 local C1 = 2   -- weightings
@@ -1355,6 +1386,7 @@ function process_new_room ()
   if not rooms [uid] then
     INFO ("Mapper adding room " .. fixuid (uid))
     rooms [uid] = { desc = description, exits = exits, area = WorldName (), name = room_name or fixuid (uid) }
+    rooms_added = rooms_added + 1
   end -- if
 
   -- update room name if possible
