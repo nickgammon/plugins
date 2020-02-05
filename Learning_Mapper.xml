@@ -497,7 +497,39 @@ mapper reset database   --> deletes the entire mapper database, so all mapped ro
 <!--  Script  -->
 
 <script>
+<![CDATA[
     dofile (GetPluginInfo (GetPluginID (), 20) .. "Learning_Mapper.lua")
+
+    -- version number check of the Lua module, in case they download one file but not the other
+    if not LEARNING_MAPPER_LUA_VERSION or math.abs (LEARNING_MAPPER_LUA_VERSION - GetPluginInfo (GetPluginID (), 19)) > 0.001 then
+      ColourNote ("firebrick", "", string.rep ("-", 60))
+      ColourNote ("firebrick", "", "You do not have the current version of Learning_Mapper.xml")
+      ColourNote ("firebrick", "", string.format ("The plugin version is %0.2f, however Learning_Mapper.xml is version %0.2f ",
+                  GetPluginInfo (GetPluginID (), 19), (LEARNING_MAPPER_LUA_VERSION or "(unknown)")))
+      ColourNote ("firebrick", "", "Download the latest version from: https://github.com/nickgammon/plugins/blob/master/Learning_Mapper.lua")
+      ColourNote ("firebrick", "", "Plugin disabled.")
+      ColourNote ("firebrick", "", string.rep ("-", 60))
+      if learn_window then
+        WindowShow (learn_window, false)
+      end --if
+      if win then
+        WindowShow (win, false)
+      end -- if
+      if mapper.win then
+        WindowShow (mapper.win, false)
+      end -- if
+      EnablePlugin(GetPluginID (), false)
+       -- don't put the windows back + disable all possible callbacks
+      OnPluginInstall = function () end
+      OnPluginClose = function () end
+      OnPluginPacketReceived = function () end
+      OnPluginSaveState = function () end
+      OnPluginDrawOutputWindow = function () end
+      OnPluginWorldOutputResized = function () end
+      OnPluginConnect = function () end
+      OnPluginConnect = function () end
+    end -- if wrong version of the Lua file
+]]>
 </script>
 
 </muclient>

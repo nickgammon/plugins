@@ -55,6 +55,8 @@ Date:   24th January 2020
 
 --]]
 
+LEARNING_MAPPER_LUA_VERSION = 1.1  -- version must agree with plugin version
+
 -- The probability (in the range 0.0 to 1.0) that a line has to meet to be considered a certain line type.
 -- The higher, the stricter the requirement.
 -- Default of 0.7 seems to work OK, but you could tweak that.
@@ -68,6 +70,10 @@ require "copytable"
 require "commas"
 require "tprint"
 require "pairsbykeys"
+
+-- our two windows
+win = "window_type_info_" .. GetPluginID ()
+learn_window = "learn_dialog_" .. GetPluginID ()
 
 -- -----------------------------------------------------------------
 -- Handlers for when a line-type changes
@@ -939,8 +945,6 @@ end -- toggle_learn_window
 -- -----------------------------------------------------------------
 function OnPluginInstall ()
 
-  win = "window_type_info_" .. GetPluginID ()
-  learn_window = "learn_dialog_" .. GetPluginID ()
   font_id = "f"
 
   -- load corpus
