@@ -12,7 +12,7 @@
    date_written="2020-01-23 11:29:22"
    date_modified="2020-02-02 08:45:00"
    requires="5.05"
-   version="1.1"
+   version="1.2"
    >
 <description trim="y">
 <![CDATA[
@@ -74,6 +74,9 @@ MAPPER CONFIGURATION
 mapper config                   --> show all current configuration option values
 mapper config <option>          --> show one option value
 mapper config <option> <value>  --> change <option> to <value>
+mapper window width <size>      --> set the map window width of the map
+mapper window height <size>     --> set the map window height of the map
+
 
 OPTION NAMES:
 
@@ -470,6 +473,22 @@ mapper reset database   --> deletes the entire mapper database, so all mapped ro
    enabled="y"
    sequence="100"
    script="mapper.show"
+  >
+  </alias>
+
+   <alias
+   match="mapper window width *"
+   enabled="y"
+   sequence="100"
+   script="set_window_width"
+  >
+  </alias>
+
+  <alias
+   match="mapper window height *"
+   enabled="y"
+   sequence="100"
+   script="set_window_height"
   >
   </alias>
 

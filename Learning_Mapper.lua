@@ -55,7 +55,7 @@ Date:   24th January 2020
 
 --]]
 
-LEARNING_MAPPER_LUA_VERSION = 1.1  -- version must agree with plugin version
+LEARNING_MAPPER_LUA_VERSION = 1.2  -- version must agree with plugin version
 
 -- The probability (in the range 0.0 to 1.0) that a line has to meet to be considered a certain line type.
 -- The higher, the stricter the requirement.
@@ -663,7 +663,8 @@ function OnPluginDrawOutputWindow (firstline, offset, notused)
             x_offset = x_offset + WindowText (win, font_id, " (partial line)", 1 + x_offset, top, 0, 0, ColourNameToRGB ("darkgray"))
           end -- if
           if ded.draw then
-            x_offset = x_offset + WindowText (win, font_id, " (draw map)", 1 + x_offset, top, 0, 0, ColourNameToRGB ("darkgray"))
+            x_offset = x_offset + WindowText (win, font_id,
+                      string.format (" (draw room %s)", fixuid (ded.uid)), 1 + x_offset, top, 0, 0, ColourNameToRGB ("darkgray"))
           end -- if
         end -- if in deduced_line_types table
       end -- if output line
@@ -886,6 +887,19 @@ end -- make_button
 buttons_active = nil
 
 function update_buttons (name)
+
+  -- to save memory, throw away info for lines more than 1000 further back in the buffer
+  local this_line = GetLinesInBufferCount()         -- which line in the output buffer
+  local line_number = GetLineInfo (this_line, 10)   -- which line this was overall
+  local wanted_line_number = line_number - 1000     -- keep info for 1000 lines
+
+  if line_number then
+    for k in pairs (deduced_line_types) do
+       if k < wanted_line_number then
+         deduced_line_types [k] = nil
+        end -- for
+    end -- for
+  end -- if we have any lines
 
   -- do nothing if button pressed
   if button_down then
@@ -1366,8 +1380,10 @@ function process_new_room ()
 
   -- call mapper to draw this room
   mapper.draw (uid)
+  last_drawn_id = uid    -- in case they change the window size
 
   deduced_line_types [line_number].draw = true
+  deduced_line_types [line_number].uid = current_room
 
   room_name = nil
   exits_str = nil
@@ -1400,7 +1416,12 @@ function get_room (uid)
   end -- for
   table.sort (texits)
 
-  local desc = string.gsub (room.desc, "%. .*", ".")
+  -- get first sentence of description
+  local desc = room.desc
+  if desc:sub (1, #room.name) == room.name then
+    desc = desc:sub (#room.name + 1)
+  end -- if
+  desc = Trim (string.match (desc, "^[^.]+") .. ".")
   if room.name and not string.match (room.name, "^%x+$") then
     -- desc = room.name
   end -- if
@@ -1426,7 +1447,7 @@ function get_room (uid)
   end -- if notes
 
   room.hovermessage = string.format (
-       "%s\tExits: %s\nRoom: %s%s\n%s%s",
+       "%s\tExits: %s\nRoom: %s%s\n%s\n%s",
         room.name or "unknown",
         table.concat (texits, ", "),
         fixuid (uid),
@@ -1647,6 +1668,9 @@ function map_find (name, line, wildcards)
 
 end -- map_find
 
+-- -----------------------------------------------------------------
+-- mapper_show_bookmarked_room - callback to show a bookmark
+-- -----------------------------------------------------------------
 function mapper_show_bookmarked_room (uid)
   local this_room = rooms [uid]
   mapper.mapprint (this_room.notes)
@@ -2020,6 +2044,49 @@ function mapper_export (name, line, wildcards)
   mapper.mapprint ("Database exported, " .. count_rooms () .. " rooms.")
 end -- mapper_export
 
+-- -----------------------------------------------------------------
+-- set_window_width - sets the mapper window width
+-- -----------------------------------------------------------------
+function set_window_width (name, line, wildcards)
+  local size = tonumber (wildcards [1])
+  if not size then
+    mapper.maperror ("Bad size: " .. size)
+    return
+  end -- if
+
+  if size < 200 or size > 1000 then
+    mapper.maperror ("Size must be in the range 200 to 1000 pixels")
+    return
+  end -- if
+
+  config.WINDOW.width = size
+  mapper.mapprint ("Map window width set to", size, "pixels")
+  if last_drawn_id then
+    mapper.draw (last_drawn_id)
+  end -- if
+end -- set_window_width
+
+-- -----------------------------------------------------------------
+-- set_window_height - sets the mapper window height
+-- -----------------------------------------------------------------
+function set_window_height (name, line, wildcards)
+  local size = tonumber (wildcards [1])
+  if not size then
+    mapper.maperror ("Bad size: " .. size)
+    return
+  end -- if
+
+  if size < 200 or size > 1000 then
+    mapper.maperror ("Size must be in the range 200 to 1000 pixels")
+    return
+  end -- if
+
+  config.WINDOW.height = size
+  mapper.mapprint ("Map window height set to", size, "pixels")
+  if last_drawn_id then
+    mapper.draw (last_drawn_id)
+  end -- if
+end -- set_window_height
 
 -- -----------------------------------------------------------------
 -- mapper_import - imports the rooms table from a file
@@ -2150,6 +2217,10 @@ function corpus_import (name, line, wildcards)
 
 end -- corpus_import
 
+-- -----------------------------------------------------------------
+-- room_toggle_trainer /  room_toggle_shop / room_toggle_bank
+-- menu handlers to toggle trainers, shops, banks
+-- -----------------------------------------------------------------
 function room_toggle_trainer (room, uid)
   room.Trainer = not room.Trainer
   mapper.mapprint ("Trainer here: " .. config_display_boolean (room.Trainer))
@@ -2166,6 +2237,9 @@ function room_toggle_bank (room, uid)
   mapper.mapprint ("Bank here: " .. config_display_boolean (room.Bank))
 end -- room_toggle_bank
 
+-- -----------------------------------------------------------------
+-- room_edit_bookmark - menu handler to add, edit or remove a note
+-- -----------------------------------------------------------------
 function room_edit_bookmark (room, uid)
 
   local notes = room.notes
@@ -2208,6 +2282,9 @@ function room_edit_bookmark (room, uid)
 end -- room_edit_bookmark
 
 
+-- -----------------------------------------------------------------
+-- room_delete_exit - menu handler to delete an exit
+-- -----------------------------------------------------------------
 function room_delete_exit (room, uid)
 
 local available =  {
@@ -2250,9 +2327,13 @@ local available =  {
   rooms [uid].exits [chosen_exit] = nil
 
   mapper.draw (current_room)
+  last_drawn_id = current_room    -- in case they change the window size
 
 end -- room_delete_exit
 
+-- -----------------------------------------------------------------
+-- room_show_description - menu handler to show the room description
+-- -----------------------------------------------------------------
 function room_show_description (room, uid)
 
   local font_name = GetInfo (20) -- output window font
@@ -2330,6 +2411,7 @@ function room_click (uid, flags)
   if f then
     f (room, uid)
     mapper.draw (current_room)
+    last_drawn_id = current_room    -- in case they change the window size
   end -- if handler found
 
 
