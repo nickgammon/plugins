@@ -12,7 +12,7 @@
    date_written="2020-01-23 11:29:22"
    date_modified="2020-02-06 09:18:00"
    requires="5.05"
-   version="1.3"
+   version="1.4"
    >
 <description trim="y">
 <![CDATA[
@@ -91,6 +91,7 @@ OPTION NAMES:
     blank_line_terminates_line_type (yes/no)   --> A blank line is considered to be the end of a line type - useful if there are no blank lines in descriptions, but one after.
     exits_on_room_name (yes/no)                --> The room name also contains the available exits in the form:  Room name [N, S, E, W]
     include_exits_in_hash (yes/no)             --> Include the exits in the room ID hash. Yes: better handling of rooms with the same name. No: If the MUD adds and removes exits from time to time (for example, if you unlock a door).
+    sort_exits (yes/no)                        --> sort exits into alphabetic order, also exclude non-exit words (for MUDs that put special symbols to show if you have explored an exit or not)
 
 WHEN TO DRAW option
 

@@ -34,6 +34,7 @@ Date:   24th January 2020
   set_line_type_contents (linetype, contents)  --> sets the content for <linetype> to be <contents>
                                                    (for example, if you get a room name on a prompt line)
   set_not_line_type (linetype)       --> set this current line to be definitely not linetype (can call for multiple line types)
+  set_area_name (name)               --> sets the name of the area you are in
   do_not_deduce_line_type (linetype) --> do not deduce (do Bayesian analysis) on this type of line - has to be set by set_line_type
   deduce_line_type (linetype)        --> deduce this line type (cancels do_not_deduce_line_type)
   get_last_line_type ()              --> get the previous line type as deduced or set by set_line_type
@@ -55,7 +56,7 @@ Date:   24th January 2020
 
 --]]
 
-LEARNING_MAPPER_LUA_VERSION = 1.3  -- version must agree with plugin version
+LEARNING_MAPPER_LUA_VERSION = 1.4  -- version must agree with plugin version
 
 -- The probability (in the range 0.0 to 1.0) that a line has to meet to be considered a certain line type.
 -- The higher, the stricter the requirement.
@@ -122,6 +123,7 @@ function f_handle_exits ()
     table.insert (lines, line_info.line) -- get text of line
   end -- for each line
   exits_str = table.concat (lines, " "):lower ()
+
   if config.WHEN_TO_DRAW_MAP == DRAW_MAP_ON_EXITS then
     process_new_room ()
   end -- if
@@ -160,11 +162,20 @@ function f_handle_prompt ()
     table.insert (lines, line_info.line) -- get text of line
   end -- for each line
   prompt = table.concat (lines, " ")
-  if config.WHEN_TO_DRAW_MAP == DRAW_MAP_ON_PROMPT and
-     description and
-     exits_str then
-    process_new_room ()
-  end -- if
+  if config.WHEN_TO_DRAW_MAP == DRAW_MAP_ON_PROMPT then
+    if override_contents ['description'] then
+      description = override_contents ['description']
+    end -- if
+    if override_contents ['exits'] then
+      exits_str = override_contents ['exits']:lower ()
+    end -- if
+    if override_contents ['room_name'] then
+      room_name = override_contents ['room_name']
+    end -- if
+    if description and exits_str then
+      process_new_room ()
+    end -- if
+  end -- if time to draw the map
 end -- f_handle_prompt
 
 -- -----------------------------------------------------------------
@@ -410,6 +421,7 @@ default_config = {
   EXITS_IS_SINGLE_LINE = false,                -- if true, exits are assumed to be only a single line
   PROMPT_IS_SINGLE_LINE = true,                -- if true, prompts are assumed to be only a single line
   EXIT_LINES_START_WITH_DIRECTION = false,     -- if true, exit lines must start with a direction (north, south, etc.)
+  SORT_EXITS = false,                          -- if true, exit lines are extracted into words and sorted, excluding any other characters on the line
 
   -- other stuff
 
@@ -544,6 +556,7 @@ config_control = {
   { option = 'EXITS_IS_SINGLE_LINE',              name = 'exits_is_single_line',             validate = config_validate_boolean,      show = config_display_boolean },
   { option = 'PROMPT_IS_SINGLE_LINE',             name = 'prompt_is_single_line',            validate = config_validate_boolean,      show = config_display_boolean },
   { option = 'EXIT_LINES_START_WITH_DIRECTION',   name = 'exit_lines_start_with_direction',  validate = config_validate_boolean,      show = config_display_boolean },
+  { option = 'SORT_EXITS',                        name = 'sort_exits',                       validate = config_validate_boolean,      show = config_display_boolean },
   { option = 'STATUS_BACKGROUND_COLOUR',          name = 'status_background',                validate = config_validate_colour,       show = config_display_colour },
   { option = 'STATUS_FRAME_COLOUR',               name = 'status_border',                    validate = config_validate_colour,       show = config_display_colour },
   { option = 'STATUS_TEXT_COLOUR',                name = 'status_text',                      validate = config_validate_colour,       show = config_display_colour },
@@ -1322,14 +1335,11 @@ end -- fixuid
 -- -----------------------------------------------------------------
 function process_new_room ()
 
-  local this_line = GetLinesInBufferCount()         -- which line in the output buffer
-  local line_number = GetLineInfo (this_line, 10)   -- which line this was overall
-
   if override_contents ['description'] then
     description = override_contents ['description']
   end -- if
   if override_contents ['exits'] then
-    exits_str = override_contents ['exits']
+    exits_str = override_contents ['exits']:lower ()
   end -- if
   if override_contents ['room_name'] then
     room_name = override_contents ['room_name']
@@ -1352,6 +1362,21 @@ function process_new_room ()
     end -- if
 
   end -- if moved from somewhere
+
+  if config.SORT_EXITS then
+    -- get all the exit words, exclude other crap, put them in a table, and sort it
+    -- this is for MUDs that put markers after exit words to show if you have explored that way or not
+    -- it is also to deal with MUDs that might sort the exits into different orders for some reason
+    local t_exits = { }
+    for exit in string.gmatch (exits_str, "%w+") do
+      local ex = valid_direction [exit]
+      if ex then
+        table.insert (t_exits, ex)
+      end -- if
+    end -- for
+    table.sort (t_exits)
+    exits_str = table.concat (t_exits, " ")
+  end -- if
 
   -- generate a "room ID" by hashing the room description and possibly the exits
   if config.INCLUDE_EXITS_IN_HASH then
@@ -1385,7 +1410,7 @@ function process_new_room ()
   -- add room to rooms table if not already known
   if not rooms [uid] then
     INFO ("Mapper adding room " .. fixuid (uid))
-    rooms [uid] = { desc = description, exits = exits, area = WorldName (), name = room_name or fixuid (uid) }
+    rooms [uid] = { desc = description, exits = exits, area = area_name or WorldName (), name = room_name or fixuid (uid) }
     rooms_added = rooms_added + 1
   end -- if
 
@@ -1413,6 +1438,11 @@ function process_new_room ()
   -- call mapper to draw this room
   mapper.draw (uid)
   last_drawn_id = uid    -- in case they change the window size
+
+  -- emergency fallback to stop lots of errors
+  if not deduced_line_types [line_number] then
+    deduced_line_types [line_number] = { }
+  end -- if
 
   deduced_line_types [line_number].draw = true
   deduced_line_types [line_number].uid = current_room
@@ -1785,8 +1815,10 @@ deduced_line_types = { }
 
 function line_received (name, line, wildcards, styles)
 
-  local this_line = GetLinesInBufferCount()         -- which line in the output buffer
-  local line_number = GetLineInfo (this_line, 10)   -- which line this was overall
+  -- these need to be global, for use later on
+  this_line = GetLinesInBufferCount()         -- which line in the output buffer
+  line_number = GetLineInfo (this_line, 10)   -- which line this was overall
+
   local deduced_type, probability
 
   -- see if a plugin has overriden the line type
@@ -1818,7 +1850,7 @@ function line_received (name, line, wildcards, styles)
         }
   end -- if not nil type
 
-  -- INFO ("This line is", deduced_type)
+  -- INFO ("This line is", deduced_type, "last type was", last_deduced_type)
 
   if deduced_type ~= last_deduced_type then
 
@@ -1838,6 +1870,7 @@ function line_received (name, line, wildcards, styles)
 
   -- if exits are on a single line, then we can process them as soon as we get them
   if config.EXITS_IS_SINGLE_LINE and deduced_type == 'exits' then
+      -- INFO ("Now handling", deduced_type)
       line_types.exits.handler (saved_lines)  -- handle the line
       saved_lines = { }
       last_deduced_type = nil
@@ -1845,6 +1878,7 @@ function line_received (name, line, wildcards, styles)
 
   -- if prompt are on a single line, then we can process it as soon as we get it
   if config.PROMPT_IS_SINGLE_LINE and deduced_type == 'prompt' then
+      -- INFO ("Now handling", deduced_type)
       line_types.prompt.handler (saved_lines)  -- handle the line
       saved_lines = { }
       last_deduced_type = nil
@@ -2553,6 +2587,19 @@ function set_line_type (linetype, contents)
   end -- not valid
   override_line_type = linetype
   override_line_contents = contents
+  this_line = GetLinesInBufferCount()         -- which line in the output buffer
+  line_number = GetLineInfo (this_line, 10)   -- which line this was overall
+
+  -- if line type not recorded for this line yet, record it
+  if not deduced_line_types [line_number] then
+    deduced_line_types [line_number] = {
+        lt = override_line_type,  -- what type we assigned to it
+        con = 100,  -- with what probability
+        draw = false,       -- did we draw on this line?
+        ov = override_line_type,  -- was it overridden? (yes)
+        }
+  end -- if
+
   return true
 end -- set_line_type
 
@@ -2582,6 +2629,14 @@ function set_not_line_type (linetype)
   line_is_not_line_type [linetype] = true
   return true
 end -- set_not_line_type
+
+-- -----------------------------------------------------------------
+-- set_area_name - set the name of the current area (used at the bottom of the map)
+-- -----------------------------------------------------------------
+area_name = nil
+function set_area_name (name)
+  area_name = name
+end -- set_area_name
 
 -- -----------------------------------------------------------------
 -- do_not_deduce_line_type - do not use the Bayesian deduction on linetype
