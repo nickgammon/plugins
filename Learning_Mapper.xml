@@ -491,10 +491,20 @@ mapper reset database   --> deletes the entire mapper database, so all mapped ro
   </alias>
 
    <alias
-   match="mapper list"
+   match="^mapper list(.*)?$"
    enabled="y"
    sequence="100"
    script="mapper_list"
+   regexp="y"
+  >
+  </alias>
+
+   <alias
+   match="^mapper delete ([0-9A-Fa-f]+)$"
+   enabled="y"
+   sequence="100"
+   script="mapper_delete"
+   regexp="y"
   >
   </alias>
 

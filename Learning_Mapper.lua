@@ -1837,10 +1837,12 @@ function map_goto (name, line, wildcards)
   -- they are stored as upper-case
   wanted = wanted:upper ()
 
+
+
   -- find desired room
   mapper.find (
     function (uid)
-      return string.match (uid, wanted), string.match (uid, wanted)
+      return string.match (uid, "^" .. wanted), string.match (uid, "^" .. wanted)
     end,  -- function
     show_vnums,  -- show vnum?
     1,          -- how many to expect
@@ -2130,6 +2132,7 @@ function mapper_analyse (name, line, wildcards)
   end -- for
 
   local p = mapper.mapprint
+  mapper.mapprint (string.rep ("-", 60))
 
   p (string.format ("%20s %4d (%s)", "Minimum room name length", min_name_length, min_name))
   p (string.format ("%20s %4d (%s)", "Maximum room name length", max_name_length, max_name))
@@ -2138,13 +2141,206 @@ function mapper_analyse (name, line, wildcards)
   show_styles ("Description", desc_styles)
   show_styles ("Exits",       exits_styles)
 
+  mapper.mapprint (string.rep ("-", 60))
+
 end -- mapper_analyse
 
+function mapper_delete (name, line, wildcards)
+  local uid = wildcards [1]
+  if #uid < 4 then
+    mapper.maperror ("UID length must be at least 4 characters for deleting rooms")
+    return
+  end -- if too short
+
+  delete_uid, room = find_room_partial_uid (uid)
+  if not delete_uid then
+    return
+  end -- if not found
+
+  mapper_show (delete_uid)
+  rooms [delete_uid] = nil  -- delete it
+  mapper.mapprint ("Room", delete_uid, "deleted.")
+end -- mapper_delete
+
+function uid_hyperlink (uid)
+  Hyperlink ("!!" .. GetPluginID () .. ":mapper_show(" .. uid .. ")",
+            fixuid (uid), "Click to show room details for " .. fixuid (uid), "", "", false)
+end -- uid_hyperlink
+
+function list_rooms_table (t)
+  table.sort (t, function (a, b) return a.room.name < b.room.name end )
+
+  for _, v in ipairs (t) do
+    local room = v.room
+    local uid = v.uid
+    uid_hyperlink (uid)
+    print (" ", room.name)
+  end -- for each room
+end -- list_rooms_table
+
+function find_orphans ()
+  local orphans = { }
+  -- add all rooms to orphans table
+  for uid, room in pairs (rooms) do
+    orphans [uid] = room
+  end -- for
+
+  -- now eliminate rooms which others point to
+  for uid, room in pairs (rooms) do
+    for dir, exit_uid in pairs (room.exits) do
+      if exit_uid ~= "0" then
+        orphans [exit_uid] = nil  -- not an orphan
+      end -- if
+    end -- for each exit
+  end -- for
+  local t = { }
+  for uid, room in pairs (orphans) do
+    table.insert (t, { uid = uid, room = room })
+  end -- for
+  return t
+end -- find_orphans
+
+function find_room_partial_uid (which)
+  local t = { }
+  which = which:upper ()
+  for uid, room in pairs (rooms) do
+    if string.match (uid, "^" .. which) then
+      table.insert (t, { uid = uid, room = room })
+    end -- if a partial match
+  end -- for
+  if #t == 0 then
+    mapper.maperror ("Room UID", which, "is not known.")
+    return nil, nil
+  end -- if
+
+  if #t > 1 then
+    mapper.maperror ("Multiple matches for UID", which .. ":")
+    list_rooms_table (t)
+    return nil, nil
+  end -- if
+
+  return t [1].uid, t [1].room
+end -- find_room_partial_uid
+
 -- -----------------------------------------------------------------
--- mapper_list - analyse the map database
+-- mapper_list - show or search the map database
 -- -----------------------------------------------------------------
 function mapper_list (name, line, wildcards)
-end --
+  local t = { }
+  local first_wildcard = Trim (wildcards [1])
+  local wanted_name = string.match (first_wildcard, "^name%s+(.+)$")
+  local wanted_desc = string.match (first_wildcard, "^desc%s+(.+)$")
+  local orphans = string.match (first_wildcard, "^orphans?$")
+  local lead_to = string.match (first_wildcard, "^dest%s+(%x+)$")
+
+  -- no wildcard? list all rooms
+  if first_wildcard == "" then
+    for uid, room in pairs (rooms) do
+      table.insert (t, { uid = uid, room = room } )
+    end -- for
+  -- wildcard consists of hex digits and spaces? must be a uid list
+  elseif string.match (first_wildcard, "^[%x ]+$") then
+    -- hex strings? room uids
+    for w in string.gmatch (first_wildcard, "%x+") do
+      for uid, room in pairs (rooms) do
+        if string.match (uid, "^" .. w:upper ()) then
+          table.insert (t, { uid = uid, room = room } )
+        end -- if uid matches
+      end -- for each room
+    end -- for each uid they wanted
+
+  -- wildcard is: name xxx
+  -- search for xxx in name
+  elseif wanted_name then
+    wanted_name = Trim (wanted_name):lower ()
+    for uid, room in pairs (rooms) do
+      if string.find (room.name:lower (), wanted_name, 1, true) then
+        table.insert (t, { uid = uid, room = room } )
+      end -- if uid matches
+    end -- for each room
+
+  -- wildcard is: desc xxx
+  -- search for xxx in description
+  elseif wanted_desc then
+    wanted_desc = Trim (wanted_desc):lower ()
+    for uid, room in pairs (rooms) do
+      if string.find (room.desc:lower (), wanted_desc, 1, true) then
+        table.insert (t, { uid = uid, room = room } )
+      end -- if uid matches
+    end -- for each room
+
+  -- find orphan rooms (rooms no other room leads to)
+  elseif orphans then
+    t = find_orphans ()
+
+  -- find rooms which have an exit leading to this one
+  elseif lead_to then
+    lead_to_uid, room = find_room_partial_uid (lead_to)
+    if not lead_to_uid then
+      return
+    end -- if not found
+    mapper.mapprint (string.format ("Rooms which have an exit to %s (%s)", lead_to, room.name))
+    for uid, room in pairs (rooms) do
+      for dir, exit_uid in pairs (room.exits) do
+        if exit_uid == lead_to_uid then
+          table.insert (t, { uid = uid, room = room } )
+          break  -- one exit will do
+        end -- if exit leads to this room
+      end -- for each exit
+    end -- for
+
+  else
+    mapper.maperror ("Do not understand list command:", first_wildcard)
+    mapper.mapprint ("Options are:")
+    mapper.mapprint ("  mapper list")
+    mapper.mapprint ("  mapper list uid ...")
+    mapper.mapprint ("  mapper list name <name>")
+    mapper.mapprint ("  mapper list desc <description>")
+    mapper.mapprint ("  mapper list orphans")
+    mapper.mapprint ("  mapper list dest <uid>")
+    return
+  end -- if
+
+  if #t == 0 then
+    mapper.mapprint "No matches."
+  else
+    list_rooms_table (t)
+  end -- if
+end -- mapper_list
+
+-- -----------------------------------------------------------------
+-- mapper_show - show one room
+-- -----------------------------------------------------------------
+function mapper_show (uid)
+  local room = rooms [uid]
+  if not room then
+    mapper.maperror ("Room", uid, "is not known.")
+    return
+  end -- if
+
+  local old_note_colour = GetNoteColourFore ()
+  SetNoteColourFore(config.MAPPER_NOTE_COLOUR.colour)
+
+  Note (string.rep ("-", 60))
+  Note (string.format ("Room:  %s: %s.", fixuid (uid), room.name))
+  Note (string.rep ("-", 60))
+  Note (room.desc)
+  Note (string.rep ("-", 60))
+  Tell ("Exits: ")
+  for dir,dest in pairs (room.exits) do
+    Tell (dir:upper () .. " -> ")
+    if dest == "0" then
+      Tell "(Unknown)"
+    else
+      uid_hyperlink (dest)
+    end -- if
+    Tell " "
+  end -- for
+  Note "" -- finish line
+  Note (string.rep ("-", 60))
+
+  SetNoteColourFore (old_note_colour)
+end -- mapper_show
 
 -- -----------------------------------------------------------------
 -- mapper_config - display or change configuration options
