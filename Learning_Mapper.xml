@@ -51,6 +51,7 @@ mapper where <room> --> show directions to a room (given a room ID)
 mapper shops        --> find nearby shops
 mapper trainers     --> find nearby trainers
 mapper banks        --> find nearby banks
+mapper list [<uid>] --> list all rooms or one room (if one room, gives detailed info)
 
 MOVING
 
@@ -66,6 +67,7 @@ mapper corpus info  --> shows how many times you trained various different line 
 mapper corpus       --> show the entire mapper corpus (can be lengthy)
 mapper reset corpus --> deletes the entire mapper corpus so it will need to be trained again
                        (after a confirmation dialog)
+mapper analyse      --> analyse the database and report on line type colours etc.
 mapper export corpus       --> export corpus database for backup or sharing with others
 mapper import corpus       --> import corpus database from backup or from someone else
 
@@ -247,6 +249,17 @@ mapper reset database   --> deletes the entire mapper database, so all mapped ro
   >
   <send>toggle_learn_window ()</send>
   </alias>
+
+ <alias
+   match="^mapper analy[sz]e$"
+   enabled="y"
+   send_to="1"
+   sequence="100"
+   regexp="y"
+   script="mapper_analyse"
+  >
+  </alias>
+
 
   <alias
    match="mapper corpus"
@@ -474,6 +487,14 @@ mapper reset database   --> deletes the entire mapper database, so all mapped ro
    enabled="y"
    sequence="100"
    script="mapper.show"
+  >
+  </alias>
+
+   <alias
+   match="mapper list"
+   enabled="y"
+   sequence="100"
+   script="mapper_list"
   >
   </alias>
 

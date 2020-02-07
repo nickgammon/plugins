@@ -80,6 +80,10 @@ learn_window = "learn_dialog_" .. GetPluginID ()
 -- Handlers for when a line-type changes
 -- -----------------------------------------------------------------
 
+description_styles = { }
+exits_styles = { }
+room_name_styles = { }
+
 -- -----------------------------------------------------------------
 -- description
 -- -----------------------------------------------------------------
@@ -104,8 +108,10 @@ function f_handle_description (saved_lines)
   end -- if
 
   local lines = { }
+  description_styles = { }
   for _, line_info in ipairs (saved_lines) do
     table.insert (lines, line_info.line) -- get text of line
+    table.insert (description_styles, line_info.styles [1])  -- remember first style run
   end -- for each line
   description = table.concat (lines, "\n")
 
@@ -119,8 +125,10 @@ end -- f_handle_description
 -- -----------------------------------------------------------------
 function f_handle_exits ()
   local lines = { }
+  exits_styles = { }
   for _, line_info in ipairs (saved_lines) do
     table.insert (lines, line_info.line) -- get text of line
+    table.insert (exits_styles, line_info.styles [1])  -- remember first style run
   end -- for each line
   exits_str = table.concat (lines, " "):lower ()
 
@@ -134,8 +142,10 @@ end -- f_handle_exits
 -- -----------------------------------------------------------------
 function f_handle_name ()
   local lines = { }
+  room_name_styles = { }
   for _, line_info in ipairs (saved_lines) do
     table.insert (lines, line_info.line) -- get text of line
+    table.insert (room_name_styles, line_info.styles [1])  -- remember first style run
   end -- for each line
   room_name = table.concat (lines, " ")
 
@@ -1160,6 +1170,8 @@ function OnPluginSaveState ()
   time_last_saved = os.time ()
   rooms_added = 0
 
+  mapper.mapprint ("Mapping database saved.")
+
 end -- OnPluginSaveState
 
 local C1 = 2   -- weightings
@@ -1329,6 +1341,25 @@ function fixuid (uid)
   return uid:sub (1, config.UID_SIZE)
 end -- fixuid
 
+function get_unique_styles (styles)
+  local t = { }
+  for k, v in ipairs (styles) do
+    local s = string.format ("%d/%d/%d", v.textcolour, v.backcolour, v.style)
+    if not t[s] then
+      t [s] = v
+    end -- if not there
+  end -- for each supplied style
+
+  local result = { }
+  for k, v in pairs (t) do
+    if v.textcolour == nil then
+      tprint (v)
+    end -- if
+    table.insert (result, { fore = v.textcolour, back = v.backcolour, style = v.style } )
+  end -- for each unique style
+  return result
+end -- get_unique_styles
+
 -- -----------------------------------------------------------------
 -- process_new_room
 -- we have an exit line - work out where we are and what the exits are
@@ -1337,12 +1368,15 @@ function process_new_room ()
 
   if override_contents ['description'] then
     description = override_contents ['description']
+    description_styles = { }
   end -- if
   if override_contents ['exits'] then
     exits_str = override_contents ['exits']:lower ()
+    exits_styles = { }
   end -- if
   if override_contents ['room_name'] then
     room_name = override_contents ['room_name']
+    room_name_styles = { }
   end -- if
 
   if not description then
@@ -1410,7 +1444,15 @@ function process_new_room ()
   -- add room to rooms table if not already known
   if not rooms [uid] then
     INFO ("Mapper adding room " .. fixuid (uid))
-    rooms [uid] = { desc = description, exits = exits, area = area_name or WorldName (), name = room_name or fixuid (uid) }
+    rooms [uid] = {
+        desc = description,
+        exits = exits,
+        area = area_name or WorldName (),
+        name = room_name or fixuid (uid),
+        name_styles   = get_unique_styles (room_name_styles),
+        exits_styles  = get_unique_styles (exits_styles),
+        desc_styles   = get_unique_styles (description_styles),
+        } -- end of new room table
     rooms_added = rooms_added + 1
   end -- if
 
@@ -1456,6 +1498,9 @@ function process_new_room ()
   override_line_contents = nil
   line_is_not_line_type = { }
   override_contents = { }
+  description_styles = { }
+  exits_styles = { }
+  room_name_styles = { }
 
 end -- process_new_room
 
@@ -2009,6 +2054,97 @@ function show_corpus ()
 
 end -- show_corpus
 
+-- -----------------------------------------------------------------
+-- show_styles - show a set of style runs summary
+-- -----------------------------------------------------------------
+function show_styles (name, styles)
+  local p = mapper.mapprint
+
+  p ""
+  p (string.format ("%s styles:", name))
+  p (string.format ("%-20s %-20s %-30s %s", "Foreground", "Background", "Styles", "Count"))
+  p (string.format ("%-20s %-20s %-30s %s", "----------", "----------", "------", "-----"))
+  for k, v in pairs (styles) do
+    local fore, back, style = string.match (k, "^(%d+)/(%d+)/(%d+)$")
+    local t = { }
+    if bit.band (style, 1) ~= 0 then
+      table.insert (t, "bold")
+    end
+    if bit.band (style, 2) ~= 0 then
+      table.insert (t, "underline")
+    end
+    if bit.band (style, 4) ~= 0 then
+      table.insert (t, "italic")
+    end
+
+    p (string.format ("%-20s %-20s %-30s %5d", RGBColourToName (fore), RGBColourToName (back), table.concat (t, ","), v))
+  end -- for
+
+end -- show_styles
+
+
+-- -----------------------------------------------------------------
+-- mapper_analyse - analyse the map database
+-- -----------------------------------------------------------------
+function mapper_analyse (name, line, wildcards)
+  local min_name_length = 1e20
+  local max_name_length = 0
+  local total_name_length = 0
+  local room_count = 0
+  local min_name = ""
+  local max_name = ""
+  local name_styles = { }
+  local desc_styles = { }
+  local exits_styles = { }
+
+  local function get_styles (this_room, all)
+    if this_room then
+      for k, v in ipairs (this_room) do
+        local s = string.format ("%d/%d/%d", v.fore, v.back, v.style)
+        if all [s] then
+          all [s] = all [s] + 1
+        else
+          all [s] = 1
+        end -- if
+      end -- for
+    end -- if styles exits
+  end -- get_styles
+
+  for uid, room in pairs (rooms) do
+    local len = #room.name
+    room_count = room_count + 1
+    min_name_length = math.min (min_name_length, len)
+    max_name_length = math.max (max_name_length, len)
+    if len == min_name_length then
+      min_name = room.name
+    end
+    if len == max_name_length then
+      max_name = room.name
+    end
+    total_name_length = total_name_length + len
+
+    get_styles (room.name_styles, name_styles)
+    get_styles (room.desc_styles, desc_styles)
+    get_styles (room.exits_styles, exits_styles)
+
+  end -- for
+
+  local p = mapper.mapprint
+
+  p (string.format ("%20s %4d (%s)", "Minimum room name length", min_name_length, min_name))
+  p (string.format ("%20s %4d (%s)", "Maximum room name length", max_name_length, max_name))
+  p (string.format ("%20s %4d",      "Average room name length", total_name_length / room_count))
+  show_styles ("Room name",   name_styles)
+  show_styles ("Description", desc_styles)
+  show_styles ("Exits",       exits_styles)
+
+end -- mapper_analyse
+
+-- -----------------------------------------------------------------
+-- mapper_list - analyse the map database
+-- -----------------------------------------------------------------
+function mapper_list (name, line, wildcards)
+end --
 
 -- -----------------------------------------------------------------
 -- mapper_config - display or change configuration options
