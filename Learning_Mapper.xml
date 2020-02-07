@@ -10,7 +10,7 @@
    purpose="AI interface to mapper to learn descriptions etc."
    save_state="y"
    date_written="2020-01-23 11:29:22"
-   date_modified="2020-02-06 09:18:00"
+   date_modified="2020-02-08 09:00:00"
    requires="5.05"
    version="1.4"
    >
@@ -23,7 +23,6 @@ The window can be dragged to a new location by dragging the room name.
 Your current room is always in the center with a bolder border.
 
 LH-click on a room to speed-walk to it. RH-click on a room for options.
-
 LH-click on the "*" button on the bottom-left corner to configure it.
 
 ** WHY DOES THE MAP CHANGE? **
@@ -35,23 +34,66 @@ Eventually it finds an overlap, and draws a short "stub" line to indicate there
 is a room there for which there isn't space to draw. If you get closer to that
 room the stub will disappear and the room(s) in question will be drawn.
 
+** WHAT DOES UID MEAN? **
+
+Each room has a unique identifier (UID). This is obtained by hashing up the
+room name and optionally the list of exits. Certain aliases below refer to
+rooms by their uid.
+
 ACTIONS
 
-mapper help         --> this help  (or click the "?" button on the bottom right)
-mapper zoom out     --> zoom out   (or use the mouse-wheel)
-mapper zoom in      --> zoom in    (or use the mouse-wheel)
-mapper hide         --> hide map
-mapper show         --> show map
+mapper help      --> this help  (or click the "?" button on the bottom right)
+mapper zoom out  --> zoom out   (or use the mouse-wheel)
+mapper zoom in   --> zoom in    (or use the mouse-wheel)
+mapper hide      --> hide map
+mapper show      --> show map
 
 FINDING THINGS
 
 mapper notes        --> show nearby rooms that you added notes to
-mapper find <text>  --> search for text in room name, description or notes (eg. mapper find blacksmith)
-mapper where <room> --> show directions to a room (given a room ID)
+mapper find <text>  --> search for text in room name, description or notes
+                          (eg. mapper find blacksmith)
+mapper where <uid>  --> show directions to a room (given a room ID)
 mapper shops        --> find nearby shops
 mapper trainers     --> find nearby trainers
 mapper banks        --> find nearby banks
-mapper list [<uid>] --> list all rooms or one room (if one room, gives detailed info)
+mapper peek <uid>   --> draws the map as if you were in room <uid>
+
+DATABASE MAINTENANCE
+
+mapper list         --> list rooms meeting certain criteria as follows:
+    mapper list     --> all rooms (can be lengthy, naturally)
+    mapper list uid ...           --> one or more UIDs
+                                      (if one, shows detailed info)
+    mapper list name <name>       --> rooms whose names partially match <name>
+    mapper list desc <description>--> rooms whose descriptions partially match
+                                      <description>
+    mapper list note <note>       --> rooms whose notes partially match <note>
+    mapper list notes             --> rooms with any notes at all
+    mapper list orphans           --> rooms which have no rooms leading to them
+    mapper list dest <uid>        --> rooms which have an exit to <uid>
+    mapper list connect <uid>     --> rooms which are connected to <uid>
+    mapper list shop              --> rooms with shops
+    mapper list trainer           --> rooms with trainers
+    mapper list bank              --> rooms with a bank
+    mapper list colour name fore <colour>  --> rooms whose name has
+                                               foreground colour <colour>
+    mapper list colour name back <colour>  --> rooms whose name has
+                                               background colour <colour>
+    mapper list colour desc fore <colour>  --> rooms whose description has
+                                               foreground colour <colour>
+    mapper list colour desc back <colour>  --> rooms whose description has
+                                               background colour <colour>
+    mapper list colour exits fore <colour> --> rooms whose exits has
+                                               foreground colour <colour>
+    mapper list colour exits back <colour> --> rooms whose exits has
+                                               background colour <colour>
+mapper delete <uid>   --> deletes this room from the database
+mapper analyse        --> analyse the database and report on line type
+                          colours etc.
+
+(The above actions consider the entire database, not just rooms which are
+available to be walked to right now).
 
 MOVING
 
@@ -61,65 +103,103 @@ mapper resume       --> resume last speedwalk or hyperlinked speedwalk
 
 LEARNING INTERFACE CONTROL
 
-mapper learn        --> toggle on/off the mapper learning window and line informationwindow
+mapper learn        --> toggle on/off the mapper learning window
+                        and line informationwindow
 
-mapper corpus info  --> shows how many times you trained various different line types
+mapper corpus info  --> shows how many times you trained various different
+                        line types
 mapper corpus       --> show the entire mapper corpus (can be lengthy)
-mapper reset corpus --> deletes the entire mapper corpus so it will need to be trained again
-                       (after a confirmation dialog)
-mapper analyse      --> analyse the database and report on line type colours etc.
-mapper export corpus       --> export corpus database for backup or sharing with others
-mapper import corpus       --> import corpus database from backup or from someone else
+mapper reset corpus --> deletes the entire mapper corpus so it will need to be
+                        trained again (after a confirmation dialog)
+mapper export corpus  --> export corpus database for backup or sharing
+mapper import corpus  --> import corpus database from backup or elsewhere
 
 MAPPER CONFIGURATION
 
-mapper config                   --> show all current configuration option values
-mapper config <option>          --> show one option value
-mapper config <option> <value>  --> change <option> to <value>
-mapper window width <size>      --> set the map window width of the map
-mapper window height <size>     --> set the map window height of the map
+mapper config                  --> show all current configuration option values
+mapper config <option>         --> show one option value
+mapper config <option> <value> --> change <option> to <value>
+mapper window width <size>     --> set the map window width of the map
+mapper window height <size>    --> set the map window height of the map
 
 
 OPTION NAMES:
 
-    status_background  <colour> --> background colour for the room types status window (eg. black)
-    status_border      <colour> --> colour of the border of the room types status window (eg. darkgray)
-    status_text        <colour> --> colour of the text in the room types status window (eg. lightgreen)
-    uid_size           <size>   --> how many characters of the unique ID to show in room information (3 to 25)
-    when_to_draw       <when>   --> one of "room name", "description", "exits", "prompt". See below.
-    activate_description_after_exits      (yes/no) --> Only consider lines to be description lines directly after exit lines (use for MUDs with descriptions after the exits)
-    activate_description_after_room_name  (yes/no) --> Only consider lines to be description lines directly after room name lines (use for MUDs with descriptions after the room names)
-    add_newline_to_prompt  (yes/no)            --> Add a newline to a prompt at the end of a packet, where a packet ends with exactly ">" or "> ".
-    blank_line_terminates_line_type (yes/no)   --> A blank line is considered to be the end of a line type - useful if there are no blank lines in descriptions, but one after.
-    exits_on_room_name (yes/no)                --> The room name also contains the available exits in the form:  Room name [N, S, E, W]
-    include_exits_in_hash (yes/no)             --> Include the exits in the room ID hash. Yes: better handling of rooms with the same name. No: If the MUD adds and removes exits from time to time (for example, if you unlock a door).
-    sort_exits (yes/no)                        --> sort exits into alphabetic order, also exclude non-exit words (for MUDs that put special symbols to show if you have explored an exit or not)
+    status_background <colour> --> background colour for the line information
+                                   window (eg. black)
+    status_border     <colour> --> colour of the border of the line information
+                                   window (eg. darkgray)
+    status_text       <colour> --> colour of the text in the line information
+                                   window (eg. lightgreen)
+    uid_size          <size>   --> how many characters of the unique ID to show
+                                   in room information (3 to 25)
+    when_to_draw      <when>   --> one of "room name", "description", "exits",
+                                  "prompt". See below.
+    activate_description_after_exits      (yes/no) -->
+          Only consider lines to be description lines directly after exit lines
+          (use for MUDs with descriptions after the exits)
+    activate_description_after_room_name  (yes/no) -->
+          Only consider lines to be description lines directly after room name
+          lines (use for MUDs with descriptions after the room names)
+    add_newline_to_prompt  (yes/no)            --> Add a newline to a prompt
+          at the end of a packet, where a packet ends with exactly ">" or "> ".
+    blank_line_terminates_line_type (yes/no)   --> A blank line is considered
+          to be the end of a line type - useful if there are no blank lines in
+          descriptions, but one after.
+    exits_on_room_name (yes/no)    --> The room name also contains
+          the available exits in the form:  Room name [N, S, E, W]
+    include_exits_in_hash (yes/no) --> Include the exits in the room ID hash.
+          YES: better handling of rooms with the same name.
+          NO: If the MUD adds and removes exits from time to time
+              (for example, if you unlock a door).
+    sort_exits (yes/no)   --> sort exits into alphabetic order,
+          also exclude non-exit words (for MUDs that put special symbols to
+          show if you have explored an exit or not).
 
 WHEN TO DRAW option
 
-When to draw the new room. Line types are one of:  room_name, description, exits, prompt, ignore, cannot_move
+When to draw the new room. Line types are one of:
+    room_name, description, exits, prompt, ignore, cannot_move
 For most MUDS: Use "exits" because exits usually come last.
-However if the exits come *before* the description is drawn, then make it after the description.
+However if the exits come *before* the description is drawn,
+    then make it after the description.
 
 TIPS
 
-* If the mapper seems to lag behind drawing a new room, make sure that you get a complete line *after* the exits line.
-* If the MUD supports colours, then use them. The mapper uses the colour of lines to distinguish them from each other.
-* Try activating world configuration -> Appearance -> Output -> "Convert IAC EOR/GA to new line"
-* If the MUD has prompts, try forcing a newline after a prompt (the suggestion above might do that)
-  For example, on some MUDs you can change the prompt like this: PROMPT %hH %mM %vV>!
-  In that case the "!" tells the MUD to send a new line. See your MUD documentation for details.
-* You can also try activating the automatic adding of newlines after simple prompts. Type "mapper config add_newline_to_prompt YES"
-* If room descriptions are not shown every time you enter a room (but only the first time) turn that option off in the MUD configuration (eg. "toggle brief")
-* Also try training prompt lines (they are not otherwise used, but a prompt line helps terminate a non-prompt line)
-* If the MUD shows a minimap on the left or right side of description lines, turn that option off in the MUD configuration (eg. "toggle minimap")
-* It is important that temporary things (like mobs in a room, people in a room, items on the ground, chat messages) are not considered part of the description. If they are select that line and click "Description: No".
-* If the MUD shows everything in one colour, try activating colour output (eg. "term ansi"). There may be configuration options to colour certain types of lines (eg. "ansi roomshort light green"). This will help with recognition of line types. The exact options will vary from MUD to MUD.
-* An exit line like: "South: A Room in Mud School" will give an erroneous link to the "in" direction.
+* If the mapper seems to lag behind drawing a new room, make sure that you get
+  a complete line *after* the exits line.
+* If the MUD supports colours, then use them. The mapper uses the colour of
+  lines to distinguish them from each other.
+* Try activating world configuration ->
+  Appearance -> Output -> "Convert IAC EOR/GA to new line"
+* If the MUD has prompts, try forcing a newline after a prompt
+  (the suggestion above might do that)
+  For example, on some MUDs you can change the prompt like this:
+    PROMPT %hH %mM %vV>!   or  PROMPT %hH %mM %vV>%c
+  In that case the "!" tells the MUD to send a new line.
+  See your MUD documentation for details.
+* You can also try activating the automatic adding of newlines after simple
+  prompts. Type "mapper config add_newline_to_prompt YES"
+* If room descriptions are not shown every time you enter a room (but only the
+  first time) turn that option off in the MUD configuration (eg. "toggle brief")
+* Also try training prompt lines (they are not otherwise used, but a prompt
+  line helps terminate a non-prompt line)
+* If the MUD shows a minimap on the left or right side of description lines,
+  turn that option off in the MUD configuration (eg. "toggle minimap")
+* It is important that temporary things (like mobs in a room, people in a room,
+  items on the ground, chat messages) are not considered part of the
+  description. If they are select that line and click "Description: No".
+* If the MUD shows everything in one colour, try activating colour output
+  (eg. "term ansi"). There may be configuration options to colour certain
+  types of lines (eg. "ansi roomshort light green"). This will help with
+  recognition of line types. The exact options will vary from MUD to MUD.
+* An exit line like: "South: A Room in Mud School" will give an erroneous
+  link to the "in" direction.
 
 LEARNING INTERFACE ALIASES (TRAIN THE MAPPER)
 
-(Type these or make a macro to use instead of clicking on the learning window - for example make F5 train the selected line to be a description).
+(Type these or make a macro to use instead of clicking on the learning window
+  - for example make F5 train the selected line to be a description).
 
 mapper is room name     --> the selected line(s) are the name of a room
 mapper not room name    --> the selected line(s) are NOT the name of a room
@@ -132,10 +212,10 @@ mapper not prompt       --> the selected line(s) are NOT prompt line(s)
 
 MAPPER DATABASE
 
-mapper export map       --> export mapper database for backup or sharing with others
-mapper import map       --> import mapper database from backup or from someone else
-mapper reset database   --> deletes the entire mapper database, so all mapped rooms are lost
-                            (after a confirmation dialog)
+mapper export map       --> export mapper database for backup or sharing
+mapper import map       --> import mapper database from backup or elsewhere
+mapper reset database   --> deletes the entire mapper database, so all mapped
+                            rooms are lost (after a confirmation dialog)
 
 ]]>
 </description>
@@ -504,6 +584,15 @@ mapper reset database   --> deletes the entire mapper database, so all mapped ro
    enabled="y"
    sequence="100"
    script="mapper_delete"
+   regexp="y"
+  >
+  </alias>
+
+   <alias
+   match="^mapper peek ([0-9A-Fa-f]+)$"
+   enabled="y"
+   sequence="100"
+   script="mapper_peek"
    regexp="y"
   >
   </alias>

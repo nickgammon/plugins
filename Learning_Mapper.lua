@@ -449,11 +449,11 @@ function config_validate_colour (which)
   local colour = ColourNameToRGB (which)
   if colour == -1 then
     mapper.maperror (string.format ('Colour name "%s" not a valid HTML colour name or code.', which))
-    mapper.mapprint ("  You can use HTML colour codes such as #123456 or names such as black or green.")
-    mapper.mapprint ("  See the Colour Picker (Edit menu -> Colour picker: Ctrl+Alt+P).")
-    return nil
+    mapper.mapprint ("  You can use HTML colour codes such as '#ab34cd' or names such as 'green'.")
+    mapper.mapprint ("  See the Colour Picker (Edit menu -> Colour Picker: Ctrl+Alt+P).")
+    return nil, nil
   end -- if bad
-  return which
+  return which, colour
 end -- config_validate_colour
 
 function config_validate_uid_size (which)
@@ -1436,10 +1436,6 @@ function process_new_room ()
     end -- if
   end -- for
 
-  -- show what we found
-  for k, v in pairs (exits) do
-    -- INFO ("Exit:", k)
-  end -- for
 
   -- add room to rooms table if not already known
   if not rooms [uid] then
@@ -1454,6 +1450,13 @@ function process_new_room ()
         desc_styles   = get_unique_styles (description_styles),
         } -- end of new room table
     rooms_added = rooms_added + 1
+  else
+    -- room there - check all exits are there
+    for dir in pairs (exits) do
+      if not rooms [uid].exits [dir] then
+        rooms [uid].exits [dir]  = "0"
+      end -- if exit not there
+    end -- for each exit we now about *now*
   end -- if
 
   -- update room name if possible
@@ -1824,25 +1827,25 @@ function map_goto (name, line, wildcards)
 
   local wanted = wildcards [1]
 
-  if current_room and wanted == current_room then
-    mapper.mapprint ("You are already in that room.")
-    return
-  end -- if
-
   if not string.match (wanted, "^%x+$") then
     mapper.mapprint ("Room IDs are hex strings (eg. FC758) - you can specify a partial string")
     return
   end -- if
 
-  -- they are stored as upper-case
-  wanted = wanted:upper ()
+  local goto_uid, room = find_room_partial_uid (wanted)
+  if not goto_uid then
+    return
+  end -- if not found
 
-
+  if current_room and goto_uid == current_room then
+    mapper.mapprint ("You are already in that room.")
+    return
+  end -- if
 
   -- find desired room
   mapper.find (
     function (uid)
-      return string.match (uid, "^" .. wanted), string.match (uid, "^" .. wanted)
+      return uid == goto_uid, uid == goto_uid
     end,  -- function
     show_vnums,  -- show vnum?
     1,          -- how many to expect
@@ -1955,9 +1958,10 @@ end -- corpus_info
 -- -----------------------------------------------------------------
 function OnHelp ()
 	mapper.mapprint (string.format ("[MUSHclient mapper, version %0.1f]", mapper.VERSION))
+  mapper.mapprint (string.format ("[%s version %0.2f]", GetPluginName(), GetPluginInfo (GetPluginID (), 19)))
+  mapper.mapprint (string.rep ("-", 30))
 	mapper.mapprint (GetPluginInfo (GetPluginID (), 3))
   mapper.mapprint (string.rep ("-", 30))
-  mapper.mapprint (string.format ("%s version %0.2f", GetPluginName(), GetPluginInfo (GetPluginID (), 19)))
 end
 
 -- -----------------------------------------------------------------
@@ -2113,35 +2117,41 @@ function mapper_analyse (name, line, wildcards)
   end -- get_styles
 
   for uid, room in pairs (rooms) do
-    local len = #room.name
-    room_count = room_count + 1
-    min_name_length = math.min (min_name_length, len)
-    max_name_length = math.max (max_name_length, len)
-    if len == min_name_length then
-      min_name = room.name
-    end
-    if len == max_name_length then
-      max_name = room.name
-    end
-    total_name_length = total_name_length + len
+    -- don't bother getting the length of hex uids - that doesn't prove much
+    if not string.match (room.name, "^%x+$") then
+      local len = #room.name
+      room_count = room_count + 1
+      min_name_length = math.min (min_name_length, len)
+      max_name_length = math.max (max_name_length, len)
+      if len == min_name_length then
+        min_name = room.name
+      end
+      if len == max_name_length then
+        max_name = room.name
+      end
+      total_name_length = total_name_length + len
+      end -- if not a hex room name
 
+    -- now get the colours
     get_styles (room.name_styles, name_styles)
     get_styles (room.desc_styles, desc_styles)
     get_styles (room.exits_styles, exits_styles)
 
-  end -- for
+  end -- for each room
 
   local p = mapper.mapprint
-  mapper.mapprint (string.rep ("-", 60))
+  mapper.mapprint (string.rep ("-", 78))
 
   p (string.format ("%20s %4d (%s)", "Minimum room name length", min_name_length, min_name))
   p (string.format ("%20s %4d (%s)", "Maximum room name length", max_name_length, max_name))
-  p (string.format ("%20s %4d",      "Average room name length", total_name_length / room_count))
+  if room_count > 0 then  -- no divide by zero
+    p (string.format ("%20s %4d",      "Average room name length", total_name_length / room_count))
+  end -- if
   show_styles ("Room name",   name_styles)
   show_styles ("Description", desc_styles)
   show_styles ("Exits",       exits_styles)
 
-  mapper.mapprint (string.rep ("-", 60))
+  mapper.mapprint (string.rep ("-", 78))
 
 end -- mapper_analyse
 
@@ -2168,7 +2178,7 @@ function uid_hyperlink (uid)
 end -- uid_hyperlink
 
 function list_rooms_table (t)
-  table.sort (t, function (a, b) return a.room.name < b.room.name end )
+  table.sort (t, function (a, b) return a.room.name:upper () < b.room.name:upper () end )
 
   for _, v in ipairs (t) do
     local room = v.room
@@ -2176,6 +2186,17 @@ function list_rooms_table (t)
     uid_hyperlink (uid)
     print (" ", room.name)
   end -- for each room
+
+  if #t == 0 then
+    mapper.mapprint "No matches."
+  else
+    local s = ""
+    if #t > 1 then
+      s = "es"
+    end -- if
+    mapper.mapprint (string.format ("%d match%s.", #t, s))
+  end -- if
+
 end -- list_rooms_table
 
 function find_orphans ()
@@ -2197,8 +2218,61 @@ function find_orphans ()
   for uid, room in pairs (orphans) do
     table.insert (t, { uid = uid, room = room })
   end -- for
-  return t
+  list_rooms_table (t)
 end -- find_orphans
+
+function find_connect (uid, room)
+  local found = {  }
+  local unexplored = { [uid] = true }
+
+  while next (unexplored) do
+    local new_ones= { }
+    for uid in pairs (unexplored) do
+      if not found [uid] then
+        local room = rooms [uid]
+        if room then
+          found [uid] = true
+          unexplored [uid] = nil  -- remove from unexplored list
+          for dir, exit_uid in pairs (room.exits) do
+            if not found [exit_uid] and not unexplored [exit_uid] then
+              table.insert (new_ones, exit_uid)
+            end -- if not noticed yet
+          end -- for
+        else
+          unexplored [uid] = nil  -- doesn't exist, remove from list
+        end -- if room exists
+      end -- if not yet found
+    end -- for each unexplored room
+    for _, uid in ipairs (new_ones) do
+      unexplored [uid] = true
+    end -- for
+  end -- while still some to go
+
+  local t = { }
+
+  for uid in pairs (found) do
+    table.insert (t, { uid = uid, room = rooms [uid] } )
+  end -- for each found room
+
+  list_rooms_table (t)
+end -- find_connect
+
+function  colour_finder (wanted_colour, which_styles, fore_or_back)
+  local colour, colourRGB = config_validate_colour (wanted_colour)
+  if not colour then
+    return
+  end -- if
+  mapper_list_finder (function (uid, room)
+    if room [which_styles] then
+      for _, style in ipairs (room [which_styles]) do
+        if style [fore_or_back] == colourRGB then
+          return true
+        end -- if wanted colour
+      end -- for each style
+    end -- if any style
+    return false
+   end)
+end -- colour_finder
 
 function find_room_partial_uid (which)
   local t = { }
@@ -2223,71 +2297,136 @@ function find_room_partial_uid (which)
 end -- find_room_partial_uid
 
 -- -----------------------------------------------------------------
+-- mapper_list_finder - generic finder which adds a room if f() returns true
+-- -----------------------------------------------------------------
+function mapper_list_finder (f)
+  local t = { }
+
+  for uid, room in pairs (rooms) do
+    if not f or f (uid, room) then
+      table.insert (t, { uid = uid, room = room } )
+    end -- if room wanted
+  end -- for
+
+  list_rooms_table (t)
+end -- mapper_list_finder
+
+-- -----------------------------------------------------------------
 -- mapper_list - show or search the map database
 -- -----------------------------------------------------------------
 function mapper_list (name, line, wildcards)
-  local t = { }
-  local first_wildcard = Trim (wildcards [1])
-  local wanted_name = string.match (first_wildcard, "^name%s+(.+)$")
-  local wanted_desc = string.match (first_wildcard, "^desc%s+(.+)$")
-  local orphans = string.match (first_wildcard, "^orphans?$")
-  local lead_to = string.match (first_wildcard, "^dest%s+(%x+)$")
+  local first_wildcard = Trim (wildcards [1]):lower ()
+  local name     = string.match (first_wildcard, "^name%s+(.+)$")
+  local desc     = string.match (first_wildcard, "^desc%s+(.+)$")
+  local notes    = string.match (first_wildcard, "^notes?%s+(.+)$")
+  local any_notes= string.match (first_wildcard, "^notes?$")
+  local orphans  = string.match (first_wildcard, "^orphans?$")
+  local lead_to  = string.match (first_wildcard, "^dest%s+(%x+)$")
+  local connect  = string.match (first_wildcard, "^connect%s+(%x+)$")
+  local shops    = string.match (first_wildcard, "^shops?$")
+  local banks    = string.match (first_wildcard, "^banks?$")
+  local trainers = string.match (first_wildcard, "^trainers?$")
+  local colour_name_fore  = string.match (first_wildcard, "^colou?r%s+name%s+fore%s+(.*)$")
+  local colour_name_back  = string.match (first_wildcard, "^colou?r%s+name%s+back%s+(.*)$")
+  local colour_desc_fore  = string.match (first_wildcard, "^colou?r%s+desc%s+fore%s+(.*)$")
+  local colour_desc_back  = string.match (first_wildcard, "^colou?r%s+desc%s+back%s+(.*)$")
+  local colour_exits_fore = string.match (first_wildcard, "^colou?r%s+exits?%s+fore%s+(.*)$")
+  local colour_exits_back = string.match (first_wildcard, "^colou?r%s+exits?%s+back%s+(.*)$")
 
   -- no wildcard? list all rooms
   if first_wildcard == "" then
-    for uid, room in pairs (rooms) do
-      table.insert (t, { uid = uid, room = room } )
-    end -- for
+    mapper_list_finder ()
+
   -- wildcard consists of hex digits and spaces? must be a uid list
   elseif string.match (first_wildcard, "^[%x ]+$") then
-    -- hex strings? room uids
-    for w in string.gmatch (first_wildcard, "%x+") do
-      for uid, room in pairs (rooms) do
-        if string.match (uid, "^" .. w:upper ()) then
-          table.insert (t, { uid = uid, room = room } )
-        end -- if uid matches
-      end -- for each room
-    end -- for each uid they wanted
+    first_wildcard = first_wildcard:upper ()  -- UIDs are in upper case
+    if not string.match (first_wildcard, ' ') then
+      local uid, room = find_room_partial_uid (first_wildcard)
+      if not uid then
+        return
+      end -- if not found
+
+      mapper_show (uid)
+    else
+      -- hex strings? room uids
+      mapper_list_finder (function (uid, room)
+        for w in string.gmatch (first_wildcard, "%x+") do
+          return string.match (uid, "^" .. w)
+        end -- for each uid they wanted
+      end )  -- function
+    end -- if more than one uid
 
   -- wildcard is: name xxx
-  -- search for xxx in name
-  elseif wanted_name then
-    wanted_name = Trim (wanted_name):lower ()
-    for uid, room in pairs (rooms) do
-      if string.find (room.name:lower (), wanted_name, 1, true) then
-        table.insert (t, { uid = uid, room = room } )
-      end -- if uid matches
-    end -- for each room
+  elseif name then
+    mapper_list_finder (function (uid, room) return string.find (room.name:lower (), name, 1, true) end)
 
   -- wildcard is: desc xxx
-  -- search for xxx in description
-  elseif wanted_desc then
-    wanted_desc = Trim (wanted_desc):lower ()
-    for uid, room in pairs (rooms) do
-      if string.find (room.desc:lower (), wanted_desc, 1, true) then
-        table.insert (t, { uid = uid, room = room } )
-      end -- if uid matches
-    end -- for each room
+  elseif desc then
+    mapper_list_finder (function (uid, room) return string.find (room.desc:lower (), desc, 1, true) end)
+
+  -- wildcard is: notes xxx
+  elseif notes then
+    mapper_list_finder (function (uid, room) return room.notes and string.find (room.notes:lower (), notes, 1, true) end)
+
+  -- wildcard is: notes
+  -- (show all rooms with notes)
+  elseif any_notes then
+    mapper_list_finder (function (uid, room) return room.notes end)
+
+  -- wildcard is: shops
+  elseif shops then
+    mapper_list_finder (function (uid, room) return room.Shop end)
+
+  -- wildcard is: trainers
+  elseif trainers then
+    mapper_list_finder (function (uid, room) return room.Trainer end)
+
+  -- wildcard is: banks
+  elseif banks then
+    mapper_list_finder (function (uid, room) return room.Bank end)
 
   -- find orphan rooms (rooms no other room leads to)
   elseif orphans then
-    t = find_orphans ()
+    find_orphans ()
+
+  -- find rooms which this one eventually connects to
+  elseif connect then
+    local connect_uid, room = find_room_partial_uid (connect)
+    if not connect_uid then
+      return
+    end -- if not found
+    mapper.mapprint (string.format ("Rooms which %s connects to::", connect))
+    t = find_connect (connect_uid, room)
 
   -- find rooms which have an exit leading to this one
   elseif lead_to then
-    lead_to_uid, room = find_room_partial_uid (lead_to)
+    local lead_to_uid, room = find_room_partial_uid (lead_to)
     if not lead_to_uid then
       return
     end -- if not found
-    mapper.mapprint (string.format ("Rooms which have an exit to %s (%s)", lead_to, room.name))
-    for uid, room in pairs (rooms) do
+    mapper.mapprint (string.format ("Rooms which have an exit to %s:", lead_to))
+    mapper_list_finder (function (uid, room)
       for dir, exit_uid in pairs (room.exits) do
         if exit_uid == lead_to_uid then
-          table.insert (t, { uid = uid, room = room } )
-          break  -- one exit will do
+          return true
         end -- if exit leads to this room
       end -- for each exit
-    end -- for
+      return false
+      end)  -- finding function
+
+  -- colour finding
+  elseif colour_name_fore then
+    colour_finder (colour_name_fore, 'name_styles', 'fore')
+  elseif colour_name_back then
+    colour_finder (colour_name_back, 'name_styles', 'back')
+  elseif colour_desc_fore then
+    colour_finder (colour_desc_fore, 'desc_styles', 'fore')
+  elseif colour_desc_back then
+    colour_finder (colour_desc_back, 'desc_styles', 'back')
+  elseif colour_exits_fore then
+    colour_finder (colour_exits_fore, 'exits_styles', 'fore')
+  elseif colour_exits_back then
+    colour_finder (colour_exits_back, 'exits_styles', 'back')
 
   else
     mapper.maperror ("Do not understand list command:", first_wildcard)
@@ -2296,16 +2435,23 @@ function mapper_list (name, line, wildcards)
     mapper.mapprint ("  mapper list uid ...")
     mapper.mapprint ("  mapper list name <name>")
     mapper.mapprint ("  mapper list desc <description>")
+    mapper.mapprint ("  mapper list note <note>")
+    mapper.mapprint ("  mapper list notes")
     mapper.mapprint ("  mapper list orphans")
     mapper.mapprint ("  mapper list dest <uid>")
+    mapper.mapprint ("  mapper list connect <uid>")
+    mapper.mapprint ("  mapper list shop")
+    mapper.mapprint ("  mapper list trainer")
+    mapper.mapprint ("  mapper list bank")
+    mapper.mapprint ("  mapper colour name fore <colour>")
+    mapper.mapprint ("  mapper colour name back <colour>")
+    mapper.mapprint ("  mapper colour desc fore <colour>")
+    mapper.mapprint ("  mapper colour desc back <colour>")
+    mapper.mapprint ("  mapper colour exits fore <colour>")
+    mapper.mapprint ("  mapper colour exits back <colour>")
     return
   end -- if
 
-  if #t == 0 then
-    mapper.mapprint "No matches."
-  else
-    list_rooms_table (t)
-  end -- if
 end -- mapper_list
 
 -- -----------------------------------------------------------------
@@ -2337,6 +2483,24 @@ function mapper_show (uid)
     Tell " "
   end -- for
   Note "" -- finish line
+  if room.notes then
+    Note (string.rep ("-", 60))
+    Note (room.notes)
+  end -- of having notes
+  if room.Trainer or room.Shop or room.Bank then
+    Note (string.rep ("-", 60))
+    local t = { }
+    if room.Bank then
+      table.insert (t, "Bank")
+    end -- if
+    if room.Shop then
+      table.insert (t, "Shop")
+    end -- if
+    if room.Trainer then
+      table.insert (t, "Trainer")
+    end -- if
+    Note (table.concat (t, ", "))
+  end -- of having notes
   Note (string.rep ("-", 60))
 
   SetNoteColourFore (old_note_colour)
@@ -2847,6 +3011,22 @@ function map_find_special (f)
     )
 
 end -- map_find_special
+
+-- -----------------------------------------------------------------
+-- mapper_peek - draw the map as if you were at uid
+-- -----------------------------------------------------------------
+function mapper_peek (name, line, wildcards)
+  local uid = wildcards [1]
+
+  peek_uid, room = find_room_partial_uid (uid)
+  if not peek_uid then
+    return
+  end -- if not found
+
+  mapper.draw (peek_uid)
+  last_drawn_id = peek_uid    -- in case they change the window size
+
+end -- mapper_peek
 
 -- -----------------------------------------------------------------
 -- map_shops - find nearby shops
