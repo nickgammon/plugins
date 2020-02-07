@@ -1825,6 +1825,10 @@ end -- map_bookmarks
 
 function map_goto (name, line, wildcards)
 
+  if not mapper.check_we_can_find () then
+    return
+  end -- if
+
   local wanted = wildcards [1]
 
   if not string.match (wanted, "^%x+$") then
@@ -1973,18 +1977,26 @@ function map_where (name, line, wildcards)
     return
   end -- if
 
-  local wanted = wildcards [1]
-  -- they are stored as upper-case
-  wanted = wanted:upper ()
+  local wanted = wildcards [1]:upper ()
 
-  if current_room and string.match (current_room, wanted) then
+  if not string.match (wanted, "^%x+$") then
+    mapper.mapprint ("Room IDs are hex strings (eg. FC758) - you can specify a partial string")
+    return
+  end -- if
+
+  local where_uid, room = find_room_partial_uid (wanted)
+  if not where_uid then
+    return
+  end -- if not found
+
+  if current_room and where_uid == current_room then
     mapper.mapprint ("You are already in that room.")
     return
   end -- if
 
   local paths = mapper.find_paths (current_room,
            function (uid)
-            return string.match (uid, wanted), string.match (uid, wanted)
+            return uid == where_uid, uid == where_uid
             end)
 
   local uid, item = next (paths, nil) -- extract first (only) path
@@ -1999,7 +2011,7 @@ function map_where (name, line, wildcards)
   local path = mapper.build_speedwalk (item.path)
 
   -- display it
-  mapper.mapprint (string.format ("Path to %s is: %s", wanted, path))
+  mapper.mapprint (string.format ("Path to %s (%s) is: %s", wanted, rooms [where_uid].name, path))
 
 end -- map_where
 
@@ -2155,6 +2167,9 @@ function mapper_analyse (name, line, wildcards)
 
 end -- mapper_analyse
 
+-- -----------------------------------------------------------------
+-- mapper_delete - delete a room from the database
+-- -----------------------------------------------------------------
 function mapper_delete (name, line, wildcards)
   local uid = wildcards [1]
   if #uid < 4 then
@@ -2172,11 +2187,17 @@ function mapper_delete (name, line, wildcards)
   mapper.mapprint ("Room", delete_uid, "deleted.")
 end -- mapper_delete
 
+-- -----------------------------------------------------------------
+-- uid_hyperlink - displays (with no newline) a hyperlink to a UID
+-- -----------------------------------------------------------------
 function uid_hyperlink (uid)
   Hyperlink ("!!" .. GetPluginID () .. ":mapper_show(" .. uid .. ")",
             fixuid (uid), "Click to show room details for " .. fixuid (uid), "", "", false)
 end -- uid_hyperlink
 
+-- -----------------------------------------------------------------
+-- list_rooms_table - displays a list of rooms from the supplied table of uid/room pairs
+-- -----------------------------------------------------------------
 function list_rooms_table (t)
   table.sort (t, function (a, b) return a.room.name:upper () < b.room.name:upper () end )
 
@@ -2199,6 +2220,9 @@ function list_rooms_table (t)
 
 end -- list_rooms_table
 
+-- -----------------------------------------------------------------
+-- find_orphans - finds all rooms nothing leads to
+-- -----------------------------------------------------------------
 function find_orphans ()
   local orphans = { }
   -- add all rooms to orphans table
@@ -2221,6 +2245,9 @@ function find_orphans ()
   list_rooms_table (t)
 end -- find_orphans
 
+-- -----------------------------------------------------------------
+-- find_connect - finds all rooms that this one eventually leads to
+-- -----------------------------------------------------------------
 function find_connect (uid, room)
   local found = {  }
   local unexplored = { [uid] = true }
@@ -2257,6 +2284,10 @@ function find_connect (uid, room)
   list_rooms_table (t)
 end -- find_connect
 
+-- -----------------------------------------------------------------
+-- colour_finder - generic finder for name/description/exits
+--                 foreground or background colours
+-- -----------------------------------------------------------------
 function  colour_finder (wanted_colour, which_styles, fore_or_back)
   local colour, colourRGB = config_validate_colour (wanted_colour)
   if not colour then
@@ -2274,6 +2305,12 @@ function  colour_finder (wanted_colour, which_styles, fore_or_back)
    end)
 end -- colour_finder
 
+-- -----------------------------------------------------------------
+-- find_room_partial_uid - find a room by partial ID
+-- if multiples found, advises what they are
+-- if none, gives an error and returns nil
+-- otherwise returns the UID and the room info for that room
+-- -----------------------------------------------------------------
 function find_room_partial_uid (which)
   local t = { }
   which = which:upper ()
@@ -2332,9 +2369,11 @@ function mapper_list (name, line, wildcards)
   local colour_desc_back  = string.match (first_wildcard, "^colou?r%s+desc%s+back%s+(.*)$")
   local colour_exits_fore = string.match (first_wildcard, "^colou?r%s+exits?%s+fore%s+(.*)$")
   local colour_exits_back = string.match (first_wildcard, "^colou?r%s+exits?%s+back%s+(.*)$")
+  local p = mapper.mapprint
 
   -- no wildcard? list all rooms
   if first_wildcard == "" then
+    p ("All rooms")
     mapper_list_finder ()
 
   -- wildcard consists of hex digits and spaces? must be a uid list
@@ -2358,35 +2397,43 @@ function mapper_list (name, line, wildcards)
 
   -- wildcard is: name xxx
   elseif name then
+    p (string.format ('Rooms whose name match "%s"', name))
     mapper_list_finder (function (uid, room) return string.find (room.name:lower (), name, 1, true) end)
 
   -- wildcard is: desc xxx
   elseif desc then
+    p (string.format ('Rooms whose description matches "%s"', desc))
     mapper_list_finder (function (uid, room) return string.find (room.desc:lower (), desc, 1, true) end)
 
   -- wildcard is: notes xxx
   elseif notes then
+    p (string.format ('Rooms whose notes match "%s"', notes))
     mapper_list_finder (function (uid, room) return room.notes and string.find (room.notes:lower (), notes, 1, true) end)
 
   -- wildcard is: notes
   -- (show all rooms with notes)
   elseif any_notes then
+    p ("Rooms with notes")
     mapper_list_finder (function (uid, room) return room.notes end)
 
   -- wildcard is: shops
   elseif shops then
+    p ("Rooms with shops")
     mapper_list_finder (function (uid, room) return room.Shop end)
 
   -- wildcard is: trainers
   elseif trainers then
+    p ("Rooms with trainers")
     mapper_list_finder (function (uid, room) return room.Trainer end)
 
   -- wildcard is: banks
   elseif banks then
+    p ("Rooms with banks")
     mapper_list_finder (function (uid, room) return room.Bank end)
 
   -- find orphan rooms (rooms no other room leads to)
   elseif orphans then
+    p ("Orphaned rooms")
     find_orphans ()
 
   -- find rooms which this one eventually connects to
@@ -2395,7 +2442,7 @@ function mapper_list (name, line, wildcards)
     if not connect_uid then
       return
     end -- if not found
-    mapper.mapprint (string.format ("Rooms which %s connects to::", connect))
+    p (string.format ('Rooms which can be reached from "%s" (%s)', connect, room.name))
     t = find_connect (connect_uid, room)
 
   -- find rooms which have an exit leading to this one
@@ -2404,7 +2451,7 @@ function mapper_list (name, line, wildcards)
     if not lead_to_uid then
       return
     end -- if not found
-    mapper.mapprint (string.format ("Rooms which have an exit to %s:", lead_to))
+    p (string.format ("Rooms which have an exit to %s:", lead_to))
     mapper_list_finder (function (uid, room)
       for dir, exit_uid in pairs (room.exits) do
         if exit_uid == lead_to_uid then
@@ -2416,39 +2463,45 @@ function mapper_list (name, line, wildcards)
 
   -- colour finding
   elseif colour_name_fore then
+    p (string.format ("Rooms who have a name foreground style of %s:", colour_name_fore))
     colour_finder (colour_name_fore, 'name_styles', 'fore')
   elseif colour_name_back then
+    p (string.format ("Rooms who have a name background style of %s:", colour_name_back))
     colour_finder (colour_name_back, 'name_styles', 'back')
   elseif colour_desc_fore then
+    p (string.format ("Rooms who have a description foreground style of %s:", colour_desc_fore))
     colour_finder (colour_desc_fore, 'desc_styles', 'fore')
   elseif colour_desc_back then
+    p (string.format ("Rooms who have a description background style of %s:", colour_desc_back))
     colour_finder (colour_desc_back, 'desc_styles', 'back')
   elseif colour_exits_fore then
+    p (string.format ("Rooms who have a exits foreground style of %s:", colour_exits_fore))
     colour_finder (colour_exits_fore, 'exits_styles', 'fore')
   elseif colour_exits_back then
+    p (string.format ("Rooms who have a exits background style of %s:", colour_exits_back))
     colour_finder (colour_exits_back, 'exits_styles', 'back')
 
   else
-    mapper.maperror ("Do not understand list command:", first_wildcard)
-    mapper.mapprint ("Options are:")
-    mapper.mapprint ("  mapper list")
-    mapper.mapprint ("  mapper list uid ...")
-    mapper.mapprint ("  mapper list name <name>")
-    mapper.mapprint ("  mapper list desc <description>")
-    mapper.mapprint ("  mapper list note <note>")
-    mapper.mapprint ("  mapper list notes")
-    mapper.mapprint ("  mapper list orphans")
-    mapper.mapprint ("  mapper list dest <uid>")
-    mapper.mapprint ("  mapper list connect <uid>")
-    mapper.mapprint ("  mapper list shop")
-    mapper.mapprint ("  mapper list trainer")
-    mapper.mapprint ("  mapper list bank")
-    mapper.mapprint ("  mapper colour name fore <colour>")
-    mapper.mapprint ("  mapper colour name back <colour>")
-    mapper.mapprint ("  mapper colour desc fore <colour>")
-    mapper.mapprint ("  mapper colour desc back <colour>")
-    mapper.mapprint ("  mapper colour exits fore <colour>")
-    mapper.mapprint ("  mapper colour exits back <colour>")
+    mapper.maperror ("Do not understand 'list' command:", first_wildcard)
+    p ("Options are:")
+    p ("  mapper list")
+    p ("  mapper list uid ...")
+    p ("  mapper list name <name>")
+    p ("  mapper list desc <description>")
+    p ("  mapper list note <note>")
+    p ("  mapper list notes")
+    p ("  mapper list orphans")
+    p ("  mapper list dest <uid>")
+    p ("  mapper list connect <uid>")
+    p ("  mapper list shop")
+    p ("  mapper list trainer")
+    p ("  mapper list bank")
+    p ("  mapper list colour name  fore <colour>")
+    p ("  mapper list colour name  back <colour>")
+    p ("  mapper list colour desc  fore <colour>")
+    p ("  mapper list colour desc  back <colour>")
+    p ("  mapper list colour exits fore <colour>")
+    p ("  mapper list colour exits back <colour>")
     return
   end -- if
 
@@ -2467,28 +2520,34 @@ function mapper_show (uid)
   local old_note_colour = GetNoteColourFore ()
   SetNoteColourFore(config.MAPPER_NOTE_COLOUR.colour)
 
-  Note (string.rep ("-", 60))
-  Note (string.format ("Room:  %s: %s.", fixuid (uid), room.name))
-  Note (string.rep ("-", 60))
+  Note (string.rep ("-", 78))
+  Note (string.format ("Room:  %s -> %s.", fixuid (uid), room.name))
+  Note (string.rep ("-", 78))
   Note (room.desc)
-  Note (string.rep ("-", 60))
+  Note (string.rep ("-", 78))
   Tell ("Exits: ")
   for dir,dest in pairs (room.exits) do
     Tell (dir:upper () .. " -> ")
     if dest == "0" then
-      Tell "(Unknown)"
+      Tell "(Not explored)"
     else
-      uid_hyperlink (dest)
+      local dest_room = rooms [dest]
+      if dest_room then
+        uid_hyperlink (dest)
+        Tell (" (" .. dest_room.name .. ")")
+      else
+        Tell (fixuid (dest) .. " (unknown)")
+      end -- if dest_room
     end -- if
     Tell " "
   end -- for
   Note "" -- finish line
   if room.notes then
-    Note (string.rep ("-", 60))
+    Note (string.rep ("-", 78))
     Note (room.notes)
   end -- of having notes
   if room.Trainer or room.Shop or room.Bank then
-    Note (string.rep ("-", 60))
+    Note (string.rep ("-", 78))
     local t = { }
     if room.Bank then
       table.insert (t, "Bank")
@@ -2501,7 +2560,7 @@ function mapper_show (uid)
     end -- if
     Note (table.concat (t, ", "))
   end -- of having notes
-  Note (string.rep ("-", 60))
+  Note (string.rep ("-", 78))
 
   SetNoteColourFore (old_note_colour)
 end -- mapper_show
