@@ -57,7 +57,7 @@ Date:   24th January 2020
 
 --]]
 
-LEARNING_MAPPER_LUA_VERSION = 1.6  -- version must agree with plugin version
+LEARNING_MAPPER_LUA_VERSION = 1.7  -- version must agree with plugin version
 
 -- The probability (in the range 0.0 to 1.0) that a line has to meet to be considered a certain line type.
 -- The higher, the stricter the requirement.
@@ -2366,6 +2366,7 @@ function mapper_list (name, line, wildcards)
   local name     = string.match (first_wildcard, "^name%s+(.+)$")
   local desc     = string.match (first_wildcard, "^desc%s+(.+)$")
   local notes    = string.match (first_wildcard, "^notes?%s+(.+)$")
+  local area     = string.match (first_wildcard, "^areas?%s+(.+)$")
   local any_notes= string.match (first_wildcard, "^notes?$")
   local orphans  = string.match (first_wildcard, "^orphans?$")
   local lead_to  = string.match (first_wildcard, "^dest%s+(%x+)$")
@@ -2422,6 +2423,11 @@ function mapper_list (name, line, wildcards)
   elseif notes then
     p (string.format ('Rooms whose notes match "%s"', notes))
     mapper_list_finder (function (uid, room) return room.notes and string.find (room.notes:lower (), notes, 1, true) end)
+
+  -- wildcard is: area xxx
+  elseif area then
+    p (string.format ('Rooms whose area matches "%s"', area))
+    mapper_list_finder (function (uid, room) return room.area and string.find (room.area:lower (), area, 1, true) end)
 
   -- wildcard is: notes
   -- (show all rooms with notes)
@@ -2502,6 +2508,7 @@ function mapper_list (name, line, wildcards)
     p ("  mapper list name <name>")
     p ("  mapper list desc <description>")
     p ("  mapper list note <note>")
+    p ("  mapper list area <area>")
     p ("  mapper list notes")
     p ("  mapper list orphans")
     p ("  mapper list dest <uid>")
