@@ -57,7 +57,7 @@ Date:   24th January 2020
 
 --]]
 
-LEARNING_MAPPER_LUA_VERSION = 1.5  -- version must agree with plugin version
+LEARNING_MAPPER_LUA_VERSION = 1.6  -- version must agree with plugin version
 
 -- The probability (in the range 0.0 to 1.0) that a line has to meet to be considered a certain line type.
 -- The higher, the stricter the requirement.
@@ -2915,6 +2915,35 @@ function room_edit_bookmark (room, uid)
 
 end -- room_edit_bookmark
 
+-- -----------------------------------------------------------------
+-- room_edit_area - menu handler to edit the room area
+-- -----------------------------------------------------------------
+function room_edit_area (room, uid)
+
+  local area = room.area
+
+
+  newarea = utils.inputbox ("Modify room area name", room.name, area)
+
+  if not newarea then
+    return
+  end -- if cancelled
+
+  if newarea == "" then
+    mapper.mapprint ("Area not changed.")
+    return
+  end -- if
+
+  if area == newarea then
+    return -- no change made
+  end -- if
+
+   mapper.mapprint ("Area name for room", uid, "changed to:", newarea)
+
+   rooms [uid].area = newarea
+
+end -- room_edit_area
+
 
 -- -----------------------------------------------------------------
 -- room_delete_exit - menu handler to delete an exit
@@ -3013,6 +3042,7 @@ function room_click (uid, flags)
 
   local handlers = {
       { name = notes_desc, func = room_edit_bookmark} ,
+      { name = "Edit area", func = room_edit_area } ,
       { name = "Show description", func = room_show_description} ,
       { name = "-", } ,
       { name = "Trainer", func = room_toggle_trainer, check_item = true} ,
