@@ -57,7 +57,7 @@ Date:   24th January 2020
 
 --]]
 
-LEARNING_MAPPER_LUA_VERSION = 1.4  -- version must agree with plugin version
+LEARNING_MAPPER_LUA_VERSION = 1.5  -- version must agree with plugin version
 
 -- The probability (in the range 0.0 to 1.0) that a line has to meet to be considered a certain line type.
 -- The higher, the stricter the requirement.
@@ -2400,8 +2400,11 @@ function mapper_list (name, line, wildcards)
       -- hex strings? room uids
       mapper_list_finder (function (uid, room)
         for w in string.gmatch (first_wildcard, "%x+") do
-          return string.match (uid, "^" .. w)
+          if string.match (uid, "^" .. w) then
+            return true
+          end -- if
         end -- for each uid they wanted
+        return false
       end )  -- function
     end -- if more than one uid
 
