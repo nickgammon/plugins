@@ -35,6 +35,7 @@ Date:   24th January 2020
                                                    (for example, if you get a room name on a prompt line)
   set_not_line_type (linetype)       --> set this current line to be definitely not linetype (can call for multiple line types)
   set_area_name (name)               --> sets the name of the area you are in
+  set_uid (uid)                      --> sets a string to be hashed as the UID for this room
   do_not_deduce_line_type (linetype) --> do not deduce (do Bayesian analysis) on this type of line - has to be set by set_line_type
   deduce_line_type (linetype)        --> deduce this line type (cancels do_not_deduce_line_type)
   get_last_line_type ()              --> get the previous line type as deduced or set by set_line_type
@@ -668,7 +669,7 @@ function OnPluginDrawOutputWindow (firstline, offset, notused)
       else
         local linetype, probability, x_offset
         local ded = deduced_line_types [GetLineInfo (line, 10)]
-        if ded then
+        if ded and ded.lt then
           if ded.ov then
             line_type_info = string.format ("<- %s (certain)", line_types [ded.lt].short)
           else
@@ -1380,8 +1381,12 @@ function process_new_room ()
   end -- if
 
   if not description then
-    WARNING "No description for this room"
-    return
+    if override_uid then
+      description = "(none)"
+    else
+      WARNING "No description for this room"
+      return
+    end -- if
   end -- if no description
 
   if not exits_str then
@@ -1413,7 +1418,10 @@ function process_new_room ()
   end -- if
 
   -- generate a "room ID" by hashing the room description and possibly the exits
-  if config.INCLUDE_EXITS_IN_HASH then
+  -- or, if supplied the override UID
+  if override_uid then
+    uid = utils.tohex (utils.md5 (override_uid))
+  elseif config.INCLUDE_EXITS_IN_HASH then
     uid = utils.tohex (utils.md5 (description .. exits_str))
   else
     uid = utils.tohex (utils.md5 (description))
@@ -1455,6 +1463,7 @@ function process_new_room ()
     for dir in pairs (exits) do
       if not rooms [uid].exits [dir] then
         rooms [uid].exits [dir]  = "0"
+        INFO ("Adding exit", dir)
       end -- if exit not there
     end -- for each exit we now about *now*
   end -- if
@@ -1499,6 +1508,7 @@ function process_new_room ()
   ignore_received = false
   override_line_type = nil
   override_line_contents = nil
+  override_uid = nil
   line_is_not_line_type = { }
   override_contents = { }
   description_styles = { }
@@ -2033,7 +2043,7 @@ function OnPluginPacketReceived (pkt)
   else
     if string.match (pkt, "> ?$") then  -- > symbol at end of packet
       return pkt .. "\n"
-    elseif string.match (pkt, ">\027%[0m ?$") then -- > symbol at end of packet followed by ESC [0m
+    elseif string.match (pkt, "> ?\027%[0m ?$") then -- > symbol at end of packet followed by ESC [0m
       return pkt .. "\n"
     end -- if
   end -- if MXP or not
@@ -3208,6 +3218,14 @@ area_name = nil
 function set_area_name (name)
   area_name = name
 end -- set_area_name
+
+-- -----------------------------------------------------------------
+-- set_uid - set the uid for the current room
+-- -----------------------------------------------------------------
+override_uid = nil
+function set_uid (uid)
+  override_uid = uid
+end -- set_uid
 
 -- -----------------------------------------------------------------
 -- do_not_deduce_line_type - do not use the Bayesian deduction on linetype
