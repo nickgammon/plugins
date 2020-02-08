@@ -57,7 +57,7 @@ Date:   24th January 2020
 
 --]]
 
-LEARNING_MAPPER_LUA_VERSION = 1.7  -- version must agree with plugin version
+LEARNING_MAPPER_LUA_VERSION = 1.8  -- version must agree with plugin version
 
 -- The probability (in the range 0.0 to 1.0) that a line has to meet to be considered a certain line type.
 -- The higher, the stricter the requirement.
@@ -433,6 +433,7 @@ default_config = {
   PROMPT_IS_SINGLE_LINE = true,                -- if true, prompts are assumed to be only a single line
   EXIT_LINES_START_WITH_DIRECTION = false,     -- if true, exit lines must start with a direction (north, south, etc.)
   SORT_EXITS = false,                          -- if true, exit lines are extracted into words and sorted, excluding any other characters on the line
+  SAVE_LINE_INFORMATION = true,                -- if true, we save to the database the colour of the first style run for name/description/exits
 
   -- other stuff
 
@@ -572,6 +573,7 @@ config_control = {
   { option = 'STATUS_FRAME_COLOUR',               name = 'status_border',                    validate = config_validate_colour,       show = config_display_colour },
   { option = 'STATUS_TEXT_COLOUR',                name = 'status_text',                      validate = config_validate_colour,       show = config_display_colour },
   { option = 'UID_SIZE',                          name = 'uid_size',                         validate = config_validate_uid_size,     show = config_display_number },
+  { option = 'SAVE_LINE_INFORMATION',             name = 'save_line_info',                   validate = config_validate_boolean,      show = config_display_boolean },
   { option = 'SHOW_INFO',                         name = 'show_info',                        validate = config_validate_boolean,      show = config_display_boolean },
   { option = 'SHOW_WARNINGS',                     name = 'show_warnings',                    validate = config_validate_boolean,      show = config_display_boolean },
   { option = 'SHOW_ROOM_AND_EXITS',               name = 'show_room_and_exits',              validate = config_validate_boolean,      show = config_display_boolean },
@@ -1038,7 +1040,27 @@ function OnPluginInstall ()
               show_other_areas = true,    -- show all areas
               show_help = OnHelp,         -- to show help
   }
+  mapper.mapprint (string.format ("[%s version %0.2f]", GetPluginName(), GetPluginInfo (GetPluginID (), 19)))
   mapper.mapprint (string.format ("MUSHclient mapper installed, version %0.1f", mapper.VERSION))
+
+  local rooms_count = 0
+  local explored_exits_count = 0
+  local unexplored_exits_count = 0
+
+  for uid, room in pairs (rooms) do
+    rooms_count = rooms_count + 1
+    for dir, exit_uid in pairs (room.exits) do
+      if exit_uid == '0' then
+        unexplored_exits_count = unexplored_exits_count + 1
+      else
+        explored_exits_count = explored_exits_count + 1
+      end -- if
+    end -- for each exit
+  end -- for each room
+
+  mapper.mapprint (string.format (
+        "Mapper database loaded: %d rooms, %d explored exits, %d unexplored exits.",
+         rooms_count, explored_exits_count, unexplored_exits_count))
 
   OnPluginWorldOutputResized ()
 
@@ -1453,10 +1475,14 @@ function process_new_room ()
         exits = exits,
         area = area_name or WorldName (),
         name = room_name or fixuid (uid),
-        name_styles   = get_unique_styles (room_name_styles),
-        exits_styles  = get_unique_styles (exits_styles),
-        desc_styles   = get_unique_styles (description_styles),
         } -- end of new room table
+
+    if config.SAVE_LINE_INFORMATION then
+      rooms [uid].name_styles  = get_unique_styles (room_name_styles)
+      rooms [uid].exits_styles = get_unique_styles (exits_styles)
+      rooms [uid].desc_styles  = get_unique_styles (description_styles)
+    end -- if
+
     rooms_added = rooms_added + 1
   else
     -- room there - check all exits are there
@@ -1971,11 +1997,30 @@ end -- corpus_info
 -- OnHelp - show help
 -- -----------------------------------------------------------------
 function OnHelp ()
+  local p = mapper.mapprint
 	mapper.mapprint (string.format ("[MUSHclient mapper, version %0.1f]", mapper.VERSION))
-  mapper.mapprint (string.format ("[%s version %0.2f]", GetPluginName(), GetPluginInfo (GetPluginID (), 19)))
-  mapper.mapprint (string.rep ("-", 30))
-	mapper.mapprint (GetPluginInfo (GetPluginID (), 3))
-  mapper.mapprint (string.rep ("-", 30))
+  p (string.format ("[%s version %0.2f]", GetPluginName(), GetPluginInfo (GetPluginID (), 19)))
+  p (string.rep ("-", 78))
+	p (GetPluginInfo (GetPluginID (), 3))
+  p (string.rep ("-", 78))
+
+  -- Tell them where to get the latest mapper plugin
+  local old_note_colour = GetNoteColourFore ()
+  SetNoteColourFore(config.MAPPER_NOTE_COLOUR.colour)
+
+  Tell ("Lastest mapper plugin: ")
+  Hyperlink ("https://github.com/nickgammon/plugins/blob/master/Learning_Mapper.xml",
+             "Learning_Mapper.xml", "Click to see latest plugin", "darkorange", "", true)
+  Tell (" and ")
+  Hyperlink ("https://github.com/nickgammon/plugins/blob/master/Learning_Mapper.lua",
+             "Learning_Mapper.lua", "Click to see latest plugin", "darkorange", "", true)
+  p ""
+  p ('You need both files. RH-click the "Raw" button on those pages to download the files.')
+  Tell ('Save them to the folder: ')
+  ColourNote ("orange", "", GetPluginInfo (GetPluginID (), 20))
+  p (string.rep ("-", 78))
+  SetNoteColourFore (old_note_colour)
+
 end
 
 -- -----------------------------------------------------------------
@@ -2169,6 +2214,11 @@ function mapper_analyse (name, line, wildcards)
   if room_count > 0 then  -- no divide by zero
     p (string.format ("%20s %4d",      "Average room name length", total_name_length / room_count))
   end -- if
+
+  if not config.SAVE_LINE_INFORMATION then
+    mapper.mapprint ("WARNING: Option 'save_line_info' is not set.")
+  end -- if
+
   show_styles ("Room name",   name_styles)
   show_styles ("Description", desc_styles)
   show_styles ("Exits",       exits_styles)
@@ -2202,7 +2252,7 @@ end -- mapper_delete
 -- -----------------------------------------------------------------
 function uid_hyperlink (uid)
   Hyperlink ("!!" .. GetPluginID () .. ":mapper_show(" .. uid .. ")",
-            fixuid (uid), "Click to show room details for " .. fixuid (uid), "", "", false)
+            fixuid (uid), "Click to show room details for " .. fixuid (uid), RGBColourToName (config.MAPPER_NOTE_COLOUR.colour), "", false)
 end -- uid_hyperlink
 
 -- -----------------------------------------------------------------
@@ -2215,7 +2265,7 @@ function list_rooms_table (t)
     local room = v.room
     local uid = v.uid
     uid_hyperlink (uid)
-    print (" ", room.name)
+    mapper.mapprint (" ", room.name)
   end -- for each room
 
   if #t == 0 then
@@ -2616,7 +2666,6 @@ function mapper_config (name, line, wildcards)
 
     -- hints on corpus info
     mapper.mapprint ('Type "mapper corpus info" for more information about line training.')
-    mapper.mapprint (string.format ("%s: %s", "Show mapper training window and status", config_display_boolean (config.SHOW_LEARNING_WINDOW)))
     mapper.mapprint ('Type "mapper learn" to toggle the training windows.')
     return false
   end -- no item given
