@@ -46,6 +46,10 @@ Date:   24th January 2020
   get_stats ()                       --> get the training stats (serialized table)
   get_database ()                    --> get the mapper database (rooms table) (serialized table)
   get_config ()                      --> get the configuration options (serialized table)
+  get_current_room ()                --> gets the current room's UID and room information (serialized table)
+  set_room_extras (uid, extras)      --> sets extra information for the room (user-supplied)
+                                          extras must be a string which serializes into a variable including a table
+                                          eg. " { a = 42, b = 666, c = 'Kobold' } "
 
 
   eg. config = CallPlugin ("99c74b2685e425d3b6ed6a7d", "get_config")
@@ -57,7 +61,7 @@ Date:   24th January 2020
 
 --]]
 
-LEARNING_MAPPER_LUA_VERSION = 1.8  -- version must agree with plugin version
+LEARNING_MAPPER_LUA_VERSION = 1.9  -- version must agree with plugin version
 
 -- The probability (in the range 0.0 to 1.0) that a line has to meet to be considered a certain line type.
 -- The higher, the stricter the requirement.
@@ -1040,7 +1044,7 @@ function OnPluginInstall ()
               show_other_areas = true,    -- show all areas
               show_help = OnHelp,         -- to show help
   }
-  mapper.mapprint (string.format ("[%s version %0.2f]", GetPluginName(), GetPluginInfo (GetPluginID (), 19)))
+  mapper.mapprint (string.format ("[%s version %0.1f]", GetPluginName(), GetPluginInfo (GetPluginID (), 19)))
   mapper.mapprint (string.format ("MUSHclient mapper installed, version %0.1f", mapper.VERSION))
 
   local rooms_count = 0
@@ -1478,9 +1482,11 @@ function process_new_room ()
         } -- end of new room table
 
     if config.SAVE_LINE_INFORMATION then
-      rooms [uid].name_styles  = get_unique_styles (room_name_styles)
-      rooms [uid].exits_styles = get_unique_styles (exits_styles)
-      rooms [uid].desc_styles  = get_unique_styles (description_styles)
+      rooms [uid].styles = {
+                           name   = get_unique_styles (room_name_styles),
+                           exits  = get_unique_styles (exits_styles),
+                           desc   = get_unique_styles (description_styles),
+                           } -- end of styles
     end -- if
 
     rooms_added = rooms_added + 1
@@ -1698,6 +1704,7 @@ function OnPluginConnect ()
   override_line_contents = nil
   override_contents = { }
   line_is_not_line_type = { }
+  current_room = nil
 end -- OnPluginConnect
 
 -- -----------------------------------------------------------------
@@ -1999,7 +2006,7 @@ end -- corpus_info
 function OnHelp ()
   local p = mapper.mapprint
 	mapper.mapprint (string.format ("[MUSHclient mapper, version %0.1f]", mapper.VERSION))
-  p (string.format ("[%s version %0.2f]", GetPluginName(), GetPluginInfo (GetPluginID (), 19)))
+  p (string.format ("[%s version %0.1f]", GetPluginName(), GetPluginInfo (GetPluginID (), 19)))
   p (string.rep ("-", 78))
 	p (GetPluginInfo (GetPluginID (), 3))
   p (string.rep ("-", 78))
@@ -2170,9 +2177,9 @@ function mapper_analyse (name, line, wildcards)
   local desc_styles = { }
   local exits_styles = { }
 
-  local function get_styles (this_room, all)
-    if this_room then
-      for k, v in ipairs (this_room) do
+  local function get_styles (this_style, all)
+    if this_style then
+      for k, v in ipairs (this_style) do
         local s = string.format ("%d/%d/%d", v.fore, v.back, v.style)
         if all [s] then
           all [s] = all [s] + 1
@@ -2200,9 +2207,11 @@ function mapper_analyse (name, line, wildcards)
       end -- if not a hex room name
 
     -- now get the colours
-    get_styles (room.name_styles, name_styles)
-    get_styles (room.desc_styles, desc_styles)
-    get_styles (room.exits_styles, exits_styles)
+    if room.styles then
+      get_styles (room.styles.name, name_styles)
+      get_styles (room.styles.desc, desc_styles)
+      get_styles (room.styles.exits, exits_styles)
+    end -- if we have some styles
 
   end -- for each room
 
@@ -2810,7 +2819,7 @@ function mapper_import (name, line, wildcards)
   -- make a sandbox so they can't put Lua functions into the import file
 
   local t = {} -- empty environment table
-  f = loadstring (s)
+  f = assert (loadstring (s))
   setfenv (f, t)
   -- load it
   f ()
@@ -2896,7 +2905,7 @@ function corpus_import (name, line, wildcards)
   -- make a sandbox so they can't put Lua functions into the import file
 
   local t = {} -- empty environment table
-  f = loadstring (s)
+  f = assert (loadstring (s))
   setfenv (f, t)
   -- load it
   f ()
@@ -3426,3 +3435,37 @@ end -- get_database
 function get_config ()
   return "config = " .. serialize.save_simple (config)
 end -- get_config
+
+-- -----------------------------------------------------------------
+-- get_current_room - gets the current room's data (serialized)
+-- returns uid, room
+-- -----------------------------------------------------------------
+function get_current_room ()
+  if not current_room or not rooms [current_room] then
+    return nil
+  end -- if
+  return uid, "room = " .. serialize.save_simple (rooms [current_room])
+end -- get_current_room
+
+-- -----------------------------------------------------------------
+-- set_room_extras - sets extra information for the nominated UID
+-- returns true if UID exists, false if not
+-- extras must be a serialized table. eg. "{a = 'nick', b = 666 }"
+-- -----------------------------------------------------------------
+function set_room_extras (uid, extras)
+  if not uid  or not rooms [uid] or type (extras) ~= 'string' then
+    return false
+  end -- if
+
+  -- make a sandbox so they can't put Lua functions into the import data
+  local t = {} -- empty environment table
+  f = assert (loadstring ('extras =  ' .. extras))
+  setfenv (f, t)
+  -- load it
+  f ()
+
+  -- move the rooms table into our rooms table
+  rooms [uid].extras = t.extras
+  return true
+end -- set_room_extras
+
