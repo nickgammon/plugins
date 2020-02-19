@@ -61,7 +61,7 @@ Date:   24th January 2020
 
 --]]
 
-LEARNING_MAPPER_LUA_VERSION = 1.9  -- version must agree with plugin version
+LEARNING_MAPPER_LUA_VERSION = 2.0 -- version must agree with plugin version
 
 -- The probability (in the range 0.0 to 1.0) that a line has to meet to be considered a certain line type.
 -- The higher, the stricter the requirement.
@@ -1573,7 +1573,7 @@ function get_room (uid)
   if desc:sub (1, #room.name) == room.name then
     desc = desc:sub (#room.name + 1)
   end -- if
-  desc = Trim (string.match (desc, "^[^.]+") .. ".")
+  desc = Trim ((string.match (desc, "^[^.]+") or desc) .. ".")
   if room.name and not string.match (room.name, "^%x+$") then
     -- desc = room.name
   end -- if

@@ -74,6 +74,18 @@ mapper resume       --> resume last speedwalk or hyperlinked speedwalk
 
 </plugin>
 
+<timers>
+  <timer enabled="y" 
+         second="0.10" 
+         send_to="12"
+>
+  <send>
+  -- mapper.keep_drawing ()
+  </send>
+
+  </timer>
+</timers>
+
 <aliases>
  
   <!--  zooming aliases -->
@@ -1940,7 +1952,6 @@ end
 function OnPluginListChanged ()
   do_plugin_check_now ("85f72d0e263d75df7bde6f00", "ATCP_NJG")    -- check we have ATCP plugin
 end -- OnPluginListChanged
-
 ]]>
 </script>
 
