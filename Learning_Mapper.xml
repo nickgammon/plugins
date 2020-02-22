@@ -12,7 +12,7 @@
    date_written="2020-01-23 11:29:22"
    date_modified="2020-02-10 09:00:00"
    requires="5.05"
-   version="2.0"
+   version="2.1"
    >
 <description trim="y">
 <![CDATA[
@@ -397,6 +397,7 @@ mapper reset database   --> deletes the entire mapper database, so all mapped
     if utils.msgbox ("Throw away the entire mapping database (rooms and exits) and start from scratch?",
                      "Confirmation", "yesno", "?", 2) == 'yes' then
       rooms = { }
+      duplicates = { }
       highest_uid = 0
       inverse_ids = { }
       inverse_desc_hash = { }
@@ -571,6 +572,8 @@ mapper reset database   --> deletes the entire mapper database, so all mapped
   >
   </alias>
 
+  <!--  listing operations -->
+
    <alias
    match="^mapper list(.*)?$"
    enabled="y"
@@ -611,6 +614,23 @@ mapper reset database   --> deletes the entire mapper database, so all mapped
    enabled="y"
    sequence="100"
    script="set_window_height"
+  >
+  </alias>
+
+  <alias
+   match="mapper duplicate"
+   enabled="y"
+   sequence="100"
+   script="mark_duplicate_room"
+  >
+  </alias>
+
+  <alias
+   match="^mapper integrity(.*)?$"
+   regexp="y"
+   enabled="y"
+   sequence="100"
+   script="mapper_integrity"
   >
   </alias>
 

@@ -61,7 +61,7 @@ Date:   24th January 2020
 
 --]]
 
-LEARNING_MAPPER_LUA_VERSION = 2.0 -- version must agree with plugin version
+LEARNING_MAPPER_LUA_VERSION = 2.1 -- version must agree with plugin version
 
 -- The probability (in the range 0.0 to 1.0) that a line has to meet to be considered a certain line type.
 -- The higher, the stricter the requirement.
@@ -88,6 +88,43 @@ learn_window = "learn_dialog_" .. GetPluginID ()
 description_styles = { }
 exits_styles = { }
 room_name_styles = { }
+
+UNKNOWN_DUPLICATE_ROOM = string.rep ("F", 25)  -- dummy UID
+
+DEBUGGING = true
+
+function set_last_direction_moved (where)
+  last_direction_moved = where
+  DEBUG ("SET: last_direction_moved: " .. tostring (where))
+end  -- set_last_direction_moved
+function get_last_direction_moved ()
+  DEBUG ("get: last_direction_moved: " .. tostring (last_direction_moved))
+  return last_direction_moved
+end  -- get_last_direction_moved
+function set_from_room (where)
+  from_room = where
+  DEBUG ("SET: from_room: " .. fixuid (tostring (where)))
+end  -- set_from_room
+function get_from_room (f)
+  if f then
+    DEBUG ("get: from_room: " .. fixuid (tostring (from_room)) .. " (" .. f .. ")")
+  else
+    DEBUG ("get: from_room: " .. fixuid (tostring (from_room)))
+  end -- if
+  return from_room
+end  -- get_from_room
+function set_current_room (where)
+  current_room = where
+  DEBUG ("SET: current_room: " .. fixuid (tostring (where)))
+end  -- set_current_room
+function get_current_room_ (f)
+  if f then
+    DEBUG ("get: current_room: " .. fixuid (tostring (current_room)) .. " (" .. f .. ")")
+  else
+    DEBUG ("get: current_room: " .. fixuid (tostring (current_room)))
+  end -- if
+  return current_room
+end  -- get_current_room_
 
 -- -----------------------------------------------------------------
 -- description
@@ -205,7 +242,7 @@ end -- f_handle_ignore
 -- -----------------------------------------------------------------
 function f_cannot_move ()
   mapper.cancel_speedwalk ()
-  last_direction_moved = nil  -- therefore we haven't moved anywhere
+  set_last_direction_moved (nil)  -- therefore we haven't moved anywhere
 end -- f_cannot_move
 
 -- -----------------------------------------------------------------
@@ -389,6 +426,7 @@ default_config = {
   SHOP_FILL_COLOUR        = { name = "Shop",              colour =  ColourNameToRGB "darkolivegreen", },
   TRAINER_FILL_COLOUR     = { name = "Trainer",           colour =  ColourNameToRGB "yellowgreen", },
   BANK_FILL_COLOUR        = { name = "Bank",              colour =  ColourNameToRGB "gold", },
+  DUPLICATE_FILL_COLOUR   = { name = "Duplicate",         colour =  ColourNameToRGB "lightgoldenrodyellow", },
   BOOKMARK_FILL_COLOUR    = { name = "Notes",             colour =  ColourNameToRGB "lightskyblue", },
   MAPPER_NOTE_COLOUR      = { name = "Messages",          colour =  ColourNameToRGB "lightgreen" },
 
@@ -433,6 +471,7 @@ default_config = {
   SHOW_LEARNING_WINDOW = true,                 -- if true, show the learning status and training windows on startup
   EXITS_ON_ROOM_NAME = false,                  -- if true, exits are listed on the room name line (eg. Starter Inventory and Shops [E, U])
   INCLUDE_EXITS_IN_HASH = true,                -- if true, exits are included in the description hash (UID)
+  INCLUDE_ROOM_NAME_IN_HASH = false,           -- if true, the room name is included in the description hash (UID)
   EXITS_IS_SINGLE_LINE = false,                -- if true, exits are assumed to be only a single line
   PROMPT_IS_SINGLE_LINE = true,                -- if true, prompts are assumed to be only a single line
   EXIT_LINES_START_WITH_DIRECTION = false,     -- if true, exit lines must start with a direction (north, south, etc.)
@@ -569,6 +608,7 @@ config_control = {
   { option = 'BLANK_LINE_TERMINATES_LINE_TYPE',   name = 'blank_line_terminates_line_type',  validate = config_validate_boolean,      show = config_display_boolean },
   { option = 'EXITS_ON_ROOM_NAME',                name = 'exits_on_room_name',               validate = config_validate_boolean,      show = config_display_boolean },
   { option = 'INCLUDE_EXITS_IN_HASH',             name = 'include_exits_in_hash',            validate = config_validate_boolean,      show = config_display_boolean },
+  { option = 'INCLUDE_ROOM_NAME_IN_HASH',         name = 'include_room_name_in_hash',        validate = config_validate_boolean,      show = config_display_boolean },
   { option = 'EXITS_IS_SINGLE_LINE',              name = 'exits_is_single_line',             validate = config_validate_boolean,      show = config_display_boolean },
   { option = 'PROMPT_IS_SINGLE_LINE',             name = 'prompt_is_single_line',            validate = config_validate_boolean,      show = config_display_boolean },
   { option = 'EXIT_LINES_START_WITH_DIRECTION',   name = 'exit_lines_start_with_direction',  validate = config_validate_boolean,      show = config_display_boolean },
@@ -753,6 +793,16 @@ function WARNING (...)
     ColourNote ("red", "", table.concat ( { ... }, " "))
   end -- if
 end -- WARNING
+
+-- -----------------------------------------------------------------
+-- DEBUG helper function for debugging the plugin
+-- -----------------------------------------------------------------
+function DEBUG (...)
+  if DEBUGGING then
+    ColourNote ("cornflowerblue", "", table.concat ( { ... }, " "))
+  end -- if
+end -- DEBUG
+
 
 -- -----------------------------------------------------------------
 -- corpus_reset - throw away the learned corpus
@@ -1030,10 +1080,21 @@ function OnPluginInstall ()
     config [k] = config [k] or v
   end -- for
 
-  rooms = {}
 
   -- and rooms
+  rooms = {}
   assert (loadstring (GetVariable ("rooms") or "")) ()
+
+  -- fix up in case I bugger up the exits
+  for uid, room in pairs (rooms) do
+    if not room.exits then
+      room.exits = { }
+    end -- if
+  end -- if
+
+  -- and duplicate rooms
+  duplicates = {}
+  assert (loadstring (GetVariable ("duplicates") or "")) ()
 
   -- initialize mapper
 
@@ -1192,6 +1253,7 @@ function OnPluginSaveState ()
   SetVariable ("stats", "stats = " .. serialize.save_simple (stats))
   SetVariable ("config", "config = " .. serialize.save_simple (config))
   SetVariable ("rooms",  "rooms = "  .. serialize.save_simple (rooms))
+  SetVariable ("duplicates",  "duplicates = "  .. serialize.save_simple (duplicates))
   movewindow.save_state (learn_window)
 
   time_last_saved = os.time ()
@@ -1393,6 +1455,8 @@ end -- get_unique_styles
 -- -----------------------------------------------------------------
 function process_new_room ()
 
+  local from_room = get_from_room ("process_new_room")
+
   if override_contents ['description'] then
     description = override_contents ['description']
     description_styles = { }
@@ -1420,8 +1484,11 @@ function process_new_room ()
     return
   end -- if no exits string
 
-  if from_room and last_direction_moved then
-    local last_desc = rooms [from_room].desc
+  if from_room and get_last_direction_moved () then
+    local last_desc = "Unknown"
+    if rooms [from_room] then
+      desc = rooms [from_room].desc
+    end -- if
     if last_desc == description then
       mapper.mapprint ("Warning: You have moved from a room to one with an identical description - the mapper may get confused.")
     end -- if
@@ -1447,17 +1514,80 @@ function process_new_room ()
   -- or, if supplied the override UID
   if override_uid then
     uid = utils.tohex (utils.md5 (override_uid))
+  -- description / name / exits
+  elseif config.INCLUDE_EXITS_IN_HASH and config.INCLUDE_ROOM_NAME_IN_HASH and room_name then
+    uid = utils.tohex (utils.md5 (description .. exits_str .. room_name))
+  -- description / exits
   elseif config.INCLUDE_EXITS_IN_HASH then
     uid = utils.tohex (utils.md5 (description .. exits_str))
+  -- description / name
+  elseif config.INCLUDE_ROOM_NAME_IN_HASH and room_name then
+    uid = utils.tohex (utils.md5 (description .. room_name))
   else
+  -- description only
     uid = utils.tohex (utils.md5 (description))
   end -- if
 
   uid = uid:sub (1, 25)
+  local duplicate = nil
+
+  current_room_hash = uid   -- in case of duplicate rooms
+
+  -- is this a known duplicate room?
+  if duplicates [current_room_hash] then
+    INFO ("<<This is a duplicate room identified by hash " .. fixuid (uid) .. ">>")
+    -- yes, so disregard the uid and work out where we came from
+
+    if not (from_room and get_last_direction_moved ()) then
+      -- make up some non-existent UID and give up
+      uid = UNKNOWN_DUPLICATE_ROOM
+      INFO ("Hit a duplicate room, but don't know where we came from, giving up.")
+    else
+      -- the UID is known to the room that led to this
+      uid = rooms [from_room].exits [get_last_direction_moved ()]
+      if not uid or uid == "0" then
+        uid = UNKNOWN_DUPLICATE_ROOM
+        INFO ("No exit known going " .. get_last_direction_moved ()  .. " from " .. fixuid (from_room))
+      elseif duplicates [uid] then
+        uid = UNKNOWN_DUPLICATE_ROOM
+        INFO ("Hit a duplicate room, disregarding " .. get_last_direction_moved ()  .. " exit from " .. fixuid (from_room))
+      end -- if
+    end -- if we don't know where we came from
+
+  end -- if
+
+  if uid == UNKNOWN_DUPLICATE_ROOM and from_room and get_last_direction_moved () then
+    INFO ("Entering unknown duplicate room - querying whether to make a new room here")
+    local a, b, c = get_last_direction_moved (), fixuid (from_room), fixuid (current_room_hash)
+    local answer = utils.msgbox (string.format ("Entering duplicate room %s, make new room leading %s from %s?",
+                    fixuid (current_room_hash), get_last_direction_moved (), fixuid (from_room)),
+            "Duplicate room", "yesno", "?", 1)
+    INFO (string.format ("Response to query: Make a new room leading %s from %s to %s (duplicate)?: %s",
+          a, b, c, answer))
+    if answer == "yes" then
+      uid = utils.tohex (utils.md5 (string.format ("%0.9f/%0.9f/%0.9f/%d",
+                              math.random (), math.random (), math.random (), os.time ()))):sub (1, 25)
+      rooms [from_room].exits [get_last_direction_moved ()] = uid
+      INFO (string.format ("Adding new room with random UID (%s) leading %s from %s", fixuid (uid), get_last_direction_moved (), fixuid (from_room)))
+      duplicate = current_room_hash
+    end -- if
+
+  end -- if
+
+  if uid == UNKNOWN_DUPLICATE_ROOM then
+    set_from_room (nil)
+    from_room = nil  -- local copy
+  end -- if we don't know where we are
 
   if config.SHOW_ROOM_AND_EXITS then
     INFO (string.format ("Description:\n'%s'\nExits: '%s'\nHash: %s", description, exits_str, fixuid (uid)))
   end -- if config.SHOW_ROOM_AND_EXITS
+
+  if uid == UNKNOWN_DUPLICATE_ROOM then
+    desc = "Unknown duplicate room"
+    exits_str = ""
+    room_name = "Unknown duplicate of " .. fixuid (current_room_hash)
+  end -- if
 
   -- break up exits into individual directions
   local exits = {}
@@ -1479,6 +1609,7 @@ function process_new_room ()
         exits = exits,
         area = area_name or WorldName (),
         name = room_name or fixuid (uid),
+        duplicate = duplicate,   -- which UID, if any, this is a duplicate of
         } -- end of new room table
 
     if config.SAVE_LINE_INFORMATION then
@@ -1491,13 +1622,21 @@ function process_new_room ()
 
     rooms_added = rooms_added + 1
   else
-    -- room there - check all exits are there
+    -- room there - add exits not known
     for dir in pairs (exits) do
       if not rooms [uid].exits [dir] then
         rooms [uid].exits [dir]  = "0"
         INFO ("Adding exit", dir)
       end -- if exit not there
     end -- for each exit we now about *now*
+
+    -- remove exits that don't exist
+    for dir in pairs (rooms [uid].exits) do
+      if not exits [dir] then
+        INFO ("Removing exit", dir)
+        rooms [uid].exits [dir] = nil
+      end -- if
+    end -- for each exit in the existing room
   end -- if
 
   -- update room name if possible
@@ -1509,17 +1648,47 @@ function process_new_room ()
   -- INFO ("Description: ", description)
 
   -- save so we know current room later on
-  current_room = uid
+  set_current_room (uid)
 
   -- show what we believe the current exits to be
-  for k, v in pairs (rooms [uid].exits) do
-    INFO ("Exit: " .. k .. " -> " .. fixuid (v))
+  for dir, dest in pairs (rooms [uid].exits) do
+    local probable = ''
+    if dest == '0' then
+      exit_uid = find_probable_room (uid, dir)
+      if exit_uid then
+        probable = ' (Probably ' .. fixuid (exit_uid) .. ')'
+      end -- if
+    end -- if
+    INFO ("Exit: " .. dir .. " -> " .. fixuid (dest) .. probable)
   end -- for
 
   -- try to work out where previous room's exit led
-  if last_direction_moved and expected_exit ~= uid and from_room then
+  if get_last_direction_moved () and
+     expected_exit ~= uid and
+     from_room and uid ~= UNKNOWN_DUPLICATE_ROOM then
     fix_up_exit ()
   end -- exit was wrong
+
+  -- warn them to explore nearby rooms
+  if rooms [uid].duplicate then
+    local unexplored = { }
+    for dir, dest in pairs (rooms [uid].exits) do
+      if dest == "0" then
+        table.insert (unexplored, dir:upper ())
+      end -- not explored
+    end -- for each exit
+    if #unexplored > 0 then
+      local s = 's'
+      local u = ' until none left'
+      if #unexplored == 1 then
+        s = ''
+        u = ''
+      end -- if
+      mapper.mapprint ("Inside duplicated room. Please explore exit" .. s .. ": " ..
+                      table.concat (unexplored, ", ") ..
+                      " and then return here" .. u)
+    end -- if
+  end -- if
 
   -- call mapper to draw this room
   mapper.draw (uid)
@@ -1531,12 +1700,14 @@ function process_new_room ()
   end -- if
 
   deduced_line_types [line_number].draw = true
-  deduced_line_types [line_number].uid = current_room
+  deduced_line_types [line_number].uid = get_current_room_ ("process_new_room")
+
+  DEBUG "Finished processing new room"
 
   room_name = nil
   exits_str = nil
   description = nil
-  last_direction_moved = nil
+  set_last_direction_moved (nil)
   ignore_received = false
   override_line_type = nil
   override_line_contents = nil
@@ -1608,6 +1779,8 @@ function get_room (uid)
         notes
       )
 
+  room.borderpenwidth = 1 -- default
+
   if uid == current_room then
     room.bordercolour = config.OUR_ROOM_COLOUR.colour
     room.borderpenwidth = 2
@@ -1631,6 +1804,11 @@ function get_room (uid)
     room.fillbrush = miniwin.brush_fine_pattern
   end -- if
 
+  if room.duplicate then
+    room.fillcolour = config.DUPLICATE_FILL_COLOUR.colour
+    room.fillbrush = miniwin.brush_fine_pattern
+  end -- if
+
   return room
 end -- get_room
 
@@ -1639,6 +1817,10 @@ end -- get_room
 -- -----------------------------------------------------------------
 
 function fix_up_exit ()
+
+  local current_room = get_current_room_ ("fix_up_exit")
+  local from_room = get_from_room ("fix_up_exit")
+  local last_direction_moved = get_last_direction_moved ("fix_up_exit")
 
   -- where we were before
   local room = rooms [from_room]
@@ -1656,6 +1838,9 @@ function fix_up_exit ()
   -- do inverse direction as a guess
   local inverse = inverse_direction [last_direction_moved]
   if inverse and current_room then
+    if duplicates [rooms [current_room].exits [inverse]] then
+      rooms [current_room].exits [inverse] = '0'
+    end -- if
     if rooms [current_room].exits [inverse] == '0' then
       rooms [current_room].exits [inverse] = from_room
       INFO ("Added inverse direction from " .. fixuid (current_room) .. " in the direction " .. inverse .. " to be " .. fixuid (from_room))
@@ -1664,8 +1849,8 @@ function fix_up_exit ()
 
 
   -- clear for next time
-  last_direction_moved = nil
-  from_room = nil
+  set_last_direction_moved (nil)
+  set_from_room (nil)
 
 end -- fix_up_exit
 
@@ -1674,16 +1859,19 @@ end -- fix_up_exit
 -- -----------------------------------------------------------------
 
 function OnPluginSent (sText)
+
+  local current_room = get_current_room_ ("OnPluginSent")
+
   if valid_direction [sText] then
-    last_direction_moved = valid_direction [sText]
+    set_last_direction_moved (valid_direction [sText])
     INFO ("current_room =", fixuid (current_room))
-    INFO ("Just moving", last_direction_moved)
+    INFO ("Just moving", get_last_direction_moved ())
     if current_room and rooms [current_room] then
-      expected_exit = rooms [current_room].exits [last_direction_moved]
+      expected_exit = rooms [current_room].exits [get_last_direction_moved ()]
       if expected_exit then
-        from_room = current_room
+        set_from_room (current_room)
       end -- if
-    INFO ("Expected exit for this in direction " .. last_direction_moved .. " is to room", fixuid (expected_exit))
+    INFO ("Expected exit for this in direction " .. get_last_direction_moved () .. " is to room", fixuid (expected_exit))
     end -- if
   end -- if
 end -- function
@@ -1694,17 +1882,17 @@ end -- function
 
 function OnPluginConnect ()
   mapper.cancel_speedwalk ()
-  from_room = nil
+  set_from_room (nil)
   room_name = nil
   exits_str = nil
   description = nil
-  last_direction_moved = nil
+  set_last_direction_moved (nil)
   ignore_received = false
   override_line_type = nil
   override_line_contents = nil
   override_contents = { }
   line_is_not_line_type = { }
-  current_room = nil
+  set_current_room (nil)
 end -- OnPluginConnect
 
 -- -----------------------------------------------------------------
@@ -1884,6 +2072,7 @@ function map_goto (name, line, wildcards)
     return
   end -- if not found
 
+  local current_room = get_current_room_ ("map_goto")
   if current_room and goto_uid == current_room then
     mapper.mapprint ("You are already in that room.")
     return
@@ -2050,6 +2239,8 @@ function map_where (name, line, wildcards)
   if not where_uid then
     return
   end -- if not found
+
+  local current_room = get_current_room_ ("map_where")
 
   if current_room and where_uid == current_room then
     mapper.mapprint ("You are already in that room.")
@@ -2254,6 +2445,23 @@ function mapper_delete (name, line, wildcards)
   mapper_show (delete_uid)
   rooms [delete_uid] = nil  -- delete it
   mapper.mapprint ("Room", delete_uid, "deleted.")
+
+  -- remove any exit references to this room
+  for uid, room in pairs (rooms) do
+    for dir, dest in pairs (room.exits) do
+      if dest == delete_uid then
+        mapper.mapprint (string.format ("Setting exit %s from room %s to be unknown",
+                          dest, fixuid (uid)))
+        room.exits [dir] = '0'
+      end -- if that exit pointed to the deleted room
+    end -- for each exit
+  end -- for each room
+
+  -- redraw map
+  if last_drawn_id then
+    mapper.draw (last_drawn_id)
+  end -- if
+
 end -- mapper_delete
 
 -- -----------------------------------------------------------------
@@ -2433,6 +2641,7 @@ function mapper_list (name, line, wildcards)
   local shops    = string.match (first_wildcard, "^shops?$")
   local banks    = string.match (first_wildcard, "^banks?$")
   local trainers = string.match (first_wildcard, "^trainers?$")
+  local dups     = string.match (first_wildcard, "^duplicates?$")
   local colour_name_fore  = string.match (first_wildcard, "^colou?r%s+name%s+fore%s+(.*)$")
   local colour_name_back  = string.match (first_wildcard, "^colou?r%s+name%s+back%s+(.*)$")
   local colour_desc_fore  = string.match (first_wildcard, "^colou?r%s+desc%s+fore%s+(.*)$")
@@ -2508,6 +2717,13 @@ function mapper_list (name, line, wildcards)
   elseif banks then
     p ("Rooms with banks")
     mapper_list_finder (function (uid, room) return room.Bank end)
+  elseif dups then
+    p ("Duplicate rooms")
+    for duplicate_uid in pairs (duplicates) do
+      p (string.rep ("-", 10))
+      p ("Marked duplicate: " .. fixuid (duplicate_uid))
+      mapper_list_finder (function (uid, room) return room.duplicate == duplicate_uid end)
+    end -- for
 
   -- find orphan rooms (rooms no other room leads to)
   elseif orphans then
@@ -2601,6 +2817,9 @@ function mapper_show (uid)
 
   Note (string.rep ("-", 78))
   Note (string.format ("Room:  %s -> %s.", fixuid (uid), room.name))
+  if room.duplicate then
+    Note (string.format ("(Duplicate of %s)", fixuid (room.duplicate)))
+  end -- if a duplicate
   Note (string.rep ("-", 78))
   Note (room.desc)
   Note (string.rep ("-", 78))
@@ -2925,7 +3144,6 @@ function room_toggle_trainer (room, uid)
   mapper.mapprint ("Trainer here: " .. config_display_boolean (room.Trainer))
 end -- room_toggle_trainer
 
-
 function room_toggle_shop (room, uid)
   room.Shop = not room.Shop
   mapper.mapprint ("Shop here: " .. config_display_boolean (room.Shop))
@@ -3033,7 +3251,7 @@ local available =  {
   -- remove non-existent exits
   for k in pairs (available) do
     if room.exits [k] then
-      available [k] = available [k] .. " --> " .. room.exits [k]
+      available [k] = available [k] .. " --> " .. fixuid (room.exits [k])
     else
       available [k] = nil
     end -- if not a room exit
@@ -3053,6 +3271,8 @@ local available =  {
 
   -- update in-memory table
   rooms [uid].exits [chosen_exit] = nil
+
+  local current_room = get_current_room_ ("room_delete_exit")
 
   mapper.draw (current_room)
   last_drawn_id = current_room    -- in case they change the window size
@@ -3082,6 +3302,61 @@ function room_show_description (room, uid)
                  } )
 
 end -- room_show_description
+
+-- -----------------------------------------------------------------
+-- room_connect_exit - menu handler to connect an exit to another room
+-- -----------------------------------------------------------------
+function room_connect_exit  (room, uid, dir)
+  -- find what room they want to connect to
+  local response = utils.inputbox ("Enter UID of room which is " .. dir:upper () .. " of here", "Connect exit")
+  if not response then
+    return
+  end -- cancelled
+
+  -- get rid of spaces, make upper-case
+  response = Trim (response):upper ()
+
+  -- validate
+  if not string.match (response, "^%x%x%x+$") then
+    mapper.maperror ("Destination room UID must be a hexadecimal string")
+    return
+  end -- if
+
+  -- check it exists
+  dest_uid = find_room_partial_uid (response)
+
+  if not dest_uid then
+    return  -- doesn't exist
+  end -- if
+
+  if duplicates [dest_uid] then
+    mapper.maperror ("Cannot connect to a room marked as a duplicate")
+    return
+  end -- if
+
+  if uid == dest_uid then
+    mapper.maperror ("Cannot connect to a room to itself")
+    return
+  end -- if
+
+  room.exits [dir] = dest_uid
+
+  INFO (string.format ("Exit %s from %s now connects to %s",
+      dir:upper (), fixuid (uid), fixuid (dest_uid)))
+
+  local inverse = inverse_direction [dir]
+  if inverse then
+    rooms [dest_uid].exits [inverse] = uid
+    INFO ("Added inverse direction from " .. fixuid (dest_uid) .. " in the direction " .. inverse .. " to be " .. fixuid (uid))
+  end -- of having an inverse
+
+
+end -- room_connect_exit
+
+function room_copy_uid (room, uid)
+  SetClipboard (uid)
+  mapper.mapprint (string.format ("UID %s (in full: %s) now on the clipboard", fixuid (uid), uid))
+end -- room_copy_uid
 
 -- -----------------------------------------------------------------
 -- room_click - RH-click on a room
@@ -3114,8 +3389,26 @@ function room_click (uid, flags)
       { name = "Shop",    func = room_toggle_shop,    check_item = true} ,
       { name = "Bank",    func = room_toggle_bank,    check_item = true} ,
       { name = "-", } ,
-      { name = "Delete an exit", func = room_delete_exit} ,
+      { name = "Copy UID", func = room_copy_uid } ,
+      { name = "-", } ,
       } -- handlers
+
+  local count = 0
+  for dir, dest in pairs (room.exits) do
+    if dest == '0' then
+      table.insert (handlers, { name = "Connect " .. dir:upper () .. " exit",
+        func = function ()
+          return room_connect_exit (room, uid, dir)
+        end -- factory function
+      } )
+      count = count + 1
+    end -- if not known
+  end -- for
+  if count > 0 then
+    table.insert (handlers, { name = "-" })
+  end --if we had any
+
+  table.insert (handlers, { name = "Delete an exit", func = room_delete_exit} )
 
   local t, tf = {}, {}
   for _, v in pairs (handlers) do
@@ -3139,6 +3432,7 @@ function room_click (uid, flags)
 
   if f then
     f (room, uid)
+    current_room = get_current_room_ ("room_click")
     mapper.draw (current_room)
     last_drawn_id = current_room    -- in case they change the window size
   end -- if handler found
@@ -3216,6 +3510,194 @@ end -- map_trainers
 function map_banks (name, line, wildcards)
   map_find_special (function (room) return room.Bank end)
 end -- map_banks
+
+-- -----------------------------------------------------------------
+-- mark_duplicate_room - mark the current room as a duplicate UID
+-- -----------------------------------------------------------------
+function mark_duplicate_room (name, line, wildcards)
+  if not current_room_hash then
+   mapper.maperror ("We don't know where we are, try LOOK")
+   return
+  end -- if
+
+  if rooms [current_room_hash] then
+    rooms [current_room_hash] = nil  -- delete it
+    mapper.mapprint ("Room", current_room_hash, "deleted.")
+  end -- if
+
+  duplicates [current_room_hash] = true -- this is a duplicated room
+  mapper.mapprint (string.format ("Room %s now marked as being a duplicated one", fixuid (current_room_hash)))
+  set_current_room (nil)  -- throw away incorrect UID
+  set_from_room (nil)
+  set_last_direction_moved (nil)
+
+  mapper.draw (UNKNOWN_DUPLICATE_ROOM)  -- draw with unknown room
+
+end -- mark_duplicate_room
+
+-- -----------------------------------------------------------------
+-- mapper_integrity - integrity check of exits
+-- -----------------------------------------------------------------
+function mapper_integrity (name, line, wildcards)
+  local p = mapper.mapprint
+  local repair = Trim (wildcards [1]) == 'repair'
+
+  p("Mapper integrity check")
+  local t = { }  -- table of rooms that have connections
+  for uid, room in pairs (rooms) do
+    for dir, dest in pairs (room.exits) do
+      if rooms [dest] then
+        -- check for inverse exits
+        local dest_room = rooms [dest]
+        local inverse = inverse_direction [dir]
+        if inverse then
+          if dest_room.exits [inverse] ~= uid then
+            p(string.format ("Room %s exit %s leads to %s, however room %s exit %s leads to %s",
+                fixuid (uid), dir, fixuid (dest), fixuid (dest), inverse, fixuid (dest_room.exits [inverse])))
+            if repair then
+              dest_room.exits [inverse] = uid
+              p (string.format ("Changed %s exit %s to be %s", fixuid (dest), inverse, fixuid (uid)))
+            end -- repair
+          end -- if
+
+        end -- if inverse exists
+
+        -- add to table for exits that lead to this room
+        if not t [dest] then
+         t [dest] = { }
+        end -- if destination not in table
+        local dest_room = t [dest]
+        if not dest_room [dir] then
+          dest_room [dir] = { }
+        end -- if not one from this direction yet
+        table.insert (dest_room [dir], uid)
+      end -- of the exit existing
+    end -- for each exit
+
+    -- see if duplicate UID not recorded
+    if duplicates [uid] and not room.duplicate then
+      p ("Room " .. fixuid (uid) .. " in duplicates list but we don't know what it is a duplicate of.")
+    end -- if
+
+  end -- for each room
+
+  for dest, exits in pairs (t) do
+    for dir, from in pairs (exits) do
+      if #from > 1 then
+        p(string.format ("Problem with exit %s leading to %s",
+                         dir:upper (), fixuid (dest)))
+        for _, v in ipairs (from) do
+          p(string.format ("Room %s leads there",
+                          fixuid (v)))
+        end -- for each one
+      end -- if more than one leads here
+    end -- for each direction
+  end -- for each destination room
+
+  p "Done."
+
+end -- mapper_integrity
+
+
+-- based on mapper.find_paths
+-- the intention of this is to find a room which is probably the one we want
+-- for example, a room directly north of where we are
+
+function find_probable_room (uid, dir)
+
+  local function make_particle (curr_loc, prev_path)
+    local prev_path = prev_path or {}
+    return {current_room=curr_loc, path=prev_path}
+  end
+
+  local depth = 0
+  local explored_rooms, particles = {}, {}
+
+  local relative_location = {
+    n  = { x =  0, y = -1 },
+    s  = { x =  0, y =  1 },
+    e  = { x =  1, y =  0 },
+    w  = { x = -1, y =  0 },
+    ne = { x =  1, y = -1 },
+    se = { x =  1, y =  1 },
+    nw = { x = -1, y = -1 },
+    sw = { x = -1, y =  1 },
+  } -- end of relative_location
+
+  local offsets = relative_location [dir]
+  if not offsets then
+    return false
+  end -- if not a n/s/e/w/ne/sw/se/sw
+  local x_offset, y_offset = offsets.x, offsets.y
+
+  -- create particle for the initial room
+  table.insert (particles, make_particle (uid))
+
+  while #particles > 0 and depth < config.SCAN.depth do
+
+    -- create a new generation of particles
+    local new_generation = {}
+    depth = depth + 1
+
+    -- process each active particle
+    for i, part in ipairs (particles) do
+
+      if not rooms [part.current_room] then
+        rooms [part.current_room] = get_room (part.current_room)
+      end -- if not in memory yet
+
+      -- if room doesn't exist, forget it
+      if rooms [part.current_room] then
+
+        -- get a list of exits from the current room
+        exits = rooms [part.current_room].exits
+
+        -- create one new particle for each exit
+        for dir, dest in pairs(exits) do
+
+          -- if we've been in this room before, drop it
+          if not explored_rooms[dest] then
+            explored_rooms[dest] = true
+            rooms [dest] = get_room (dest)  -- make sure this room in table
+            if rooms [dest] then
+              new_path = copytable.deep (part.path)
+              table.insert(new_path, { dir = dir, uid = dest } )
+
+              -- see if this is the wanted room
+              local x, y = 0, 0
+              for _, v in ipairs (new_path) do
+                local this_offset = relative_location [v.dir]
+                if not this_offset then  -- can't handle up/down/in/out
+                  -- DEBUG ("Can't handle " .. v.dir)
+                  break
+                end -- if
+                x = x + this_offset.x
+                y = y + this_offset.y
+                --DEBUG (string.format ("UID: %s, looking for %d, %d, got %d, %d",
+                --       fixuid (v.uid), x_offset, y_offset, x, y))
+                -- see if we got where we want to go
+                if x == x_offset and y == y_offset then
+                  return v.uid
+                end -- if found
+              end -- for each direction
+
+              -- make a new particle in the new room
+              table.insert(new_generation, make_particle(dest, new_path))
+            end -- if room exists
+          end -- not explored this room
+
+        end  -- for each exit
+
+      end -- if room exists
+
+    end  -- for each particle
+
+    particles = new_generation
+  end   -- while more particles
+
+  return false
+end -- find_probable_room
+
 
 
 -- -----------------------------------------------------------------
@@ -3437,10 +3919,11 @@ function get_config ()
 end -- get_config
 
 -- -----------------------------------------------------------------
--- get_current_room - gets the current room's data (serialized)
+-- get_current_room_ - gets the current room's data (serialized)
 -- returns uid, room
 -- -----------------------------------------------------------------
 function get_current_room ()
+  local current_room = get_current_room_ ("get_current_room")
   if not current_room or not rooms [current_room] then
     return nil
   end -- if
