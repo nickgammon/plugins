@@ -12,7 +12,7 @@
    language="Lua"
    purpose="Shows a bar of buttons you can click on to do things"
    date_written="2009-02-26 09:00"
-   date_modified="2010-05-31 17:22"
+   date_modified="2020-04-11 07:59"
    requires="4.40"
    save_state="y"
    version="5.0"
@@ -64,6 +64,7 @@ show_time = ("&show_time;"):lower ():sub (1, 1) == "y";
   script - a script function to call
   cooldown - time spell takes to cool down, in seconds
   sound - sound to play when button pressed
+  done - a script function call call when the cooldown is up
 
 --]]
 
@@ -78,6 +79,7 @@ buttons = {
   send = "echo doing heal",  -- what to send
   cooldown = 10,          -- cooldown time in seconds
   sound = "chimes.wav",   -- sound to play when cast
+  done = function () print ("Healing done!") end   -- what to do when done
   }, -- end of button 1
 
   -- button 2
@@ -343,7 +345,10 @@ function SetCooldown (n, amount)
 
   else
     buttons [n].cooldown_left = nil
-  end -- if
+    if buttons [n].done and type (buttons [n].done) == 'function' then  -- script to call when done
+      buttons [n].done (n)  -- pass button number to function
+    end -- if a function to be called
+  end -- if amount
 
   Redraw ()
 
