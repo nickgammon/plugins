@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE muclient [
-  <!ENTITY horizontal "y" > 
+  <!ENTITY horizontal "y" >
   <!ENTITY show_time "y" >
 ]>
 
@@ -17,7 +17,7 @@
    save_state="y"
    version="5.0"
    >
-   
+
 <description trim="y">
 <![CDATA[
 Install this plugin to show a button bar.
@@ -32,9 +32,9 @@ Click on an icon to execute a script or send a command to the MUD.
 <!--  Timers  -->
 
 <timers>
-  <timer 
-    script="handle_cooldowns" 
-    enabled="y" second="1.00" 
+  <timer
+    script="handle_cooldowns"
+    enabled="y" second="1.00"
     active_closed="y" >
   </timer>
 </timers>
@@ -55,9 +55,10 @@ show_time = ("&show_time;"):lower ():sub (1, 1) == "y";
 -- table of buttons
 
 --[[
-  Each button can have up to four entries:
-  
+  Each button can have:
+
   icon - filename of the image to draw
+  text - text to write if no icon is set
   tooltip - what to show if you hover the mouse over the button
   send - what to send to the MUD
   script - a script function to call
@@ -65,62 +66,41 @@ show_time = ("&show_time;"):lower ():sub (1, 1) == "y";
   sound - sound to play when button pressed
 
 --]]
-  
+
 
 buttons = {
 
   -- button 1
   {
-  icon = "HealIcon.png",  -- icon image
+  icon = nil,
   tooltip = "Heal self",  -- tooltip help text
-  send = "cast 'lesser heal' self",  -- what to send
+  text = "Heal",
+  send = "echo doing heal",  -- what to send
   cooldown = 10,          -- cooldown time in seconds
   sound = "chimes.wav",   -- sound to play when cast
   }, -- end of button 1
-  
+
   -- button 2
   {
-  icon = "SwordIcon.png",
-  tooltip = "Attack",
-  send = "kill @target",
-  cooldown = 1 * 60 * 60,  -- 1 hour cooldown
+  icon = nil,
+  text = "Attack",
+  tooltip = "Attack the darkness",  -- tooltip help text
+  send = "echo doing attack",
+  cooldown = 5,
   }, -- end of button 2
-  
-  -- button 3
- {
-  icon = "SparkIcon2.png",
-  tooltip = "Special Attacks",
-  script = function ()   -- script to execute when clicked
-                  
-    -- choose from menu
-    local result = WindowMenu (win, 
-      WindowInfo (win, 14),  -- x
-      WindowInfo (win, 15),   -- y
-      "Backstab|Stun|Kick|Taunt")
-    
-    -- if not cancelled, do action on current target
-    if result ~= "" then
-      Send (result:lower () .. " " .. GetPluginVariable ("", "target"))
-    end -- if
 
-  
-          end,  -- script function
-            
-    cooldown = 10 * 60,  -- 10 minute cooldown
-  }, -- end of button 3
-  
-  
  --> add more buttons here
- 
-  
+
+
 } -- end of buttons table
 
 
 -- configuration
 
-ICON_SIZE = 32
+ICON_WIDTH = 48
+ICON_HEIGHT = 32
 
-BACKGROUND_COLOUR = ColourNameToRGB "bisque"
+BACKGROUND_COLOUR = ColourNameToRGB "dimgray"
 BOX_COLOUR = ColourNameToRGB "royalblue"
 BUTTON_EDGE = ColourNameToRGB "silver"
 
@@ -148,7 +128,10 @@ FONT_NAME = "Lucida Sans Unicode"
 FONT_SIZE = 18
 FONT_SIZE_MEDIUM = 14
 FONT_SIZE_SMALL = 10
-FONT_COLOUR = ColourNameToRGB "yellow"
+FONT_SIZE_SMALLEST = 8
+TEXT_COLOUR = ColourNameToRGB "white"
+FADED_TEXT_COLOUR = ColourNameToRGB "darkgray"
+COOLDOWN_TEXT_COLOUR = ColourNameToRGB "yellow"
 
 -- sound to play if on cooldown
 ON_COOLDOWN_SOUND = "ding.wav"
@@ -160,72 +143,72 @@ require "commas"
 function mousedown (flags, hotspot_id)
 
   if hotspot_id == "_" then
-  
+
     -- find where mouse is so we can adjust window relative to mouse
     startx, starty = WindowInfo (win, 14), WindowInfo (win, 15)
-    
+
     -- find where window is in case we drag it offscreen
     origx, origy = WindowInfo (win, 10), WindowInfo (win, 11)
-  
+
     return
     end -- if
-    
-    
+
+
   local n = tonumber (hotspot_id)
-  
+
   -- draw the button border in another colour for visual feedback
-  WindowRectOp (win, 1, 
-                frames [n].x1, frames [n].y1, frames [n].x2, frames [n].y2, 
-                MOUSE_DOWN_COLOUR) 
-  
-  Redraw ()                
+  WindowRectOp (win, 1,
+                frames [n].x1, frames [n].y1, frames [n].x2, frames [n].y2,
+                MOUSE_DOWN_COLOUR)
+
+  Redraw ()
 end -- mousedown
 
 function cancelmousedown (flags, hotspot_id)
   local n = tonumber (hotspot_id)
-  
+
   -- draw the button border in original colour for visual feedback
-  WindowRectOp (win, 1, 
-                frames [n].x1, frames [n].y1, frames [n].x2, frames [n].y2, 
-                BUTTON_EDGE) 
-  Redraw ()                
+  WindowRectOp (win, 1,
+                frames [n].x1, frames [n].y1, frames [n].x2, frames [n].y2,
+                BUTTON_EDGE)
+  Redraw ()
 
 end -- cancelmousedown
 
 function mouseup (flags, hotspot_id)
-   
+
   -- fix border colour
   cancelmousedown (flags, hotspot_id)
-  
+
   local n = tonumber (hotspot_id)
-  
+
   local button = buttons [n]
-  
+
   -- shift key clears cooldown
   if bit.band (flags, 1) == 1 then
     SetCooldown (n, nil)
     return
   end -- if
-  
+
   -- can't press button if on cooldown
   if (button.cooldown_left or 0) > 0 then
     Sound (ON_COOLDOWN_SOUND)
     return
   end -- still on cooldown
-  
+
   -- play sound if defined
   if button.sound then
     Sound (button.sound)
   end -- sound to play
-  
+
   -- send to world if something specified
-  if type (button.send) == "string" and 
+  if type (button.send) == "string" and
     button.send ~= "" then
-     
+
     local errors =  {} -- no errors yet
-  
+
     -- function to do the replacements for string.gsub
-    
+
     local function replace_variables (s)
       s = string.sub (s, 2)  -- remove the @
       replacement = GetPluginVariable ("", s)    -- look up variable in global variables
@@ -234,31 +217,31 @@ function mouseup (flags, hotspot_id)
         return
       end -- not there
       return replacement  -- return variable
-    end -- replace_variables 
-    
+    end -- replace_variables
+
     -- replace all variables starting with @
-    
+
     local command = string.gsub (button.send, "@%a[%w_]*", replace_variables)
-    
+
     -- report any errors
-    
+
     if #errors > 0 then
       for k, v in ipairs (errors) do
         ColourNote ("white", "red", "Variable '" .. v .. "' does not exist")
       end -- for
       return
     end -- error in replacing
-     
+
     Execute (command)
   end -- if
-  
+
   -- execute script if wanted
   if type (button.script) == "function" then
-    button.script (n) 
+    button.script (n)
   end -- if
-     
+
   SetCooldown (n, button.cooldown)
-  
+
 end -- mouseup
 
 function dragmove(flags, hotspot_id)
@@ -269,7 +252,7 @@ function dragmove(flags, hotspot_id)
 
   -- move the window to the new location
   WindowPosition(win, posx - startx, posy - starty, 0, 2);
-  
+
   -- change the mouse cursor shape appropriately
   if posx < 0 or posx > GetInfo (281) or
      posy < 0 or posy > GetInfo (280) then
@@ -277,42 +260,42 @@ function dragmove(flags, hotspot_id)
   else
     SetCursor (10)   -- arrow (NS/EW) cursor
   end -- if
-  
+
 end -- dragmove
 
 function dragrelease(flags, hotspot_id)
   local newx, newy = WindowInfo (win, 17), WindowInfo (win, 18)
-  
+
   -- don't let them drag it out of view
   if newx < 0 or newx > GetInfo (281) or
      newy < 0 or newy > GetInfo (280) then
      -- put it back
     WindowPosition(win, origx, origy, 0, 2);
   end -- if out of bounds
-  
+
 end -- dragrelease
 
 function SetCooldown (n, amount)
-  assert (n >= 1 and n <= #buttons, 
+  assert (n >= 1 and n <= #buttons,
           "Bad button number " .. n .. " to SetCooldown")
   if amount then
     assert (amount >= 0, "Bad amount " .. amount .. " to SetCooldown")
   end -- if
-          
-  local frame = frames [n] 
-  local x1, y1, x2, y2 = frame.x1 + 1, frame.y1 + 1, frame.x2 - 1, frame.y2 - 1         
+
+  local frame = frames [n]
+  local x1, y1, x2, y2 = frame.x1 + 1, frame.y1 + 1, frame.x2 - 1, frame.y2 - 1
   buttons [n].cooldown_left = amount  -- cooldown time left in seconds
   local max = buttons [n].cooldown or 0   -- max cooldown time
   local percent  -- how far cooled down we are as a percent
-  
+
   if max > 0 then
-    percent = (amount or 0) / max 
+    percent = (amount or 0) / max
   else
     percent = 0  -- don't divide by zero!
   end -- if
-  
+
   -- reload the image
-  if WindowDrawImage(win, n, 
+  if WindowDrawImage(win, n,
                   x1, y1,   -- left, top
                   x2, y2,  -- right, bottom
                   2)  -- mode - stretch or shrink
@@ -320,145 +303,176 @@ function SetCooldown (n, amount)
     WindowRectOp (win, 2, x1, y1,   -- left, top
                   x2, y2,  -- right, bottom
                   BACKGROUND_COLOUR)
+    local button_text = buttons[n].text
+    if button_text then
+      AddText(button_text, n, false, (amount == 0) and TEXT_COLOUR or FADED_TEXT_COLOUR)
+    end
   end
-                 
+
   if amount and amount > 0 then
-  
+
     -- calculate pie end point
-    local endx = math.cos (math.rad (percent * 360 + 90)) * ICON_SIZE + ICON_SIZE / 2
-    local endy = -1 * math.sin (math.rad (percent * 360 + 90)) * ICON_SIZE + ICON_SIZE / 2
-    
+    local endx = math.cos (math.rad (percent * 360 + 90)) * ICON_WIDTH + ICON_WIDTH / 2
+    local endy = -1 * math.sin (math.rad (percent * 360 + 90)) * ICON_HEIGHT + ICON_HEIGHT / 2
+
     -- clear temporary window
     WindowRectOp (tempwin, 2, 0, 0, 0, 0, 0xFFFFFF)  -- fill with white
-    
+
     -- draw the pie showing amount of cooldown
-    WindowCircleOp (tempwin, 5, -10, -10, ICON_SIZE + 10, ICON_SIZE + 10,   -- pie
+    WindowCircleOp (tempwin, 5, -10, -10, ICON_WIDTH + 10, ICON_HEIGHT + 10,   -- pie
           0x000000, 5, 0,   -- no pen
           0x000000, 0,  -- solid brush, black
-          ICON_SIZE / 2, 0,   -- from 12 o'clock position
+          ICON_WIDTH / 2, 0,   -- from 12 o'clock position
           endx, endy)
-    
+
     -- turn pie shape into an image
     WindowImageFromWindow(win, "mask", tempwin)
-                      
+
     -- blend in (darken mode) with 50% opacity
-    WindowBlendImage(win, "mask", 
+    WindowBlendImage(win, "mask",
                      x1, y1, x2, y2,  -- rectangle
                      5,  -- darken
                      0.5)  -- opacity
-                  
-    -- if they want to see the time left (text on top of the button) do that now   
+
+    -- if they want to see the time left (text on top of the button) do that now
     if show_time then
-      local font = "f"
       local time_left = convert_time (amount)
       time_left = string.gsub (time_left, "[ s]", "") -- get rid of spaces, and "s"
-      local time_len = WindowTextWidth (win, font, time_left)
-      
-      -- use smaller font if it doesn't fit
-      if time_len > ICON_SIZE then
-        font = "f2"
-        time_len = WindowTextWidth (win, font, time_left)
-  
-        -- still too big?        
-        if time_len > ICON_SIZE then
-          font = "f3"
-          time_len = WindowTextWidth (win, font, time_left)
-        end -- if
-     
-      end -- if
-      
-      local font_height = WindowFontInfo (win, font, 1)  
-      local x_offset = math.max ((ICON_SIZE - time_len) / 2, 0)
-      local y_offset = math.max ((ICON_SIZE - font_height) / 2, 0)
-      
-      WindowText (win, font, time_left, x1 + x_offset + 2, y1 + y_offset + 2, x2, y2, 0x000000)
-      WindowText (win, font, time_left, x1 + x_offset, y1 + y_offset, x2, y2, FONT_COLOUR)
+      AddText (time_left, n, true, COOLDOWN_TEXT_COLOUR)
     end -- show_time
-    
+
   else
     buttons [n].cooldown_left = nil
   end -- if
-  
+
   Redraw ()
-  
+
 end -- function SetCooldown
+
+function AddText (text, n, bold, colour)
+  local frame = frames [n]
+  local x1, y1, x2, y2 = frame.x1 + 1, frame.y1 + 1, frame.x2 - 1, frame.y2 - 1
+  local font = bold and "f1" or "f5"
+  local text_len = WindowTextWidth (win, font, text)
+
+  -- use smaller font if it doesn't fit
+  if text_len > ICON_WIDTH then
+    font = bold and "f2" or "f6"
+    text_len = WindowTextWidth (win, font, text)
+
+    -- still too big?
+    if text_len > ICON_WIDTH then
+      font = bold and "f3" or "f7"
+      text_len = WindowTextWidth (win, font, text)
+
+      -- still too big?
+      if text_len > ICON_WIDTH then
+        font = bold and "f4" or "f8"
+        text_len = WindowTextWidth (win, font, text)
+      end -- if
+    end -- if
+
+  end -- if
+
+  local font_height = WindowFontInfo (win, font, 1)
+  local x_offset = math.max ((ICON_WIDTH - text_len) / 2, 0)
+  local y_offset = math.max ((ICON_HEIGHT - font_height) / 2, 0)
+
+  WindowText (win, font, text, x1 + x_offset + 2, y1 + y_offset + 2, x2, y2, 0x000000)
+  WindowText (win, font, text, x1 + x_offset, y1 + y_offset, x2, y2, colour)
+end
 
 function OnPluginInstall ()
 
-  local x, y, mode, flags = 
+  local x, y, mode, flags =
       tonumber (GetVariable ("windowx")) or 0,
       tonumber (GetVariable ("windowy")) or 0,
       tonumber (GetVariable ("windowmode")) or WINDOW_POSITION, -- top right
       tonumber (GetVariable ("windowflags")) or 0
-  
+
   -- check miniwindow visible
   if x < 0 or x > GetInfo (281) or
      y < 0 or y > GetInfo (280) then
      x, y = 0, 0  -- reset to top left
   end -- if not visible
-           
+
   win = GetPluginID ()  -- get a unique name
   tempwin = win .. ":temp"
-  
+
   local gauge_height, gauge_width
-  
+
   if horizontal then
-    window_width = (#buttons * (ICON_SIZE + OFFSET)) + OFFSET
-    window_height = ICON_SIZE + (OFFSET * 2)
+    window_width = (#buttons * (ICON_WIDTH + OFFSET)) + OFFSET
+    window_height = ICON_HEIGHT + (OFFSET * 2)
   else
-    window_width = ICON_SIZE + (OFFSET * 2)
-    window_height = (#buttons * (ICON_SIZE + OFFSET)) + OFFSET
+    window_width = ICON_WIDTH + (OFFSET * 2)
+    window_height = (#buttons * (ICON_HEIGHT + OFFSET)) + OFFSET
   end -- if
-  
+
   -- make the miniwindow
-  WindowCreate (win, 
+  WindowCreate (win,
              x, y,   -- left, top (auto-positions)
              window_width,     -- width
              window_height,  -- height
              mode,   -- position mode
              flags,  -- flags
-             BACKGROUND_COLOUR) 
-        
+             BACKGROUND_COLOUR)
+
   -- for drawing cooldowns (window not visible)
-  WindowCreate (tempwin, 
-             0, 0,   -- left, top 
-             ICON_SIZE,     -- width
-             ICON_SIZE,  -- height
+  WindowCreate (tempwin,
+             0, 0,   -- left, top
+             ICON_WIDTH,     -- width
+             ICON_HEIGHT,  -- height
              12,   -- position mode
              0,  -- flags
-             ColourNameToRGB "white") 
+             ColourNameToRGB "white")
 
-  -- grab fonts
-  WindowFont (win, "f", FONT_NAME, FONT_SIZE, true) 
-  WindowFont (win, "f2", FONT_NAME, FONT_SIZE_MEDIUM, true) 
-  WindowFont (win, "f3", FONT_NAME, FONT_SIZE_SMALL, true) 
-             
+  -- grab bold fonts
+  WindowFont (win, "f1", FONT_NAME, FONT_SIZE, true)
+  WindowFont (win, "f2", FONT_NAME, FONT_SIZE_MEDIUM, true)
+  WindowFont (win, "f3", FONT_NAME, FONT_SIZE_SMALL, true)
+  WindowFont (win, "f4", FONT_NAME, FONT_SIZE_SMALLEST, true)
+  -- grab not-bold fonts
+  WindowFont (win, "f5", FONT_NAME, FONT_SIZE, false)
+  WindowFont (win, "f6", FONT_NAME, FONT_SIZE_MEDIUM, false)
+  WindowFont (win, "f7", FONT_NAME, FONT_SIZE_SMALL, false)
+  WindowFont (win, "f8", FONT_NAME, FONT_SIZE_SMALLEST, false)
+
+
   -- draw the buttons
-  
+
   for n, v in ipairs (buttons) do
 
     if v.icon then
       if WindowLoadImage (win, n, GetInfo (66) .. v.icon) ~= error_code.eOK then
           DoAfterSpecial (1, string.format ([[
-              ColourNote ("white", "red", "Could not load image '%s'")]], 
+              ColourNote ("white", "red", "Could not load image '%s'")]],
                           string.gsub (GetInfo (66) .. v.icon, '\\', '\\\\')),
                           sendto.script)
       end -- if
     end -- if icon specified
-       
+
     local x1, y1, x2, y2
 
     -- where to draw the icon
     if horizontal then
-      x1, y1 = (n - 1) * (ICON_SIZE + OFFSET) + OFFSET, OFFSET
-      x2, y2 = n * (ICON_SIZE + OFFSET), ICON_SIZE + OFFSET
+      x1, y1 = (n - 1) * (ICON_WIDTH + OFFSET) + OFFSET, OFFSET
+      x2, y2 = n * (ICON_WIDTH + OFFSET), ICON_HEIGHT + OFFSET
     else
-      x1, y1 = OFFSET, (n - 1) * (ICON_SIZE + OFFSET) + OFFSET
-      x2, y2 = ICON_SIZE + OFFSET, n * (ICON_SIZE + OFFSET)
+      x1, y1 = OFFSET, (n - 1) * (ICON_HEIGHT + OFFSET) + OFFSET
+      x2, y2 = ICON_WIDTH + OFFSET, n * (ICON_HEIGHT + OFFSET)
     end -- if
-        
+
+    -- remember where to draw the frame, for mouse clicks
+    frames [n] = {
+      x1 = x1 - 1,
+      y1 = y1 - 1,
+      x2 = x2 + 1,
+      y2 = y2 + 1
+    }
+
     -- draw the image
-    if WindowDrawImage(win, n, 
+    if WindowDrawImage(win, n,
                     x1, y1,   -- left, top
                     x2, y2,  -- right, bottom
                     2)  -- mode - stretch or shrink
@@ -466,40 +480,35 @@ function OnPluginInstall ()
       WindowRectOp (win, 2, x1, y1,   -- left, top
                     x2, y2,  -- right, bottom
                     BACKGROUND_COLOUR)
+      if v.text then
+        AddText(v.text, n, false, TEXT_COLOUR)
+      end
     end -- if
-               
-    -- remember where to draw the frame, for mouse clicks
-    frames [n] = { 
-            x1 = x1 - 1,
-            y1 = y1 - 1,
-            x2 = x2 + 1,
-            y2 = y2 + 1
-            }
-    
+
     -- draw the button border
-    WindowRectOp (win, 1, 
-                  frames [n].x1, frames [n].y1, frames [n].x2, frames [n].y2, 
-                  BUTTON_EDGE) 
-    
+    WindowRectOp (win, 1,
+                  frames [n].x1, frames [n].y1, frames [n].x2, frames [n].y2,
+                  BUTTON_EDGE)
+
     -- make a hotspot we can click on
-    WindowAddHotspot(win, n,  
+    WindowAddHotspot(win, n,
                  frames [n].x1, frames [n].y1, frames [n].x2, frames [n].y2,   -- rectangle
                  "",   -- mouseover
                  "",   -- cancelmouseover
                  "mousedown",
-                 "cancelmousedown", 
-                 "mouseup", 
+                 "cancelmousedown",
+                 "mouseup",
                  v.tooltip,  -- tooltip text
                  1, 0)  -- hand cursor
-                      
+
   end --  for each world
-  
+
 
   -- draw the border of the whole box
-  WindowCircleOp (win, 2, 0, 0, 0, 0, BOX_COLOUR, 6, EDGE_WIDTH, 0x000000, 1) 
-    
+  WindowCircleOp (win, 2, 0, 0, 0, 0, BOX_COLOUR, 6, EDGE_WIDTH, 0x000000, 1)
+
   -- make a hotspot
-  WindowAddHotspot(win, "_",  
+  WindowAddHotspot(win, "_",
                    0, 0, 0, 0,   -- whole window
                    "",   -- MouseOver
                    "",   -- CancelMouseOver
@@ -508,18 +517,18 @@ function OnPluginInstall ()
                    "",   -- MouseUp
                    "Drag to move",  -- tooltip text
                    10, 0)  -- arrow (NS/EW) cursor
-                   
-  WindowDragHandler(win, "_", "dragmove", "dragrelease", 0) 
-  
+
+  WindowDragHandler(win, "_", "dragmove", "dragrelease", 0)
+
   if GetVariable ("enabled") == "false" then
     ColourNote ("yellow", "", "Warning: Plugin " .. GetPluginName ().. " is currently disabled.")
     EnablePlugin (GetPluginID (), false)
     return
   end -- they didn't enable us last time
- 
+
   -- ensure window visible
   WindowShow (win, true)
-    
+
 end -- OnPluginInstall
 
 -- hide window on removal
@@ -549,7 +558,7 @@ end -- OnPluginSaveState
 function handle_cooldowns (name)
   for n, v in ipairs (buttons) do
     if buttons [n].cooldown_left then
-      SetCooldown (n, buttons [n].cooldown_left - 1) 
+      SetCooldown (n, buttons [n].cooldown_left - 1)
     end -- if some cooldown left
   end -- for
 end -- function handle_cooldowns
