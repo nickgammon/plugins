@@ -64,7 +64,7 @@ show_time = ("&show_time;"):lower ():sub (1, 1) == "y";
   script - a script function to call
   cooldown - time spell takes to cool down, in seconds
   sound - sound to play when button pressed
-  done - a script function call call when the cooldown is up
+  done - a script function to call when the cooldown is up
 
 --]]
 
