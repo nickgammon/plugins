@@ -893,7 +893,7 @@ function get_room (uid)
               
   -- special room fill colours
   
-  if room.info then
+  if room.info and string.len(room.info) > 0 then
     if string.match (room.info, "shop") then
       room.fillcolour = config.SHOP_FILL_COLOUR.colour
       room.fillbrush = 8
