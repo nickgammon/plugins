@@ -1562,7 +1562,7 @@ function got_room_name (s)
   
   --Flying above and In the Trees above
   brief = brief:match("Flying above (.+)") or brief
-  brief = brief:match("In the Trees above (.+)") or brief
+  brief = brief:match("In the trees above (.+)") or brief
   
   if not current_room then
    return
