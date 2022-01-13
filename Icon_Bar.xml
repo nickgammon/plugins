@@ -12,10 +12,10 @@
    language="Lua"
    purpose="Shows a bar of buttons you can click on to do things"
    date_written="2009-02-26 09:00"
-   date_modified="2020-04-11 07:59"
+   date_modified="2022-01-14 09:05"
    requires="4.40"
    save_state="y"
-   version="5.0"
+   version="5.1"
    >
 
 <description trim="y">
@@ -24,10 +24,29 @@ Install this plugin to show a button bar.
 
 Click on an icon to execute a script or send a command to the MUD.
 
+Type: "press icon n" to activate that icon (and its cooldown etc.) from the keyboard
+e.g.  press icon 2    <--- where 2 refers to "button 2" in the list of buttons
+
+
 ]]>
 </description>
 
 </plugin>
+
+<!--  Aliases  -->
+
+<aliases>
+  <alias
+   script="pressIcon"
+   match="^press icon (\d+)$"
+   enabled="y"
+   regexp="y"
+   send_to="12"
+   sequence="100"
+  >
+  </alias>
+</aliases>
+
 
 <!--  Timers  -->
 
@@ -245,6 +264,17 @@ function mouseup (flags, hotspot_id)
   SetCooldown (n, button.cooldown)
 
 end -- mouseup
+
+function pressIcon (name, line, wildcards)
+    local whichIcon = tonumber (wildcards [1])
+    if not whichIcon or whichIcon < 1 or whichIcon > #buttons then
+      ColourNote ("red", "", "That icon button does not exist")
+      return
+    end -- if
+
+    mouseup (0, whichIcon)
+
+end -- pressIcon
 
 function dragmove(flags, hotspot_id)
 
