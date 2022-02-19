@@ -195,7 +195,16 @@ mapper resume       --> resume last speedwalk or hyperlinked speedwalk
   >
   
   </alias>  
-    
+  
+  <alias
+	 match = "mapper skipSpecial"
+	 enabled = "y"
+	 sequence = "100"
+	 script = "mapper_toggleSkipSp"
+	>
+  
+	</alias>
+  
   <!--  cancel speedwalking -->
   
  <alias
@@ -458,8 +467,18 @@ default_config = {
 
 local rooms = {}
 local areas = {}
+
+setmetatable(areas, {__newindex = function(t, k, v)
+    if tonumber(k) then
+      db:execute (string.format ([[INSERT INTO AREAS(uid, name, date_added) VALUES (%s, %s, DATETIME('NOW'));]], fixsql(k), fixsql(v)))
+    end
+    rawset(t, k, v)
+  end
+  })
+
 local environments = {}
 local user_terrain_colour = {}
+local skipSpecial = GetVariable("skipSpecial") == "1" or false
 
 room_not_in_database = {}
 room_in_database = {}
@@ -836,7 +855,7 @@ function get_room (uid)
   room.area = areas [room.area] or string.format ("%s", room.area or "<unknown>")
   
   if uid == current_room then
-    current_area = room.area
+    current_area = room.area -- string by default
   end -- if
   
   -- build hover message
@@ -892,22 +911,29 @@ function get_room (uid)
   room.fillbrush = 1 -- no fill
               
   -- special room fill colours
-  
-  if room.info then
+  local infoColour = false
+  if room.info and string.len(room.info) > 0 then
     if string.match (room.info, "shop") then
       room.fillcolour = config.SHOP_FILL_COLOUR.colour
       room.fillbrush = 8
+      infoColour = true
     elseif string.match (room.info, "postoffice") then
       room.fillcolour = config.POSTOFFICE_FILL_COLOUR.colour
       room.fillbrush = 8
+      infoColour = true
     elseif string.match (room.info, "bank") then
       room.fillcolour = config.BANK_FILL_COLOUR.colour
       room.fillbrush = 8
+      infoColour = true
     elseif string.match (room.info, "newsroom") then
       room.fillcolour = config.NEWSROOM_FILL_COLOUR.colour
       room.fillbrush = 8
+      infoColour = true
     end -- if
-  else  
+  end -- if
+  
+  -- not coloured using room.info
+  if not infoColour then
     -- use terrain colour
     if environmentname then
       if user_terrain_colour [environmentname] then
@@ -918,7 +944,7 @@ function get_room (uid)
         room.fillbrush = 0  -- solid
       end
     end -- if environmentname
-  end -- if 
+  end -- if
        
   if uid == current_room then
     room.bordercolour = config.OUR_ROOM_COLOUR.colour
@@ -1316,7 +1342,7 @@ function add_area (room, uid)
                               
   mapper.draw (tostring (current_room))
       
-end -- add_area
+end -- add_area  
 
 function room_click (uid, flags)
 
@@ -1405,7 +1431,8 @@ function OnPluginInstall ()
   
   -- grab all area names
   for row in db:nrows("SELECT * FROM areas") do
-    areas [row.uid] = row.name
+    -- areas [row.uid] = row.name
+    rawset(areas, row.uid, row.name)
   end   -- finding areas
   
   -- grab all user terrain info
@@ -1416,7 +1443,7 @@ function OnPluginInstall ()
   -- grab all environment names
   for row in db:nrows("SELECT * FROM environments") do
     environments [tonumber (row.uid)] = row.name
-    terrain_colours [row.name] = tonumber (row.color)
+    terrain_colours [row.name] = row.color
   end   -- finding environments
   
 end -- OnPluginInstall
@@ -1441,9 +1468,41 @@ function OnPluginSaveState ()
   mapper.save_state ()
   SetVariable ("config", "config = " .. serialize.save_simple (config))
 end -- OnPluginSaveState
- 
-terrain_colours = {}
 
+terrain_colours = {
+  Abstract = "#363F03",
+  Nothing = "#000000",
+  ["Planar Highway"] = "#1A2E1A",
+  Freshwater = "#AFFFFF",
+  River = "#4D68ED",
+  Water = "#0000FF",
+  Ausafoss = "#00CCFF",
+  Reef = "#33CCCC",
+  Ocean = "#0000CC",
+  ["Deep Ocean"] = "#00008E",
+  Hills = "#777400",
+  Mountains = "#824100",
+  Vessel = "#5E4320",
+  Grasslands = "#B4FF69",
+  ["Tsol'aa city"] = "#7FFE00",
+  Garden = "#00CC99",
+  Forest = "#33CC33",
+  Trees = "#009600",
+  Swamps = "#52670D",
+  Jungle = "#006C00",
+  ["Constructed underground"] = "#8C8C8C",
+  ["Natural underground"] = "#4D4D4D",
+  Ruins = "#DDDDDD",
+  Urban = "#FC4AFC",
+  Valley = "#BA00E6",
+  Path = "#EFF2DA",
+  Polar = "#FFFFFF",
+  Road = "#E5F0D0",
+  Tundra = "#F4F4F4",
+  Beach = "#FFFF7D",
+  Desert = "#FAEE04",
+  Stars = "#EFFFFF",
+  }
 
 -- ANSI colours lookup (for terrain_colours)
 
@@ -1465,7 +1524,19 @@ colour_lookup = {
     [14] =  ColourNameToRGB  "cyan",   
     [15] =  ColourNameToRGB  "white",  
   } -- end of colour_lookup
-
+  
+setmetatable(colour_lookup, {__index = function(t, k)
+    local ind = tonumber(k)
+    
+    if ind and ind >= 0 and ind <= 15 then
+      return rawget(t, ind)
+    elseif type(k) == "string" then
+      return ColourNameToRGB(k)
+    elseif ind then
+      return ind
+    end -- if
+  end -- function
+  })
 
 -- here when location changes, eg. : Room.Num 7476
 function got_room_number (s)
@@ -1488,6 +1559,10 @@ end -- got_room_number
 -- we got a room name, eg. : Room.Brief On the edge of a great plain
 function got_room_name (s)
   local brief = s
+  
+  --Flying above and In the Trees above
+  brief = brief:match("Flying above (.+)") or brief
+  brief = brief:match("In the trees above (.+)") or brief
   
   if not current_room then
    return
@@ -1600,6 +1675,8 @@ function got_coordinates (s)
     room = load_room_from_database (current_room)
   end -- not in cache
   
+  current_areaid = string.match (s, "^(.-),[%d-]+,[%d-]+,[%d-]+")
+  
   if room and (room.area == nil or tonumber (room.area) == 0) then
     save_coordinates_to_database (current_room, s)
     mapper.draw (tostring (current_room) )    -- redraw room with area
@@ -1641,6 +1718,14 @@ handlers = {
   }
 
 function gotRoomInfo (info)
+  current_areaid = nil
+  -- option to skip wilderness rooms pending more robust handling
+  --print("info area: "..tostring(info.area==""))
+  if skipSpecial then
+    if info.area and info.area == "" then
+      return
+    end
+  end
   
   if info.num then
     got_room_number (info.num)
@@ -1671,8 +1756,8 @@ function gotRoomInfo (info)
     got_info (table.concat (info.details, ","))
   end -- if
   
-  if info.area then
-    areas [current_area] = info.area:sub (1, 1):upper () .. info.area:sub (2)
+  if info.area and current_areaid then
+    areas [current_areaid] = info.area:sub (1, 1):upper () .. info.area:sub (2)
   end -- if 
   
 end  -- gotRoomInfo
@@ -1982,6 +2067,16 @@ function map_areas (name, line, wildcards)
     
 end -- map_areas
 
+function mapper_toggleSkipSp()
+  if skipSpecial then
+    skipSpecial = false
+    SetVariable("skipSpecial", "0")
+  else
+    skipSpecial = true
+    SetVariable("skipSpecial", "1")
+  end
+  mapper.mapprint ("mapper skipSpecial set to " .. tostring(skipSpecial))
+end
 
 valid_direction = {
   n = "n",
