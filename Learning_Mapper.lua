@@ -91,7 +91,7 @@ room_name_styles = { }
 
 UNKNOWN_DUPLICATE_ROOM = string.rep ("F", 25)  -- dummy UID
 
-DEBUGGING = true
+DEBUGGING = false
 
 function set_last_direction_moved (where)
   last_direction_moved = where
